@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { TextTable } from "./text-table"
+import { useEffect } from "react"
 
 interface Notification {
   id: string

@@ -61,8 +61,6 @@ export default function AttacksPage() {
     }
   }, [])
 
-  const currentVillage = villages.find(v => v.id === selectedVillageId)
-
   useEffect(() => {
     // Sync Alpine.js state when React state changes
     if (typeof window !== "undefined" && (window as any).Alpine) {
@@ -76,12 +74,14 @@ export default function AttacksPage() {
     }
   }, [selectedVillageId])
 
+  const currentVillage = villages.find(v => v.id === selectedVillageId)
+
   return (
     <div
       x-data={`{
         selectedVillageId: '${selectedVillageId || ''}',
         handleChange() {
-          if (typeof window !== 'undefined' && window.__attacksSetSelectedVillage) {
+          if (window.__attacksSetSelectedVillage) {
             window.__attacksSetSelectedVillage(this.selectedVillageId);
           }
         }
@@ -123,9 +123,7 @@ export default function AttacksPage() {
                 villageId={currentVillage.id}
                 troops={currentVillage.troops as any}
                 onLaunchAttack={async () => {
-                  if (typeof window !== "undefined" && (window as any).__attacksFetchHandler) {
-                    await (window as any).__attacksFetchHandler()
-                  }
+                  await fetchData()
                 }}
               />
             </section>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { CountdownTimer } from "./countdown-timer"
 import type { Building } from "@prisma/client"
 
@@ -9,6 +10,17 @@ interface BuildingQueueProps {
 }
 
 export function BuildingQueue({ buildings, onCancel }: BuildingQueueProps) {
+  useEffect(() => {
+    if (typeof window !== "undefined" && onCancel) {
+      (window as any).__buildingQueueCancelHandler = onCancel
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__buildingQueueCancelHandler
+      }
+    }
+  }, [onCancel])
+
   const queuedBuildings = buildings.filter((b) => b.isBuilding && b.queuePosition !== null)
 
   if (queuedBuildings.length === 0) {
@@ -17,14 +29,17 @@ export function BuildingQueue({ buildings, onCancel }: BuildingQueueProps) {
 
   const sortedBuildings = queuedBuildings.sort((a, b) => (a.queuePosition || 0) - (b.queuePosition || 0))
 
-  const handleCancel = (buildingId: string) => {
-    if (onCancel) {
-      onCancel(buildingId)
-    }
-  }
-
   return (
-    <div className="space-y-2">
+    <div
+      x-data={`{
+        handleCancel(buildingId) {
+          if (window.__buildingQueueCancelHandler) {
+            window.__buildingQueueCancelHandler(buildingId);
+          }
+        }
+      }`}
+      className="space-y-2"
+    >
       <h3 className="text-sm font-semibold">Construction Queue</h3>
       {sortedBuildings.map((building) => (
         <div
@@ -47,7 +62,7 @@ export function BuildingQueue({ buildings, onCancel }: BuildingQueueProps) {
           </div>
           {onCancel && building.queuePosition !== 1 && (
             <button
-              onClick={() => handleCancel(building.id)}
+              x-on:click={`handleCancel('${building.id}')`}
               className="ml-2 rounded border border-border bg-destructive px-2 py-1 text-xs hover:bg-destructive/80"
             >
               Cancel

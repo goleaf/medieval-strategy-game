@@ -29,7 +29,7 @@ export default function MapPage() {
       const data = await res.json()
       if (data.success && data.data) {
         setTiles(data.data.tiles || [])
-        setBounds(data.data.bounds || bounds)
+        setBounds(data.data.bounds || { startX: 0, startY: 0, endX: 20, endY: 20 })
       }
     } catch (error) {
       console.error("Failed to fetch map:", error)
@@ -124,35 +124,35 @@ export default function MapPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <div className="inline-block">
-                <div className="grid gap-0 font-mono text-xs" style={{ gridTemplateColumns: `repeat(${gridWidth}, minmax(20px, 1fr))` }}>
-                  {tiles.map((tile) => {
-                    const symbol = tile.fogOfWar
-                      ? "?"
-                      : tile.village
-                        ? tile.village.isOwn
-                          ? "🏰"
-                          : "⚔️"
-                        : "·"
-                    return (
-                      <div
-                        key={`${tile.x}-${tile.y}`}
-                        className="w-5 h-5 flex items-center justify-center border border-border hover:bg-secondary cursor-pointer"
-                        title={tile.village ? `${tile.village.name} (${tile.village.playerName})` : `(${tile.x}, ${tile.y})`}
-                      >
-                        {symbol}
-                      </div>
-                    )
-                  })}
+              <div className="overflow-x-auto">
+                <div className="inline-block">
+                  <div className="grid gap-0 font-mono text-xs" style={{ gridTemplateColumns: `repeat(${gridWidth}, minmax(20px, 1fr))` }}>
+                    {tiles.map((tile) => {
+                      const symbol = tile.fogOfWar
+                        ? "?"
+                        : tile.village
+                          ? tile.village.isOwn
+                            ? "🏰"
+                            : "⚔️"
+                          : "·"
+                      return (
+                        <div
+                          key={`${tile.x}-${tile.y}`}
+                          className="w-5 h-5 flex items-center justify-center border border-border hover:bg-secondary cursor-pointer"
+                          title={tile.village ? `${tile.village.name} (${tile.village.playerName})` : `(${tile.x}, ${tile.y})`}
+                        >
+                          {symbol}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="text-xs text-muted-foreground space-y-1">
-              <div>🏰 = Your village</div>
-              <div>⚔️ = Enemy village</div>
-              <div>· = Empty</div>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <div>🏰 = Your village</div>
+                <div>⚔️ = Enemy village</div>
+                <div>· = Empty</div>
               <div>? = Unknown (fog of war)</div>
             </div>
           </div>

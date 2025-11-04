@@ -66,6 +66,13 @@ export default function AdminDashboard() {
             this.worldConfig = ${JSON.stringify(worldConfig)};
           }
           this.loading = false;
+        },
+        async handleViewUnitBalance() {
+          const res = await fetch('/api/admin/units/balance');
+          const data = await res.json();
+          if (data.success && data.data) {
+            console.log('Unit balance:', data.data);
+          }
         }
       }`}
       x-init="switchTab('stats')"
@@ -183,14 +190,7 @@ export default function AdminDashboard() {
                   <p className="text-sm text-muted-foreground">
                     View and manage troop balance settings
                   </p>
-                  <Button variant="outline" onClick={async () => {
-                    const res = await fetch("/api/admin/units/balance")
-                    const data = await res.json()
-                    if (data.success && data.data) {
-                      // Display unit balance data
-                      console.log("Unit balance:", data.data)
-                    }
-                  }}>
+                  <Button variant="outline" x-on:click={`handleViewUnitBalance()`}>
                     View Unit Balance
                   </Button>
                 </div>
