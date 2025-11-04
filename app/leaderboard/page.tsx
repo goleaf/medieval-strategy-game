@@ -1,88 +1,114 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Navbar } from "@/components/game/navbar"
-
-interface LeaderboardEntry {
-  id: string
-  playerName: string
-  totalPoints: number
-  rank: number
-  tribe?: { tag: string }
-}
+import { useState, useEffect } from "react"
+import Link from "next/link"
+import { TextTable } from "@/components/game/text-table"
+import { Button } from "@/components/ui/button"
 
 export default function LeaderboardPage() {
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([])
+  const [type, setType] = useState<"players" | "tribes" | "villages">("players")
+  const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [villages] = useState<any[]>([])
 
   useEffect(() => {
-    const fetchLeaderboard = async () => {
-      try {
-        const res = await fetch("/api/leaderboard")
-        const data = await res.json()
-        setEntries(data)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchLeaderboard()
-    const interval = setInterval(fetchLeaderboard, 30000)
+  }, [type])
 
-    return () => clearInterval(interval)
-  }, [])
+  const fetchLeaderboard = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/leaderboard?type=${type}`)
+      const result = await res.json()
+      if (result.success && result.data) {
+        setData(result.data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch leaderboard:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <Navbar
-        villages={villages}
-        currentVillageId={null}
-        onVillageChange={() => {}}
-        notificationCount={0}
-      />
-      
-      <main className="flex-1 w-full p-4">
-        <div className="w-full max-w-4xl mx-auto space-y-4">
-          <h1 className="text-2xl font-bold">Global Leaderboard</h1>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border p-4">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <Link href="/dashboard" className="text-sm hover:underline">
+            ← Back
+          </Link>
+          <h1 className="text-xl font-bold">📊 Leaderboard</h1>
+          <div className="w-16" />
+        </div>
+      </header>
 
-          {loading ? (
-            <section>
-              <p>Loading...</p>
-            </section>
-          ) : (
-            <section>
-              <table className="w-full border-collapse border border-border">
-                <thead>
-                  <tr>
-                    <th className="border border-border p-2 text-left bg-secondary">Rank</th>
-                    <th className="border border-border p-2 text-left bg-secondary">Player</th>
-                    <th className="border border-border p-2 text-left bg-secondary">Tribe</th>
-                    <th className="border border-border p-2 text-right bg-secondary">Points</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="border border-border p-4 text-center text-muted-foreground">
-                        No entries yet
-                      </td>
-                    </tr>
-                  ) : (
-                    entries.map((entry) => (
-                      <tr key={entry.id}>
-                        <td className="border border-border p-2 font-bold">{entry.rank}</td>
-                        <td className="border border-border p-2">{entry.playerName}</td>
-                        <td className="border border-border p-2 font-mono text-sm">{entry.tribe?.tag || "-"}</td>
-                        <td className="border border-border p-2 text-right font-mono font-bold">
-                          {entry.totalPoints.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </section>
+      <main className="w-full p-4">
+        <div className="max-w-4xl mx-auto space-y-4">
+          <div className="flex gap-2">
+            <Button
+              variant={type === "players" ? "default" : "outline"}
+              onClick={() => setType("players")}
+            >
+              Players
+            </Button>
+            <Button
+              variant={type === "tribes" ? "default" : "outline"}
+              onClick={() => setType("tribes")}
+            >
+              Tribes
+            </Button>
+            <Button
+              variant={type === "villages" ? "default" : "outline"}
+              onClick={() => setType("villages")}
+            >
+              Villages
+            </Button>
+          </div>
+
+          {type === "players" && (
+            <TextTable
+              headers={["Rank", "Player", "Points", "Tribe"]}
+              rows={data.map((player, idx) => [
+                (idx + 1).toString(),
+                player.playerName,
+                player.totalPoints?.toLocaleString() || "0",
+                player.tribe?.tag || "-",
+              ])}
+            />
+          )}
+
+          {type === "tribes" && (
+            <TextTable
+              headers={["Rank", "Tribe", "Tag", "Points", "Members", "Leader"]}
+              rows={data.map((tribe, idx) => [
+                (idx + 1).toString(),
+                tribe.name,
+                tribe.tag,
+                tribe.totalPoints?.toLocaleString() || "0",
+                tribe.memberCount?.toString() || "0",
+                tribe.leader?.playerName || "-",
+              ])}
+            />
+          )}
+
+          {type === "villages" && (
+            <TextTable
+              headers={["Rank", "Village", "Position", "Player", "Points"]}
+              rows={data.map((village, idx) => [
+                (idx + 1).toString(),
+                village.name,
+                `(${village.x}, ${village.y})`,
+                village.player?.playerName || "-",
+                village.points?.toLocaleString() || "0",
+              ])}
+            />
           )}
         </div>
       </main>

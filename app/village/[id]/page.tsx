@@ -1,0 +1,150 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useParams, useRouter } from "next/navigation"
+import Link from "next/link"
+import { ResourceDisplay } from "@/components/game/resource-display"
+import { BuildingQueue } from "@/components/game/building-queue"
+import { TextTable } from "@/components/game/text-table"
+import { Button } from "@/components/ui/button"
+import type { Village, Building, Troop } from "@prisma/client"
+
+export default function VillageDetailPage() {
+  const params = useParams()
+  const router = useRouter()
+  const villageId = params.id as string
+  const [village, setVillage] = useState<(Village & { buildings: Building[]; troops: Troop[] }) | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchVillage = async () => {
+      try {
+        const res = await fetch("/api/villages?playerId=temp-player-id")
+        const data = await res.json()
+        if (data.success && data.data) {
+          const found = data.data.find((v: any) => v.id === villageId)
+          setVillage(found || null)
+        }
+      } catch (error) {
+        console.error("Failed to fetch village:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchVillage()
+    const interval = setInterval(fetchVillage, 30000)
+    return () => clearInterval(interval)
+  }, [villageId])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    )
+  }
+
+  if (!village) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="mb-4">Village not found</p>
+          <Link href="/dashboard">
+            <Button>Back to Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border p-4">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <Link href="/dashboard" className="text-sm hover:underline">
+            ← Back
+          </Link>
+          <h1 className="text-xl font-bold">{village.name}</h1>
+          <div className="w-16" />
+        </div>
+      </header>
+
+      <main className="w-full p-4">
+        <div className="max-w-4xl mx-auto space-y-4">
+          <section>
+            <h2 className="text-lg font-bold mb-2">Village Information</h2>
+            <div className="space-y-1 text-sm">
+              <div>Position: ({village.x}, {village.y})</div>
+              <div>Population: {village.population}</div>
+              <div>Loyalty: {village.loyalty}%</div>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold mb-2">Resources</h2>
+            <ResourceDisplay
+              wood={village.wood}
+              stone={village.stone}
+              iron={village.iron}
+              gold={village.gold}
+              food={village.food}
+              woodProduction={village.woodProduction}
+              stoneProduction={village.stoneProduction}
+              ironProduction={village.ironProduction}
+              goldProduction={village.goldProduction}
+              foodProduction={village.foodProduction}
+              showProduction
+            />
+          </section>
+
+          <section>
+            <BuildingQueue buildings={village.buildings} />
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold mb-2">Buildings</h2>
+            <TextTable
+              headers={["Type", "Level", "Status", "Actions"]}
+              rows={village.buildings.map((building) => [
+                building.type,
+                building.level.toString(),
+                building.isBuilding ? "Building..." : "Ready",
+                <Link key={building.id} href={`/village/${villageId}/buildings`}>
+                  <Button variant="outline" size="sm">
+                    View
+                  </Button>
+                </Link>,
+              ])}
+            />
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold mb-2">Troops</h2>
+            <TextTable
+              headers={["Type", "Quantity"]}
+              rows={village.troops.map((troop) => [
+                troop.type,
+                troop.quantity.toLocaleString(),
+              ])}
+            />
+          </section>
+
+          <section className="flex gap-2">
+            <Link href={`/village/${villageId}/buildings`} className="flex-1">
+              <Button variant="outline" className="w-full">
+                Manage Buildings
+              </Button>
+            </Link>
+            <Link href={`/village/${villageId}/troops`} className="flex-1">
+              <Button variant="outline" className="w-full">
+                Manage Troops
+              </Button>
+            </Link>
+          </section>
+        </div>
+      </main>
+    </div>
+  )
+}
+

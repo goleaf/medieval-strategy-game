@@ -1,7 +1,6 @@
 "use client"
 
 import { CountdownTimer } from "./countdown-timer"
-import { prisma } from "@/lib/db"
 import type { TroopProduction } from "@prisma/client"
 
 interface TroopQueueProps {

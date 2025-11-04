@@ -350,11 +350,11 @@ model Attack {
   
   // Attacker
   fromVillageId   String
-  fromVillage     Village   @relation(fields: [fromVillageId], references: [id], onDelete: Cascade)
+  fromVillage     Village   @relation("AttackFrom", fields: [fromVillageId], references: [id], onDelete: Cascade)
   
   // Defender
   toVillageId     String?
-  toVillage       Village?  @relation(fields: [toVillageId], references: [id], onDelete: SetNull)
+  toVillage       Village?  @relation("AttackTo", fields: [toVillageId], references: [id], onDelete: SetNull)
   
   // Movement
   movementId      String    @unique
