@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import type { Village, Building, Troop } from "@prisma/client"
-import { useState } from "react"
+import { useEffect } from "react"
 import { CountdownTimer } from "./countdown-timer"
 import { TextTable } from "./text-table"
 
@@ -13,10 +13,36 @@ interface VillageOverviewProps {
 }
 
 export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
-  const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__villageUpgradeHandler = onUpgrade
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__villageUpgradeHandler
+      }
+    }
+  }, [onUpgrade])
 
   return (
-    <div className="w-full space-y-4">
+    <div
+      x-data={`{
+        selectedBuildingId: null,
+        buildings: ${JSON.stringify(village.buildings)},
+        get selectedBuilding() {
+          return this.selectedBuildingId ? this.buildings.find(b => b.id === this.selectedBuildingId) : null;
+        },
+        toggleBuilding(buildingId) {
+          this.selectedBuildingId = this.selectedBuildingId === buildingId ? null : buildingId;
+        },
+        async handleUpgrade(buildingId) {
+          if (window.__villageUpgradeHandler) {
+            await window.__villageUpgradeHandler(buildingId);
+          }
+        }
+      }`}
+      className="w-full space-y-4"
+    >
       {/* Village Info */}
       <section>
         <h2 className="text-lg font-bold mb-2">{village.name}</h2>
@@ -62,37 +88,35 @@ export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
             ),
             <button
               key={`action-${building.id}`}
-              onClick={() => {
-                if (selectedBuilding?.id === building.id) {
-                  setSelectedBuilding(null)
-                } else {
-                  setSelectedBuilding(building)
-                }
-              }}
+              x-on:click={`toggleBuilding('${building.id}')`}
               className="px-2 py-1 border border-border rounded hover:bg-secondary text-sm"
             >
-              {selectedBuilding?.id === building.id ? "Hide" : "Select"}
+              <span x-show={`selectedBuildingId === '${building.id}'`}>Hide</span>
+              <span x-show={`selectedBuildingId !== '${building.id}'`}>Select</span>
             </button>,
           ])}
         />
         
-        {selectedBuilding && (
-          <div className="mt-2 p-3 border border-border rounded bg-secondary">
-            <h4 className="font-bold mb-2">{selectedBuilding.type} (Level {selectedBuilding.level})</h4>
-            {selectedBuilding.isBuilding && selectedBuilding.completionAt ? (
-              <p className="mb-2">
-                Completion: <CountdownTimer targetDate={selectedBuilding.completionAt} />
-              </p>
-            ) : (
-              <Button
-                onClick={() => onUpgrade?.(selectedBuilding.id)}
-                className="w-full"
-              >
-                Upgrade
-              </Button>
-            )}
-          </div>
-        )}
+        <div x-show="selectedBuilding" className="mt-2 p-3 border border-border rounded bg-secondary">
+          <template x-if="selectedBuilding">
+            <div>
+              <h4 className="font-bold mb-2" x-text="`${selectedBuilding.type} (Level ${selectedBuilding.level})`" />
+              <template x-if="selectedBuilding.isBuilding && selectedBuilding.completionAt">
+                <p className="mb-2">
+                  Completion: <CountdownTimer targetDate={selectedBuilding.completionAt} />
+                </p>
+              </template>
+              <template x-if="!selectedBuilding.isBuilding || !selectedBuilding.completionAt">
+                <Button
+                  x-on:click={`handleUpgrade(selectedBuilding.id)`}
+                  className="w-full"
+                >
+                  Upgrade
+                </Button>
+              </template>
+            </div>
+          </template>
+        </div>
       </section>
 
       {/* Troops Table */}

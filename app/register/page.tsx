@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -10,44 +10,21 @@ import Link from "next/link"
 
 export default function RegisterPage() {
   const router = useRouter()
-  const [formData, setFormData] = useState({
-    email: "",
-    username: "",
-    password: "",
-    confirmPassword: "",
-  })
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match")
-      return
+  const handleRegister = async (email: string, username: string, password: string, confirmPassword: string) => {
+    if (password !== confirmPassword) {
+      return { success: false, error: "Passwords do not match" }
     }
 
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters")
-      return
+    if (password.length < 6) {
+      return { success: false, error: "Password must be at least 6 characters" }
     }
 
-    setLoading(true)
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.email,
-          username: formData.username,
-          password: formData.password,
-        }),
+        body: JSON.stringify({ email, username, password }),
       })
 
       if (!res.ok) {
@@ -56,12 +33,22 @@ export default function RegisterPage() {
       }
 
       router.push("/login")
+      return { success: true }
     } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
+      return { success: false, error: err.message }
     }
   }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__registerHandler = handleRegister
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__registerHandler
+      }
+    }
+  }, [])
 
   return (
     <main className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
@@ -71,21 +58,41 @@ export default function RegisterPage() {
           <p className="text-muted-foreground mt-2">Create your account</p>
         </div>
 
-        <form onSubmit={handleRegister} className="space-y-4 border border-border rounded p-4 bg-card">
-          {error && (
-            <div className="p-3 bg-destructive/10 border border-destructive rounded text-sm text-destructive">
-              {error}
-            </div>
-          )}
+        <form
+          x-data={`{
+            email: '',
+            username: '',
+            password: '',
+            confirmPassword: '',
+            error: '',
+            loading: false,
+            async handleSubmit(e) {
+              e.preventDefault();
+              this.error = '';
+              this.loading = true;
+              try {
+                if (window.__registerHandler) {
+                  const result = await window.__registerHandler(this.email, this.username, this.password, this.confirmPassword);
+                  if (!result.success) {
+                    this.error = result.error;
+                  }
+                }
+              } finally {
+                this.loading = false;
+              }
+            }
+          }`}
+          x-on:submit="handleSubmit($event)"
+          className="space-y-4 border border-border rounded p-4 bg-card"
+        >
+          <div x-show="error" className="p-3 bg-destructive/10 border border-destructive rounded text-sm text-destructive" x-text="error" />
 
           <div>
             <label htmlFor="email" className="block text-sm font-bold mb-2">Email</label>
             <input
               id="email"
               type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
+              x-model="email"
               required
               className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="your@email.com"
@@ -97,9 +104,7 @@ export default function RegisterPage() {
             <input
               id="username"
               type="text"
-              name="username"
-              value={formData.username}
-              onChange={handleChange}
+              x-model="username"
               required
               className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="Your in-game name"
@@ -111,9 +116,7 @@ export default function RegisterPage() {
             <input
               id="password"
               type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
+              x-model="password"
               required
               className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="••••••••"
@@ -125,17 +128,15 @@ export default function RegisterPage() {
             <input
               id="confirmPassword"
               type="password"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
+              x-model="confirmPassword"
               required
               className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="••••••••"
             />
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Creating account..." : "Register"}
+          <Button type="submit" x-bind:disabled="loading" className="w-full">
+            <span x-text="loading ? 'Creating account...' : 'Register'" />
           </Button>
         </form>
 

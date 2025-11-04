@@ -7,11 +7,16 @@ interface SuccessMessageProps {
 
 export function SuccessMessage({ message, onDismiss }: SuccessMessageProps) {
   return (
-    <div className="bg-green-500/10 border border-green-500 rounded p-3 flex items-center justify-between">
+    <div
+      x-data="{ show: true }"
+      x-show="show"
+      x-transition
+      className="bg-green-500/10 border border-green-500 rounded p-3 flex items-center justify-between"
+    >
       <span className="text-green-600 text-sm">✅ {message}</span>
       {onDismiss && (
         <button
-          onClick={onDismiss}
+          x-on:click="show = false; if (onDismiss) onDismiss()"
           className="text-green-600 hover:text-green-600/80 text-sm"
         >
           ✕

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import Link from "next/link"
 import type { Village, Building } from "@prisma/client"
 
@@ -25,17 +25,38 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
   const warehouseLevel = warehouseBuilding?.level || 0
   const warehouseCapacity = warehouseLevel * 10000 + 10000 // Base 10000 + 10000 per level
   const warehouseUsed = (currentVillage?.wood || 0) + (currentVillage?.stone || 0) + (currentVillage?.iron || 0)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__navbarVillageChangeHandler = onVillageChange
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__navbarVillageChangeHandler
+      }
+    }
+  }, [onVillageChange])
   
   return (
     <nav className="w-full border-b border-border bg-card">
       <div className="w-full p-2 space-y-2">
         {/* Village Switcher */}
-        <div className="w-full">
+        <div
+          x-data={`{
+            selectedVillageId: '${currentVillageId || ''}',
+            handleChange() {
+              if (window.__navbarVillageChangeHandler) {
+                window.__navbarVillageChangeHandler(this.selectedVillageId);
+              }
+            }
+          }`}
+          className="w-full"
+        >
           <label htmlFor="village-select" className="sr-only">Select Village</label>
           <select
             id="village-select"
-            value={currentVillageId || ""}
-            onChange={(e) => onVillageChange(e.target.value)}
+            x-model="selectedVillageId"
+            x-on:change="handleChange()"
             className="w-full p-2 border border-border rounded bg-background text-foreground"
           >
             {villages.map((village) => (

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -10,16 +10,8 @@ import Link from "next/link"
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setLoading(true)
-
+  const handleLogin = async (email: string, password: string) => {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -36,12 +28,22 @@ export default function LoginPage() {
       localStorage.setItem("authToken", data.token)
       localStorage.setItem("playerId", data.player?.id)
       router.push("/dashboard")
+      return { success: true }
     } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
+      return { success: false, error: err.message }
     }
   }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__loginHandler = handleLogin
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__loginHandler
+      }
+    }
+  }, [])
 
   return (
     <main className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
@@ -51,20 +53,39 @@ export default function LoginPage() {
           <p className="text-muted-foreground mt-2">Login to your kingdom</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4 border border-border rounded p-4 bg-card">
-          {error && (
-            <div className="p-3 bg-destructive/10 border border-destructive rounded text-sm text-destructive">
-              {error}
-            </div>
-          )}
+        <form
+          x-data={`{
+            email: '',
+            password: '',
+            error: '',
+            loading: false,
+            async handleSubmit(e) {
+              e.preventDefault();
+              this.error = '';
+              this.loading = true;
+              try {
+                if (window.__loginHandler) {
+                  const result = await window.__loginHandler(this.email, this.password);
+                  if (!result.success) {
+                    this.error = result.error;
+                  }
+                }
+              } finally {
+                this.loading = false;
+              }
+            }
+          }`}
+          x-on:submit="handleSubmit($event)"
+          className="space-y-4 border border-border rounded p-4 bg-card"
+        >
+          <div x-show="error" className="p-3 bg-destructive/10 border border-destructive rounded text-sm text-destructive" x-text="error" />
 
           <div>
             <label htmlFor="email" className="block text-sm font-bold mb-2">Email</label>
             <input
               id="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              x-model="email"
               required
               className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="your@email.com"
@@ -76,16 +97,15 @@ export default function LoginPage() {
             <input
               id="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              x-model="password"
               required
               className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="••••••••"
             />
           </div>
 
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Logging in..." : "Login"}
+          <Button type="submit" x-bind:disabled="loading" className="w-full">
+            <span x-text="loading ? 'Logging in...' : 'Login'" />
           </Button>
         </form>
 

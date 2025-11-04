@@ -22,8 +22,6 @@ export default function BuildingsPage() {
   const villageId = params.id as string
   const [village, setVillage] = useState<VillageWithBuildings | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchVillage = async () => {
@@ -47,8 +45,6 @@ export default function BuildingsPage() {
   }, [villageId])
 
   const handleUpgrade = async (buildingId: string) => {
-    setError(null)
-    setSuccess(null)
     try {
       const res = await fetch("/api/buildings/upgrade", {
         method: "POST",
@@ -57,7 +53,6 @@ export default function BuildingsPage() {
       })
       const data = await res.json()
       if (data.success) {
-        setSuccess("Building upgrade started!")
         // Refresh
         const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
         const villagesData = await villagesRes.json()
@@ -65,14 +60,26 @@ export default function BuildingsPage() {
           const found = villagesData.data.find((v: any) => v.id === villageId)
           setVillage(found || null)
         }
+        return { success: true, message: "Building upgrade started!" }
       } else {
-        setError(data.error || "Failed to upgrade building")
+        return { success: false, error: data.error || "Failed to upgrade building" }
       }
     } catch (error) {
       console.error("Failed to upgrade building:", error)
-      setError("Failed to upgrade building. Please try again.")
+      return { success: false, error: "Failed to upgrade building. Please try again." }
     }
   }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__buildingsUpgradeHandler = handleUpgrade
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__buildingsUpgradeHandler
+      }
+    }
+  }, [villageId])
 
   if (loading) {
     return (
@@ -107,10 +114,36 @@ export default function BuildingsPage() {
         </div>
       </header>
 
-      <main className="w-full p-4">
+      <main
+        x-data={`{
+          error: null,
+          success: null,
+          async handleUpgrade(buildingId) {
+            this.error = null;
+            this.success = null;
+            if (window.__buildingsUpgradeHandler) {
+              const result = await window.__buildingsUpgradeHandler(buildingId);
+              if (result.success) {
+                this.success = result.message;
+                setTimeout(() => this.success = null, 5000);
+              } else {
+                this.error = result.error;
+                setTimeout(() => this.error = null, 5000);
+              }
+            }
+          }
+        }`}
+        className="w-full p-4"
+      >
         <div className="max-w-4xl mx-auto space-y-4">
-          {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
-          {success && <SuccessMessage message={success} onDismiss={() => setSuccess(null)} />}
+          <div x-show="error" className="bg-destructive/10 border border-destructive rounded p-3 flex items-center justify-between">
+            <span className="text-destructive text-sm" x-text="`❌ ${error}`" />
+            <button x-on:click="error = null" className="text-destructive hover:text-destructive/80 text-sm">✕</button>
+          </div>
+          <div x-show="success" className="bg-green-500/10 border border-green-500 rounded p-3 flex items-center justify-between">
+            <span className="text-green-600 text-sm" x-text="`✅ ${success}`" />
+            <button x-on:click="success = null" className="text-green-600 hover:text-green-600/80 text-sm">✕</button>
+          </div>
           <BuildingQueue buildings={village.buildings} />
 
           <section>
@@ -131,10 +164,11 @@ export default function BuildingsPage() {
                   key={building.id}
                   variant="outline"
                   size="sm"
-                  onClick={() => handleUpgrade(building.id)}
-                  disabled={building.isBuilding}
+                  x-on:click={`handleUpgrade('${building.id}')`}
+                  x-bind:disabled={`${building.isBuilding}`}
                 >
-                  {building.isBuilding ? "Building..." : "Upgrade"}
+                  <span x-show={`${building.isBuilding}`}>Building...</span>
+                  <span x-show={`${!building.isBuilding}`}>Upgrade</span>
                 </Button>,
               ])}
             />

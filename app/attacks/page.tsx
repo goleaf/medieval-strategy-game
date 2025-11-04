@@ -25,46 +25,38 @@ interface Attack {
 export default function AttacksPage() {
   const [villages, setVillages] = useState<VillageWithTroops[]>([])
   const [attacks, setAttacks] = useState<Attack[]>([])
-  const [selectedVillage, setSelectedVillage] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchData()
   }, [])
 
   const fetchData = async () => {
-    setLoading(true)
     try {
       const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
       const villagesData = await villagesRes.json()
       if (villagesData.success && villagesData.data) {
         setVillages(villagesData.data)
-        if (villagesData.data.length > 0 && !selectedVillage) {
-          setSelectedVillage(villagesData.data[0].id)
-        }
       }
 
       // TODO: Fetch attacks from API
       setAttacks([])
     } catch (error) {
       console.error("Failed to fetch data:", error)
-    } finally {
-      setLoading(false)
     }
   }
 
-  const currentVillage = villages.find((v) => v.id === selectedVillage)
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div
+      x-data={`{
+        selectedVillageId: ${villages.length > 0 ? `'${villages[0].id}'` : 'null'},
+        villages: ${JSON.stringify(villages)},
+        attacks: ${JSON.stringify(attacks)},
+        get currentVillage() {
+          return this.villages.find(v => v.id === this.selectedVillageId);
+        }
+      }`}
+      className="min-h-screen bg-background text-foreground"
+    >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -77,22 +69,38 @@ export default function AttacksPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          {currentVillage && (
+          {villages.length > 1 && (
+            <div className="p-3 border border-border rounded bg-secondary">
+              <label className="text-sm font-bold block mb-2">Select Village</label>
+              <select
+                x-model="selectedVillageId"
+                className="w-full p-2 border border-border rounded bg-background"
+              >
+                {villages.map((village) => (
+                  <option key={village.id} value={village.id}>
+                    {village.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div x-show="currentVillage">
             <section>
               <h2 className="text-lg font-bold mb-2">Plan Attack</h2>
-              <AttackPlanner
-                villageId={currentVillage.id}
-                troops={currentVillage.troops}
-                onLaunchAttack={fetchData}
-              />
+              {villages.length > 0 && (
+                <AttackPlanner
+                  villageId={villages[0].id}
+                  troops={villages[0].troops}
+                  onLaunchAttack={fetchData}
+                />
+              )}
             </section>
-          )}
+          </div>
 
           <section>
             <h2 className="text-lg font-bold mb-2">Active Attacks</h2>
-            {attacks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No active attacks</p>
-            ) : (
+            <div x-show="attacks.length === 0" className="text-sm text-muted-foreground">No active attacks</div>
+            <div x-show="attacks.length > 0">
               <TextTable
                 headers={["Type", "From", "To", "Status", "Arrival", "Actions"]}
                 rows={attacks.map((attack) => [
@@ -108,7 +116,7 @@ export default function AttacksPage() {
                   </Button>,
                 ])}
               />
-            )}
+            </div>
           </section>
         </div>
       </main>
