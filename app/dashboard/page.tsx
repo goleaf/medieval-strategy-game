@@ -44,6 +44,7 @@ type VillageWithRelations = {
 
 export default function Dashboard() {
   const [villages, setVillages] = useState<VillageWithRelations[]>([])
+  const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
 
   const fetchVillages = async () => {
     try {
@@ -51,6 +52,9 @@ export default function Dashboard() {
       const data = await res.json()
       if (data.success && data.data) {
         setVillages(data.data)
+        if (data.data.length > 0 && !selectedVillageId) {
+          setSelectedVillageId(data.data[0].id)
+        }
       } else {
         setVillages([])
       }
@@ -65,32 +69,32 @@ export default function Dashboard() {
     const interval = setInterval(fetchVillages, 30000) // Refresh every 30 seconds
     if (typeof window !== "undefined") {
       (window as any).__dashboardFetchHandler = fetchVillages
+      (window as any).__dashboardSetSelectedVillage = setSelectedVillageId
     }
     return () => {
       clearInterval(interval)
       if (typeof window !== "undefined") {
         delete (window as any).__dashboardFetchHandler
+        delete (window as any).__dashboardSetSelectedVillage
       }
     }
-  }, [])
+  }, [selectedVillageId])
 
   return (
     <div
       x-data={`{
         selectedVillageId: ${villages.length > 0 ? `'${villages[0].id}'` : 'null'},
-        villages: ${JSON.stringify(villages)},
         loading: false,
-        get currentVillage() {
-          return this.villages.find(v => v.id === this.selectedVillageId);
+        handleChange() {
+          // Trigger React re-render by updating state via global handler
+          if (window.__dashboardSetSelectedVillage) {
+            window.__dashboardSetSelectedVillage(this.selectedVillageId);
+          }
         },
         async refresh() {
           this.loading = true;
           if (window.__dashboardFetchHandler) {
             await window.__dashboardFetchHandler();
-            this.villages = ${JSON.stringify(villages)};
-            if (this.villages.length > 0 && !this.selectedVillageId) {
-              this.selectedVillageId = this.villages[0].id;
-            }
           }
           this.loading = false;
         }
@@ -132,93 +136,98 @@ export default function Dashboard() {
             <Button>Create Village</Button>
           </div>
           <div x-show="!loading && villages.length > 0">
-            <div x-show="villages.length > 1" className="p-3 border border-border rounded bg-secondary">
-              <label className="text-sm font-bold block mb-2">Select Village</label>
-              <select
-                x-model="selectedVillageId"
-                className="w-full p-2 border border-border rounded bg-background"
-              >
-                {villages.map((village) => (
-                  <option key={village.id} value={village.id}>
-                    {village.name} ({village.x}, {village.y})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div x-show="currentVillage">
-                <>
-              <section className="space-y-2">
-                <h2 className="text-lg font-bold" x-text="currentVillage?.name" />
-                <p className="text-sm text-muted-foreground" x-text="`Position: (${currentVillage?.x}, ${currentVillage?.y}) • Loyalty: ${currentVillage?.loyalty}%`" />
-              </section>
+            {villages.length > 1 && (
+              <div className="p-3 border border-border rounded bg-secondary">
+                <label className="text-sm font-bold block mb-2">Select Village</label>
+                <select
+                  x-model="selectedVillageId"
+                  x-on:change="handleChange()"
+                  className="w-full p-2 border border-border rounded bg-background"
+                >
+                  {villages.map((village) => (
+                    <option key={village.id} value={village.id}>
+                      {village.name} ({village.x}, {village.y})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {(() => {
+              const currentVillage = villages.find(v => v.id === selectedVillageId)
+              return currentVillage ? (
+                <div>
+                  <section className="space-y-2">
+                    <h2 className="text-lg font-bold">{currentVillage.name}</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Position: ({currentVillage.x}, {currentVillage.y}) • Loyalty: {currentVillage.loyalty}%
+                    </p>
+                  </section>
 
-              <section>
-                <h3 className="text-md font-semibold mb-2">Resources</h3>
-                <ResourceDisplay
-                  wood={currentVillage?.wood || 0}
-                  stone={currentVillage?.stone || 0}
-                  iron={currentVillage?.iron || 0}
-                  gold={currentVillage?.gold || 0}
-                  food={currentVillage?.food || 0}
-                  woodProduction={currentVillage?.woodProduction || 0}
-                  stoneProduction={currentVillage?.stoneProduction || 0}
-                  ironProduction={currentVillage?.ironProduction || 0}
-                  goldProduction={currentVillage?.goldProduction || 0}
-                  foodProduction={currentVillage?.foodProduction || 0}
-                  showProduction
-                />
-              </section>
+                  <section>
+                    <h3 className="text-md font-semibold mb-2">Resources</h3>
+                    <ResourceDisplay
+                      wood={currentVillage.wood}
+                      stone={currentVillage.stone}
+                      iron={currentVillage.iron}
+                      gold={currentVillage.gold}
+                      food={currentVillage.food}
+                      woodProduction={currentVillage.woodProduction}
+                      stoneProduction={currentVillage.stoneProduction}
+                      ironProduction={currentVillage.ironProduction}
+                      goldProduction={currentVillage.goldProduction}
+                      foodProduction={currentVillage.foodProduction}
+                      showProduction
+                    />
+                  </section>
 
-              <section>
-                <BuildingQueue
-                  buildings={currentVillage?.buildings || []}
-                  onCancel={async (buildingId) => {
-                    try {
-                      const res = await fetch("/api/buildings/cancel", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ buildingId }),
-                      })
-                      const data = await res.json()
-                      if (data.success) {
-                        if (window.__dashboardFetchHandler) {
-                          await (window as any).__dashboardFetchHandler()
+                  <section>
+                    <BuildingQueue
+                      buildings={currentVillage.buildings}
+                      onCancel={async (buildingId) => {
+                        try {
+                          const res = await fetch("/api/buildings/cancel", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ buildingId }),
+                          })
+                          const data = await res.json()
+                          if (data.success) {
+                            if (typeof window !== "undefined" && (window as any).__dashboardFetchHandler) {
+                              await (window as any).__dashboardFetchHandler()
+                            }
+                          } else {
+                            alert(data.error || "Failed to cancel building")
+                          }
+                        } catch (error) {
+                          console.error("Failed to cancel building:", error)
+                          alert("Failed to cancel building")
                         }
-                      } else {
-                        alert(data.error || "Failed to cancel building")
-                      }
-                    } catch (error) {
-                      console.error("Failed to cancel building:", error)
-                      alert("Failed to cancel building")
-                    }
-                  }}
-                />
-              </section>
+                      }}
+                    />
+                  </section>
 
-              <section>
-                <VillageOverview
-                  village={currentVillage}
-                  onUpgrade={async (buildingId) => {
-                    try {
-                      const res = await fetch("/api/buildings/upgrade", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ buildingId }),
-                      })
-                      const data = await res.json()
-                      if (data.success && window.__dashboardFetchHandler) {
-                        await (window as any).__dashboardFetchHandler()
-                      }
-                    } catch (error) {
-                      console.error("Failed to upgrade building:", error)
-                    }
-                  }}
-                />
-              </section>
+                  <section>
+                    <VillageOverview
+                      village={currentVillage}
+                      onUpgrade={async (buildingId) => {
+                        try {
+                          const res = await fetch("/api/buildings/upgrade", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ buildingId }),
+                          })
+                          const data = await res.json()
+                          if (data.success && typeof window !== "undefined" && (window as any).__dashboardFetchHandler) {
+                            await (window as any).__dashboardFetchHandler()
+                          }
+                        } catch (error) {
+                          console.error("Failed to upgrade building:", error)
+                        }
+                      }}
+                    />
+                  </section>
 
-              <section className="flex gap-2">
-                {currentVillage && (
-                  <>
+                  <section className="flex gap-2">
                     <Link href={`/village/${currentVillage.id}`}>
                       <Button variant="outline" className="w-full">
                         View Details
@@ -234,10 +243,10 @@ export default function Dashboard() {
                         Troops
                       </Button>
                     </Link>
-                  </>
-                )}
-              </section>
-            </div>
+                  </section>
+                </div>
+              ) : null
+            })()}
           </div>
         </div>
       </main>

@@ -25,6 +25,7 @@ interface Attack {
 export default function AttacksPage() {
   const [villages, setVillages] = useState<VillageWithTroops[]>([])
   const [attacks, setAttacks] = useState<Attack[]>([])
+  const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
 
   const fetchData = async () => {
     try {
@@ -32,6 +33,9 @@ export default function AttacksPage() {
       const villagesData = await villagesRes.json()
       if (villagesData.success && villagesData.data) {
         setVillages(villagesData.data)
+        if (villagesData.data.length > 0 && !selectedVillageId) {
+          setSelectedVillageId(villagesData.data[0].id)
+        }
       }
 
       // TODO: Fetch attacks from API
@@ -45,32 +49,43 @@ export default function AttacksPage() {
     fetchData()
     if (typeof window !== "undefined") {
       (window as any).__attacksFetchHandler = fetchData
+      ;(window as any).__attacksSetSelectedVillage = (id: string | null) => {
+        setSelectedVillageId(id)
+      }
     }
     return () => {
       if (typeof window !== "undefined") {
         delete (window as any).__attacksFetchHandler
+        delete (window as any).__attacksSetSelectedVillage
       }
     }
   }, [])
 
+  const currentVillage = villages.find(v => v.id === selectedVillageId)
+
+  useEffect(() => {
+    // Sync Alpine.js state when React state changes
+    if (typeof window !== "undefined" && (window as any).Alpine) {
+      const alpineElement = document.querySelector('[x-data]')
+      if (alpineElement && (alpineElement as any)._x_dataStack) {
+        const alpineData = (alpineElement as any)._x_dataStack[0]
+        if (alpineData && alpineData.selectedVillageId !== selectedVillageId) {
+          alpineData.selectedVillageId = selectedVillageId || ''
+        }
+      }
+    }
+  }, [selectedVillageId])
+
   return (
     <div
       x-data={`{
-        selectedVillageId: ${villages.length > 0 ? `'${villages[0].id}'` : 'null'},
-        villages: ${JSON.stringify(villages)},
-        attacks: ${JSON.stringify(attacks)},
-        get currentVillage() {
-          return this.villages.find(v => v.id === this.selectedVillageId);
-        },
-        async refresh() {
-          if (window.__attacksFetchHandler) {
-            await window.__attacksFetchHandler();
-            this.villages = ${JSON.stringify(villages)};
-            this.attacks = ${JSON.stringify(attacks)};
+        selectedVillageId: '${selectedVillageId || ''}',
+        handleChange() {
+          if (typeof window !== 'undefined' && window.__attacksSetSelectedVillage) {
+            window.__attacksSetSelectedVillage(this.selectedVillageId);
           }
         }
       }`}
-      x-init="refresh()"
       className="min-h-screen bg-background text-foreground"
     >
       <header className="border-b border-border p-4">
@@ -85,38 +100,42 @@ export default function AttacksPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          <div x-show="villages.length > 1" className="p-3 border border-border rounded bg-secondary">
-            <label className="text-sm font-bold block mb-2">Select Village</label>
-            <select
-              x-model="selectedVillageId"
-              className="w-full p-2 border border-border rounded bg-background"
-            >
-              {villages.map((village) => (
-                <option key={village.id} value={village.id}>
-                  {village.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div x-show="currentVillage">
+          {villages.length > 1 && (
+            <div className="p-3 border border-border rounded bg-secondary">
+              <label className="text-sm font-bold block mb-2">Select Village</label>
+              <select
+                x-model="selectedVillageId"
+                x-on:change="handleChange()"
+                className="w-full p-2 border border-border rounded bg-background"
+              >
+                {villages.map((village) => (
+                  <option key={village.id} value={village.id}>
+                    {village.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {currentVillage && (
             <section>
               <h2 className="text-lg font-bold mb-2">Plan Attack</h2>
               <AttackPlanner
-                villageId={currentVillage?.id || ''}
-                troops={currentVillage?.troops || []}
+                villageId={currentVillage.id}
+                troops={currentVillage.troops as any}
                 onLaunchAttack={async () => {
-                  if (window.__attacksFetchHandler) {
+                  if (typeof window !== "undefined" && (window as any).__attacksFetchHandler) {
                     await (window as any).__attacksFetchHandler()
                   }
                 }}
               />
             </section>
-          </div>
+          )}
 
           <section>
             <h2 className="text-lg font-bold mb-2">Active Attacks</h2>
-            <div x-show="attacks.length === 0" className="text-sm text-muted-foreground">No active attacks</div>
-            <div x-show="attacks.length > 0">
+            {attacks.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No active attacks</div>
+            ) : (
               <TextTable
                 headers={["Type", "From", "To", "Status", "Arrival", "Actions"]}
                 rows={attacks.map((attack) => [
@@ -132,7 +151,7 @@ export default function AttacksPage() {
                   </Button>,
                 ])}
               />
-            </div>
+            )}
           </section>
         </div>
       </main>

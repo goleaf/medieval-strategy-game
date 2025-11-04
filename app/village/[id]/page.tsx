@@ -24,36 +24,33 @@ export default function VillageDetailPage() {
   const router = useRouter()
   const villageId = params.id as string
   const [village, setVillage] = useState<VillageWithRelations | null>(null)
-  const [loading, setLoading] = useState(true)
+
+  const fetchVillage = async () => {
+    try {
+      const res = await fetch("/api/villages?playerId=temp-player-id")
+      const data = await res.json()
+      if (data.success && data.data) {
+        const found = data.data.find((v: any) => v.id === villageId)
+        setVillage(found || null)
+      }
+    } catch (error) {
+      console.error("Failed to fetch village:", error)
+    }
+  }
 
   useEffect(() => {
-    const fetchVillage = async () => {
-      try {
-        const res = await fetch("/api/villages?playerId=temp-player-id")
-        const data = await res.json()
-        if (data.success && data.data) {
-          const found = data.data.find((v: any) => v.id === villageId)
-          setVillage(found || null)
-        }
-      } catch (error) {
-        console.error("Failed to fetch village:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchVillage()
     const interval = setInterval(fetchVillage, 30000)
-    return () => clearInterval(interval)
+    if (typeof window !== "undefined") {
+      (window as any).__villageDetailFetchHandler = fetchVillage
+    }
+    return () => {
+      clearInterval(interval)
+      if (typeof window !== "undefined") {
+        delete (window as any).__villageDetailFetchHandler
+      }
+    }
   }, [villageId])
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    )
-  }
 
   if (!village) {
     return (
@@ -69,7 +66,19 @@ export default function VillageDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div
+      x-data={`{
+        loading: false,
+        async init() {
+          this.loading = true;
+          if (window.__villageDetailFetchHandler) {
+            await window.__villageDetailFetchHandler();
+          }
+          this.loading = false;
+        }
+      }`}
+      className="min-h-screen bg-background text-foreground"
+    >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -81,7 +90,10 @@ export default function VillageDetailPage() {
       </header>
 
       <main className="w-full p-4">
-        <div className="max-w-4xl mx-auto space-y-4">
+        <div x-show="loading" className="min-h-screen flex items-center justify-center">
+          <p>Loading...</p>
+        </div>
+        <div x-show="!loading" className="max-w-4xl mx-auto space-y-4">
           <section>
             <h2 className="text-lg font-bold mb-2">Village Information</h2>
             <div className="space-y-1 text-sm">

@@ -17,32 +17,33 @@ export default function TroopsPage() {
   const params = useParams()
   const villageId = params.id as string
   const [village, setVillage] = useState<VillageWithTroops | null>(null)
-  const [loading, setLoading] = useState(true)
+
+  const fetchVillage = async () => {
+    try {
+      const res = await fetch("/api/villages?playerId=temp-player-id")
+      const data = await res.json()
+      if (data.success && data.data) {
+        const found = data.data.find((v: any) => v.id === villageId)
+        setVillage(found || null)
+      }
+    } catch (error) {
+      console.error("Failed to fetch village:", error)
+    }
+  }
 
   useEffect(() => {
-    const fetchVillage = async () => {
-      try {
-        const res = await fetch("/api/villages?playerId=temp-player-id")
-        const data = await res.json()
-        if (data.success && data.data) {
-          const found = data.data.find((v: any) => v.id === villageId)
-          setVillage(found || null)
-        }
-      } catch (error) {
-        console.error("Failed to fetch village:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchVillage()
     const interval = setInterval(fetchVillage, 10000)
-    return () => clearInterval(interval)
+    if (typeof window !== "undefined") {
+      (window as any).__troopsPageFetchHandler = fetchVillage
+    }
+    return () => {
+      clearInterval(interval)
+      if (typeof window !== "undefined") {
+        delete (window as any).__troopsPageFetchHandler
+      }
+    }
   }, [villageId])
-
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>
-  }
 
   if (!village) {
     return (
@@ -58,7 +59,19 @@ export default function TroopsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div
+      x-data={`{
+        loading: false,
+        async init() {
+          this.loading = true;
+          if (window.__troopsPageFetchHandler) {
+            await window.__troopsPageFetchHandler();
+          }
+          this.loading = false;
+        }
+      }`}
+      className="min-h-screen bg-background text-foreground"
+    >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href={`/village/${villageId}`} className="text-sm hover:underline">
@@ -70,7 +83,8 @@ export default function TroopsPage() {
       </header>
 
       <main className="w-full p-4">
-        <div className="max-w-4xl mx-auto space-y-4">
+        <div x-show="loading" className="min-h-screen flex items-center justify-center">Loading...</div>
+        <div x-show="!loading" className="max-w-4xl mx-auto space-y-4">
           <section>
             <h2 className="text-lg font-bold mb-2">Current Troops</h2>
             {village.troops.length === 0 ? (
