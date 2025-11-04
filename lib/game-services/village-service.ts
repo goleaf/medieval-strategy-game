@@ -33,7 +33,7 @@ export class VillageService {
    * Initialize default buildings for a new village
    */
   private static async initializeBuildings(villageId: string) {
-    const buildingTypes = ["HEADQUARTER", "BARRACKS", "MARKETPLACE", "FARM", "WAREHOUSE"]
+    const buildingTypes = ["HEADQUARTER", "BARRACKS", "MARKETPLACE", "FARM", "WAREHOUSE", "SAWMILL", "QUARRY", "IRON_MINE"]
 
     await prisma.building.createMany({
       data: buildingTypes.map((type) => ({
@@ -42,6 +42,35 @@ export class VillageService {
         level: 1,
       })),
     })
+
+    // Update production rates based on initial buildings
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      include: { buildings: true },
+    })
+
+    if (village) {
+      const { BuildingService } = await import("./building-service")
+      const bonuses = BuildingService.calculateProductionBonuses(village.buildings)
+      const baseProduction = {
+        wood: 10,
+        stone: 8,
+        iron: 5,
+        gold: 2,
+        food: 15,
+      }
+
+      await prisma.village.update({
+        where: { id: villageId },
+        data: {
+          woodProduction: baseProduction.wood + bonuses.wood,
+          stoneProduction: baseProduction.stone + bonuses.stone,
+          ironProduction: baseProduction.iron + bonuses.iron,
+          goldProduction: baseProduction.gold + bonuses.gold,
+          foodProduction: baseProduction.food + bonuses.food,
+        },
+      })
+    }
   }
 
   /**

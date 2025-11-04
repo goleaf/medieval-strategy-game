@@ -1,54 +1,64 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect, useCallback } from "react"
+import { usePolling } from "./use-polling"
 
-export function useVillageUpdates(villageId: string) {
-  const [updates, setUpdates] = useState<any>(null)
-  const [connected, setConnected] = useState(false)
+interface Village {
+  id: string
+  wood: number
+  stone: number
+  iron: number
+  gold: number
+  food: number
+  woodProduction: number
+  stoneProduction: number
+  ironProduction: number
+  goldProduction: number
+  foodProduction: number
+  buildings: Array<{
+    id: string
+    isBuilding: boolean
+    completionAt: string | null
+    queuePosition: number | null
+  }>
+  troops: Array<{
+    id: string
+    quantity: number
+  }>
+}
+
+export function useVillageUpdates(villageId: string | null, playerId: string) {
+  const [village, setVillage] = useState<Village | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const fetchVillage = useCallback(async () => {
+    if (!villageId) return
+
+    try {
+      const res = await fetch(`/api/villages?playerId=${playerId}`)
+      const data = await res.json()
+      if (data.success && data.data) {
+        const found = data.data.find((v: any) => v.id === villageId)
+        if (found) {
+          setVillage(found)
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch village:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [villageId, playerId])
 
   useEffect(() => {
-    const ws = new WebSocket(`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/ws`)
+    fetchVillage()
+  }, [fetchVillage])
 
-    ws.onopen = () => {
-      console.log("[v0] WebSocket connected")
-      setConnected(true)
-      ws.send(
-        JSON.stringify({
-          type: "SUBSCRIBE",
-          payload: { channel: `village:${villageId}` },
-        }),
-      )
-    }
+  // Poll for updates every 10 seconds
+  usePolling(fetchVillage, {
+    enabled: !!villageId,
+    interval: 10000,
+  })
 
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      if (message.type === "VILLAGE_UPDATE") {
-        setUpdates(message.data)
-      }
-    }
-
-    ws.onerror = (error) => {
-      console.error("[v0] WebSocket error:", error)
-      setConnected(false)
-    }
-
-    ws.onclose = () => {
-      console.log("[v0] WebSocket disconnected")
-      setConnected(false)
-    }
-
-    return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(
-          JSON.stringify({
-            type: "UNSUBSCRIBE",
-            payload: { channel: `village:${villageId}` },
-          }),
-        )
-      }
-      ws.close()
-    }
-  }, [villageId])
-
-  return { updates, connected }
+  return { village, loading, refetch: fetchVillage }
 }

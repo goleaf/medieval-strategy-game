@@ -39,7 +39,7 @@ export function BuildingQueue({ buildings, onCancel }: BuildingQueueProps) {
                 )}
               </div>
             </div>
-            {onCancel && (
+            {onCancel && building.queuePosition !== 1 && (
               <button
                 onClick={() => onCancel(building.id)}
                 className="ml-2 rounded border border-border bg-destructive px-2 py-1 text-xs hover:bg-destructive/80"

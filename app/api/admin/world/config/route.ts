@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
+import { trackAction } from "@/app/api/admin/stats/route"
 
 export async function GET() {
   try {
@@ -59,6 +60,9 @@ export async function PUT(req: NextRequest) {
             : config.beginnerProtectionEnabled,
       },
     })
+
+    // Track action
+    trackAction()
 
     // Log action
     await prisma.auditLog.create({

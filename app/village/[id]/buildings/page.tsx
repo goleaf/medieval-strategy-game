@@ -6,6 +6,9 @@ import Link from "next/link"
 import { BuildingQueue } from "@/components/game/building-queue"
 import { TextTable } from "@/components/game/text-table"
 import { CountdownTimer } from "@/components/game/countdown-timer"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import { ErrorMessage } from "@/components/ui/error-message"
+import { SuccessMessage } from "@/components/ui/success-message"
 import { Button } from "@/components/ui/button"
 // Types inferred from API responses
 type VillageWithBuildings = {
@@ -19,6 +22,8 @@ export default function BuildingsPage() {
   const villageId = params.id as string
   const [village, setVillage] = useState<VillageWithBuildings | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchVillage = async () => {
@@ -42,6 +47,8 @@ export default function BuildingsPage() {
   }, [villageId])
 
   const handleUpgrade = async (buildingId: string) => {
+    setError(null)
+    setSuccess(null)
     try {
       const res = await fetch("/api/buildings/upgrade", {
         method: "POST",
@@ -50,6 +57,7 @@ export default function BuildingsPage() {
       })
       const data = await res.json()
       if (data.success) {
+        setSuccess("Building upgrade started!")
         // Refresh
         const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
         const villagesData = await villagesRes.json()
@@ -58,16 +66,20 @@ export default function BuildingsPage() {
           setVillage(found || null)
         }
       } else {
-        alert(data.error || "Failed to upgrade building")
+        setError(data.error || "Failed to upgrade building")
       }
     } catch (error) {
       console.error("Failed to upgrade building:", error)
-      alert("Failed to upgrade building")
+      setError("Failed to upgrade building. Please try again.")
     }
   }
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
   }
 
   if (!village) {
@@ -97,6 +109,8 @@ export default function BuildingsPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
+          {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
+          {success && <SuccessMessage message={success} onDismiss={() => setSuccess(null)} />}
           <BuildingQueue buildings={village.buildings} />
 
           <section>

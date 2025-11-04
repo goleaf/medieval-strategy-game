@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
+import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       },
     })
 
+    // Track action
+    trackAction()
+
     // Log action
     await prisma.auditLog.create({
       data: {
@@ -56,6 +60,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       { status: 200 },
     )
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    trackError("Rename player failed", errorMessage)
     console.error("[v0] Rename player error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import type { AttackType } from "@prisma/client"
 import type { Troop } from "@prisma/client"
+import { TextTable } from "./text-table"
 
 interface AttackPlannerProps {
   villageId: string
@@ -114,42 +115,23 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
             <p className="text-sm text-muted-foreground">Type: {attackType}</p>
           </div>
 
-          <table className="w-full border-collapse border border-border">
-            <thead>
-              <tr>
-                <th className="border border-border p-2 text-left bg-secondary">Troop Type</th>
-                <th className="border border-border p-2 text-right bg-secondary">Available</th>
-                <th className="border border-border p-2 text-right bg-secondary">Send</th>
-              </tr>
-            </thead>
-            <tbody>
-              {troops.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="border border-border p-2 text-center text-muted-foreground">
-                    No troops available
-                  </td>
-                </tr>
-              ) : (
-                troops.map((troop) => (
-                  <tr key={troop.id}>
-                    <td className="border border-border p-2">{troop.type}</td>
-                    <td className="border border-border p-2 text-right font-mono">{troop.quantity.toLocaleString()}</td>
-                    <td className="border border-border p-2">
-                      <input
-                        type="number"
-                        min="0"
-                        max={troop.quantity}
-                        value={troopSelection[troop.id] || 0}
-                        onChange={(e) => handleTroopChange(troop.id, Number.parseInt(e.target.value) || 0)}
-                        className="w-full p-2 border border-border rounded bg-background text-foreground"
-                        aria-label={`Send ${troop.type}`}
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          <TextTable
+            headers={["Troop Type", "Available", "Send"]}
+            rows={troops.length === 0 ? [] : troops.map((troop) => [
+              troop.type,
+              <span key={`available-${troop.id}`} className="font-mono text-right block">{troop.quantity.toLocaleString()}</span>,
+              <input
+                key={`input-${troop.id}`}
+                type="number"
+                min="0"
+                max={troop.quantity}
+                value={troopSelection[troop.id] || 0}
+                onChange={(e) => handleTroopChange(troop.id, Number.parseInt(e.target.value) || 0)}
+                className="w-full p-2 border border-border rounded bg-background text-foreground"
+                aria-label={`Send ${troop.type}`}
+              />,
+            ])}
+          />
 
           <div className="flex gap-2">
             <Button

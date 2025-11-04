@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import type { TroopType } from "@prisma/client"
+import { TextTable } from "./text-table"
 
 interface TroopTrainerProps {
   villageId: string
@@ -41,34 +42,22 @@ export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
 
   return (
     <div className="w-full space-y-4">
-      <table className="w-full border-collapse border border-border">
-        <thead>
-          <tr>
-            <th className="border border-border p-2 text-left bg-secondary">Type</th>
-            <th className="border border-border p-2 text-left bg-secondary">Cost</th>
-            <th className="border border-border p-2 text-left bg-secondary">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {TROOP_TYPES.map((troop) => (
-            <tr
-              key={troop.type}
-              className={selected === troop.type ? "bg-primary/10" : ""}
-            >
-              <td className="border border-border p-2">{troop.name}</td>
-              <td className="border border-border p-2 text-sm">{troop.cost}</td>
-              <td className="border border-border p-2">
-                <button
-                  onClick={() => setSelected(troop.type)}
-                  className="px-2 py-1 border border-border rounded hover:bg-secondary"
-                >
-                  {selected === troop.type ? "Selected" : "Select"}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <TextTable
+        headers={["Type", "Cost", "Action"]}
+        rows={TROOP_TYPES.map((troop) => [
+          troop.name,
+          <span key={`cost-${troop.type}`} className="text-sm">{troop.cost}</span>,
+          <button
+            key={`action-${troop.type}`}
+            onClick={() => setSelected(troop.type)}
+            className={`px-2 py-1 border border-border rounded hover:bg-secondary text-sm ${
+              selected === troop.type ? "bg-primary/10 font-bold" : ""
+            }`}
+          >
+            {selected === troop.type ? "Selected" : "Select"}
+          </button>,
+        ])}
+      />
 
       {troopInfo && (
         <div className="p-3 border border-border rounded bg-secondary space-y-3">

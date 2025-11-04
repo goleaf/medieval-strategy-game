@@ -151,10 +151,25 @@ export default function Dashboard() {
                       buildings={currentVillage.buildings}
                       onCancel={async (buildingId) => {
                         try {
-                          // TODO: Implement cancel API call
-                          console.log("Cancel building:", buildingId)
+                          const res = await fetch("/api/buildings/cancel", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ buildingId }),
+                          })
+                          const data = await res.json()
+                          if (data.success) {
+                            // Refresh villages
+                            const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
+                            const villagesData = await villagesRes.json()
+                            if (villagesData.success && villagesData.data) {
+                              setVillages(villagesData.data)
+                            }
+                          } else {
+                            alert(data.error || "Failed to cancel building")
+                          }
                         } catch (error) {
                           console.error("Failed to cancel building:", error)
+                          alert("Failed to cancel building")
                         }
                       }}
                     />

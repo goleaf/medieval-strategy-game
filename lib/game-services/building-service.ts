@@ -67,6 +67,51 @@ export class BuildingService {
   }
 
   /**
+   * Calculate production bonuses from buildings
+   */
+  static calculateProductionBonuses(buildings: Array<{ type: BuildingType; level: number }>): {
+    wood: number
+    stone: number
+    iron: number
+    gold: number
+    food: number
+  } {
+    const bonuses = { wood: 0, stone: 0, iron: 0, gold: 0, food: 0 }
+
+    for (const building of buildings) {
+      switch (building.type) {
+        case "SAWMILL":
+          bonuses.wood += building.level * 5 // +5 wood per level
+          break
+        case "QUARRY":
+          bonuses.stone += building.level * 4 // +4 stone per level
+          break
+        case "IRON_MINE":
+          bonuses.iron += building.level * 3 // +3 iron per level
+          break
+        case "TREASURY":
+          bonuses.gold += building.level * 2 // +2 gold per level
+          break
+        case "FARM":
+          bonuses.food += building.level * 6 // +6 food per level
+          break
+      }
+    }
+
+    return bonuses
+  }
+
+  /**
+   * Calculate population limit based on Farm level
+   */
+  static calculatePopulationLimit(buildings: Array<{ type: BuildingType; level: number }>): number {
+    const farm = buildings.find((b) => b.type === "FARM")
+    const farmLevel = farm?.level || 0
+    // Base 100 + 50 per farm level
+    return 100 + farmLevel * 50
+  }
+
+  /**
    * Upgrade building - adds to construction queue
    * Costs are deducted at enqueue
    */
@@ -214,7 +259,7 @@ export class BuildingService {
   static async completeBuilding(buildingId: string): Promise<void> {
     const building = await prisma.building.findUnique({
       where: { id: buildingId },
-      include: { village: true },
+      include: { village: { include: { buildings: true } } },
     })
 
     if (!building) throw new Error("Building not found")
@@ -235,6 +280,43 @@ export class BuildingService {
         constructionCostFood: 0,
       },
     })
+
+    // Update production rates based on new building levels
+    const village = await prisma.village.findUnique({
+      where: { id: building.villageId },
+      include: { buildings: true },
+    })
+
+    if (village) {
+      const bonuses = this.calculateProductionBonuses(village.buildings)
+      const baseProduction = {
+        wood: 10,
+        stone: 8,
+        iron: 5,
+        gold: 2,
+        food: 15,
+      }
+
+      await prisma.village.update({
+        where: { id: building.villageId },
+        data: {
+          woodProduction: baseProduction.wood + bonuses.wood,
+          stoneProduction: baseProduction.stone + bonuses.stone,
+          ironProduction: baseProduction.iron + bonuses.iron,
+          goldProduction: baseProduction.gold + bonuses.gold,
+          foodProduction: baseProduction.food + bonuses.food,
+        },
+      })
+
+      // Update population limit if Farm was upgraded
+      if (building.type === "FARM") {
+        const populationLimit = this.calculatePopulationLimit(village.buildings)
+        await prisma.village.update({
+          where: { id: building.villageId },
+          data: { population: Math.min(village.population, populationLimit) },
+        })
+      }
+    }
 
     // Shift queue positions
     const buildingsToShift = await prisma.building.findMany({

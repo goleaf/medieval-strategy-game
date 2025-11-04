@@ -1,67 +1,152 @@
 "use client"
 
-import { Card } from "@/components/ui/card"
-import { useState, useEffect } from "react"
+import { TextTable } from "./text-table"
 
 interface BattleReportProps {
-  attackId: string
+  attack: {
+    id: string
+    type: string
+    attackerWon: boolean | null
+    lootWood: number
+    lootStone: number
+    lootIron: number
+    lootGold: number
+    lootFood: number
+    fromVillage: { name: string; x: number; y: number }
+    toVillage: { name: string; x: number; y: number } | null
+    arrivalAt: string
+    resolvedAt: string | null
+    attackUnits: Array<{
+      troop: { type: string; quantity: number }
+      quantity: number
+    }>
+    defenseUnits?: Array<{
+      troop: { type: string; quantity: number }
+      quantity: number
+    }>
+    scoutingData?: string | null
+  }
 }
 
-export function BattleReport({ attackId }: BattleReportProps) {
-  const [report, setReport] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchReport = async () => {
-      try {
-        const res = await fetch(`/api/attacks/${attackId}`)
-        const data = await res.json()
-        setReport(data)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchReport()
-  }, [attackId])
-
-  if (loading) return <div>Loading report...</div>
+export function BattleReport({ attack }: BattleReportProps) {
+  if (attack.type === "SCOUT") {
+    const scoutingData = attack.scoutingData ? JSON.parse(attack.scoutingData) : null
+    return (
+      <div className="space-y-4">
+        <h3 className="text-lg font-bold">Scouting Report</h3>
+        <div className="text-sm space-y-2">
+          <div>Target: {attack.toVillage?.name || "Unknown"}</div>
+          <div>Status: {attack.attackerWon ? "✅ Success" : "❌ Failed"}</div>
+          {scoutingData && attack.attackerWon && (
+            <div className="mt-4 space-y-2">
+              <h4 className="font-semibold">Revealed Information:</h4>
+              {scoutingData.units && (
+                <div>
+                  <h5 className="font-semibold">Troops:</h5>
+                  <TextTable
+                    headers={["Type", "Quantity"]}
+                    rows={scoutingData.units.map((u: any) => [u.type, u.quantity.toLocaleString()])}
+                  />
+                </div>
+              )}
+              {scoutingData.buildings && (
+                <div>
+                  <h5 className="font-semibold">Buildings:</h5>
+                  <TextTable
+                    headers={["Type", "Level"]}
+                    rows={scoutingData.buildings.map((b: any) => [b.type, b.level.toString()])}
+                  />
+                </div>
+              )}
+              {scoutingData.storage && (
+                <div>
+                  <h5 className="font-semibold">Resources:</h5>
+                  <div className="text-sm">
+                    🪵 Wood: {scoutingData.storage.wood.toLocaleString()}
+                    <br />
+                    🧱 Stone: {scoutingData.storage.stone.toLocaleString()}
+                    <br />
+                    ⛓ Iron: {scoutingData.storage.iron.toLocaleString()}
+                    <br />
+                    🪙 Gold: {scoutingData.storage.gold.toLocaleString()}
+                    <br />
+                    🌾 Food: {scoutingData.storage.food.toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <Card className="p-6 space-y-6">
-      <div className="border-b pb-4">
-        <h3 className="font-bold text-lg mb-2">Battle Report</h3>
-        <p className="text-sm text-muted-foreground">{report?.attackerWon ? "Attacker Victory" : "Defender Victory"}</p>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6">
+    <div className="space-y-4">
+      <h3 className="text-lg font-bold">Battle Report</h3>
+      <div className="text-sm space-y-2">
         <div>
-          <h4 className="font-bold mb-3">Attacker</h4>
-          <div className="space-y-2 text-sm">
-            <p>Power: {report?.attackerPower}</p>
-            <p>Casualties: {report?.attackerCasualties}</p>
-          </div>
+          <strong>Attack Type:</strong> {attack.type}
         </div>
         <div>
-          <h4 className="font-bold mb-3">Defender</h4>
-          <div className="space-y-2 text-sm">
-            <p>Power: {report?.defenderPower}</p>
-            <p>Casualties: {report?.defenderCasualties}</p>
-          </div>
+          <strong>From:</strong> {attack.fromVillage.name} ({attack.fromVillage.x}, {attack.fromVillage.y})
         </div>
+        {attack.toVillage && (
+          <div>
+            <strong>To:</strong> {attack.toVillage.name} ({attack.toVillage.x}, {attack.toVillage.y})
+          </div>
+        )}
+        <div>
+          <strong>Result:</strong> {attack.attackerWon === null ? "Pending" : attack.attackerWon ? "✅ Victory" : "❌ Defeat"}
+        </div>
+        {attack.resolvedAt && (
+          <div>
+            <strong>Resolved:</strong> {new Date(attack.resolvedAt).toLocaleString()}
+          </div>
+        )}
       </div>
 
-      {report?.attackerWon && (
-        <div className="bg-primary/10 p-4 rounded">
-          <h4 className="font-bold mb-2">Loot Obtained</h4>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <p>Wood: {report?.lootWood}</p>
-            <p>Stone: {report?.lootStone}</p>
-            <p>Iron: {report?.lootIron}</p>
-            <p>Gold: {report?.lootGold}</p>
-            <p>Food: {report?.lootFood}</p>
+      {attack.attackUnits && attack.attackUnits.length > 0 && (
+        <div>
+          <h4 className="font-semibold mb-2">Attacking Forces</h4>
+          <TextTable
+            headers={["Type", "Quantity"]}
+            rows={attack.attackUnits.map((unit) => [
+              unit.troop.type,
+              unit.quantity.toLocaleString(),
+            ])}
+          />
+        </div>
+      )}
+
+      {attack.defenseUnits && attack.defenseUnits.length > 0 && (
+        <div>
+          <h4 className="font-semibold mb-2">Defending Forces</h4>
+          <TextTable
+            headers={["Type", "Quantity"]}
+            rows={attack.defenseUnits.map((unit) => [
+              unit.troop.type,
+              unit.quantity.toLocaleString(),
+            ])}
+          />
+        </div>
+      )}
+
+      {attack.attackerWon && (
+        <div>
+          <h4 className="font-semibold mb-2">Loot Gained</h4>
+          <div className="text-sm space-y-1">
+            {attack.lootWood > 0 && <div>🪵 Wood: {attack.lootWood.toLocaleString()}</div>}
+            {attack.lootStone > 0 && <div>🧱 Stone: {attack.lootStone.toLocaleString()}</div>}
+            {attack.lootIron > 0 && <div>⛓ Iron: {attack.lootIron.toLocaleString()}</div>}
+            {attack.lootGold > 0 && <div>🪙 Gold: {attack.lootGold.toLocaleString()}</div>}
+            {attack.lootFood > 0 && <div>🌾 Food: {attack.lootFood.toLocaleString()}</div>}
+            {attack.lootWood === 0 && attack.lootStone === 0 && attack.lootIron === 0 && attack.lootGold === 0 && attack.lootFood === 0 && (
+              <div className="text-muted-foreground">No resources looted</div>
+            )}
           </div>
         </div>
       )}
-    </Card>
+    </div>
   )
 }
