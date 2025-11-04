@@ -23,13 +23,15 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastActiveAt  DateTime  @default(now())
-  
+
   // Relations
   players       Player[]
   admin         Admin?
-  
+
   @@index([email])
   @@index([username])
+  @@index([lastActiveAt]) // For online user queries
+  @@index([createdAt])    // For user registration analytics
 }
 
 // ============================================================================
@@ -40,25 +42,25 @@ model Player {
   id              String    @id @default(cuid())
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   playerName      String    @unique
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   lastActiveAt    DateTime  @default(now())
-  
+
   // Player Stats
   totalPoints     Int       @default(0)
   rank            Int       @default(0)
   wavesSurvived   Int       @default(0)
   troopsKilled    Int       @default(0)
   troopsLost      Int       @default(0)
-  
+
   // Status
   isDeleted       Boolean   @default(false)
   deletedAt       DateTime?
   banReason       String?
   beginnerProtectionUntil DateTime? // When beginner protection expires
-  
+
   // Relations
   villages        Village[]
   tribeId         String?
@@ -67,11 +69,15 @@ model Player {
   tribeInvites    TribeInvite[]
   messages        Message[]
   marketOrders    MarketOrder[]
-  
+
   @@index([userId])
   @@index([playerName])
   @@index([totalPoints])
   @@index([rank])
+  @@index([lastActiveAt])                       // For online player queries
+  @@index([beginnerProtectionUntil])            // For protection expiration checks
+  @@index([isDeleted, lastActiveAt])            // For active player queries
+  @@index([tribeId, isDeleted])                 // For tribe member queries
 }
 
 // ============================================================================
@@ -148,15 +154,15 @@ model Village {
   id              String    @id @default(cuid())
   playerId        String
   player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  
+
   continentId     String
   continent       Continent @relation(fields: [continentId], references: [id])
-  
+
   x               Int
   y               Int
   name            String    @default("New Village")
   isCapital       Boolean   @default(false)
-  
+
   // Resources
   wood            Int       @default(1000)
   stone           Int       @default(1000)
@@ -164,21 +170,21 @@ model Village {
   gold            Int       @default(200)
   food            Int       @default(2000)
   population      Int       @default(100)
-  
+
   // Production Rates (per game tick)
   woodProduction  Int       @default(10)
   stoneProduction Int       @default(8)
   ironProduction  Int       @default(5)
   goldProduction  Int       @default(2)
   foodProduction  Int       @default(15)
-  
+
   // Loyalty & Control
   loyalty         Int       @default(100) // 0-100, affects production
-  
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   lastTickAt      DateTime  @default(now())
-  
+
   // Relations
   buildings       Building[]
   troops          Troop[]
@@ -188,43 +194,49 @@ model Village {
   barbarians      Barbarian[]
   marketOrders    MarketOrder[]
   messages        Message[]
-  
+
   @@unique([x, y])
   @@index([playerId])
   @@index([continentId])
   @@index([isCapital])
+  @@index([lastTickAt])                    // For game tick processing
+  @@index([playerId, isCapital])           // For capital village queries
+  @@index([continentId, playerId])         // For continent-based village queries
 }
 
 model Building {
   id              String    @id @default(cuid())
   villageId       String
   village         Village   @relation(fields: [villageId], references: [id], onDelete: Cascade)
-  
+
   type            BuildingType
   level           Int       @default(1)
-  
+
   // Construction
   isBuilding      Boolean   @default(false)
   completionAt    DateTime?
   queuePosition   Int?      // Position in construction queue (null if not queued)
-  
+
   // Refund tracking
   constructionCostWood  Int @default(0)
   constructionCostStone Int @default(0)
   constructionCostIron  Int @default(0)
   constructionCostGold  Int @default(0)
   constructionCostFood  Int @default(0)
-  
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
+
   // Relations
   troopProduction TroopProduction[]
   research        Research?
-  
+
   @@unique([villageId, type])
   @@index([villageId])
   @@index([villageId, queuePosition])
+  @@index([isBuilding, completionAt])         // For construction completion processing
+  @@index([completionAt])                     // For finding buildings to complete
+  @@index([type, level])                      // For building type/level queries
 }
 
 enum BuildingType {
@@ -294,13 +306,14 @@ model TroopProduction {
   id              String    @id @default(cuid())
   buildingId      String
   building        Building  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
-  
+
   troopType       TroopType
   quantity        Int
   completionAt    DateTime
-  
+
   @@index([buildingId])
   @@index([completionAt])
+  @@index([troopType, completionAt])       // For troop type production queries
 }
 
 // ============================================================================
@@ -311,30 +324,32 @@ model Movement {
   id              String    @id @default(cuid())
   troopId         String
   troop           Troop     @relation(fields: [troopId], references: [id], onDelete: Cascade)
-  
+
   fromX           Int
   fromY           Int
   toX             Int
   toY             Int
-  
+
   // Pathfinding
   path            String    // JSON encoded path
   currentStep     Int       @default(0)
   totalSteps      Int
-  
+
   // Timing
   startedAt       DateTime  @default(now())
   arrivalAt       DateTime
-  
+
   // Status
   status          MovementStatus @default(IN_PROGRESS)
   cancelledAt     DateTime?
-  
+
   // Relations
   attack          Attack?
-  
+
   @@index([troopId])
   @@index([arrivalAt])
+  @@index([status])                         // For movement status queries
+  @@index([status, arrivalAt])              // For processing movements by status and time
 }
 
 enum MovementStatus {
@@ -349,34 +364,34 @@ enum MovementStatus {
 
 model Attack {
   id              String    @id @default(cuid())
-  
+
   // Attacker
   fromVillageId   String
   fromVillage     Village   @relation("AttackFrom", fields: [fromVillageId], references: [id], onDelete: Cascade)
-  
+
   // Defender
   toVillageId     String?
   toVillage       Village?  @relation("AttackTo", fields: [toVillageId], references: [id], onDelete: SetNull)
-  
+
   // Movement
   movementId      String    @unique
   movement        Movement  @relation(fields: [movementId], references: [id], onDelete: Cascade)
-  
+
   // Attack Type
   type            AttackType
-  
+
   // Resources (only for raid)
   targetWood      Int       @default(0)
   targetStone     Int       @default(0)
   targetIron      Int       @default(0)
   targetGold      Int       @default(0)
   targetFood      Int       @default(0)
-  
+
   // Status
   status          AttackStatus @default(IN_PROGRESS)
   arrivalAt       DateTime
   resolvedAt      DateTime?
-  
+
   // Result
   attackerWon     Boolean?
   lootWood        Int       @default(0)
@@ -384,20 +399,23 @@ model Attack {
   lootIron        Int       @default(0)
   lootGold        Int       @default(0)
   lootFood        Int       @default(0)
-  
+
   // Scouting results (JSON encoded)
   scoutingData    String?   // Units, buildings, storage revealed
-  
+
   createdAt       DateTime  @default(now())
-  
+
   // Relations
   attackUnits     AttackUnit[]
   defenseUnits    DefenseUnit[]
-  
+
   @@index([fromVillageId])
   @@index([toVillageId])
   @@index([status])
   @@index([arrivalAt])
+  @@index([status, arrivalAt])              // For processing attacks by status and time
+  @@index([type, status])                   // For attack type and status queries
+  @@index([movementId])                     // For movement-attack relationship queries
 }
 
 enum AttackType {
@@ -468,18 +486,21 @@ model Research {
   id              String    @id @default(cuid())
   buildingId      String    @unique
   building        Building  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
-  
+
   type            ResearchType
   level           Int       @default(0)
-  
+
   // Research Progress
   isResearching   Boolean   @default(false)
   completionAt    DateTime?
-  
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
+
   @@index([buildingId])
+  @@index([isResearching, completionAt])   // For active research queries
+  @@index([completionAt])                  // For research completion processing
+  @@index([type, level])                   // For research type/level queries
 }
 
 enum ResearchType {
@@ -496,34 +517,38 @@ enum ResearchType {
 
 model Tribe {
   id              String    @id @default(cuid())
-  
+
   name            String    @unique
   tag             String    @unique
   description     String?
   motd            String?   // Message of the day
-  
+
   leaderId        String    @unique
   leader          Player    @relation("TribeLeader", fields: [leaderId], references: [id], onDelete: Restrict)
-  
+
   // Tribe Stats
   totalPoints     Int       @default(0)
   memberCount     Int       @default(1)
-  
+
   // Settings
   joinPolicy      JoinPolicy @default(INVITE_ONLY)
-  
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
+
   // Relations
   members         Player[]  @relation("TribeMembers")
   invites         TribeInvite[]
   alliances       Alliance[]
   attacks         War[]     @relation("AttackerTribe")
   defenses        War[]     @relation("DefenderTribe")
-  
+
   @@index([name])
   @@index([leaderId])
+  @@index([totalPoints])                    // For tribe ranking queries
+  @@index([memberCount])                    // For tribe size filtering
+  @@index([joinPolicy])                     // For join policy filtering
+  @@index([totalPoints, memberCount])       // For complex tribe rankings
 }
 
 enum JoinPolicy {
@@ -534,21 +559,24 @@ enum JoinPolicy {
 
 model TribeInvite {
   id              String    @id @default(cuid())
-  
+
   tribeId         String
   tribe           Tribe     @relation(fields: [tribeId], references: [id], onDelete: Cascade)
-  
+
   playerId        String
   player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  
+
   status          InviteStatus @default(PENDING)
-  
+
   createdAt       DateTime  @default(now())
   expiresAt       DateTime
-  
+
   @@unique([tribeId, playerId])
   @@index([tribeId])
   @@index([playerId])
+  @@index([status])                         // For invite status filtering
+  @@index([expiresAt])                      // For expired invite cleanup
+  @@index([status, expiresAt])              // For active invites by expiration
 }
 
 enum InviteStatus {
@@ -560,39 +588,43 @@ enum InviteStatus {
 
 model Alliance {
   id              String    @id @default(cuid())
-  
+
   tribe1Id        String
   tribe1          Tribe     @relation(fields: [tribe1Id], references: [id], onDelete: Cascade)
-  
+
   tribe2Id        String
-  
+
   // Alliance Duration
   startedAt       DateTime  @default(now())
   endsAt          DateTime?
-  
+
   createdAt       DateTime  @default(now())
-  
+
   @@unique([tribe1Id, tribe2Id])
   @@index([tribe1Id])
+  @@index([tribe2Id])                       // For alliance queries by second tribe
+  @@index([endsAt])                         // For expired alliance cleanup
 }
 
 model War {
   id              String    @id @default(cuid())
-  
+
   attackerTribeId String
   attackerTribe   Tribe     @relation("AttackerTribe", fields: [attackerTribeId], references: [id], onDelete: Cascade)
-  
+
   defenderTribeId String
   defenderTribe   Tribe     @relation("DefenderTribe", fields: [defenderTribeId], references: [id], onDelete: Cascade)
-  
+
   status          WarStatus @default(ACTIVE)
-  
+
   startedAt       DateTime  @default(now())
   endsAt          DateTime?
-  
+
   @@unique([attackerTribeId, defenderTribeId])
   @@index([attackerTribeId])
   @@index([defenderTribeId])
+  @@index([status])                         // For war status queries
+  @@index([endsAt])                         // For war expiration processing
 }
 
 enum WarStatus {
@@ -607,34 +639,37 @@ enum WarStatus {
 
 model MarketOrder {
   id              String    @id @default(cuid())
-  
+
   villageId       String
   village         Village   @relation(fields: [villageId], references: [id], onDelete: Cascade)
-  
+
   playerId        String
   player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  
+
   type            OrderType
-  
+
   // Offering
   offeringResource  Resource
   offeringAmount    Int
-  
+
   // Requesting
   requestResource   Resource
   requestAmount     Int
-  
+
   // Status
   status          OrderStatus @default(OPEN)
   acceptedById    String?
   acceptedAt      DateTime?
-  
+
   createdAt       DateTime  @default(now())
   expiresAt       DateTime
-  
+
   @@index([villageId])
   @@index([playerId])
   @@index([status])
+  @@index([expiresAt])                      // For expired order cleanup
+  @@index([status, expiresAt])              // For active orders by expiration
+  @@index([type, status])                   // For order type and status queries
 }
 
 enum OrderType {
@@ -664,24 +699,26 @@ enum OrderStatus {
 
 model Message {
   id              String    @id @default(cuid())
-  
+
   senderId        String
   sender          Player    @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  
+
   villageId       String?
   village         Village?  @relation(fields: [villageId], references: [id], onDelete: SetNull)
-  
+
   type            MessageType
   subject         String
   content         String
-  
+
   isRead          Boolean   @default(false)
-  
+
   createdAt       DateTime  @default(now())
-  
+
   @@index([villageId])
   @@index([senderId])
   @@index([isRead])
+  @@index([isRead, createdAt])              // For unread messages sorted by date
+  @@index([type, isRead])                   // For message type filtering with read status
 }
 
 enum MessageType {
@@ -701,19 +738,21 @@ enum MessageType {
 
 model Admin {
   id              String    @id @default(cuid())
-  
+
   userId          String    @unique
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   role            AdminRole @default(MODERATOR)
-  
+
   createdAt       DateTime  @default(now())
-  
+
   // Relations
   auditLogs       AuditLog[]
   notifications   AdminNotification[]
-  
+
   @@index([userId])
+  @@index([role])                          // For role-based admin queries
+  @@index([createdAt])                     // For admin creation analytics
 }
 
 enum AdminRole {
@@ -737,6 +776,10 @@ model AuditLog {
 
   @@index([adminId])
   @@index([targetType, targetId])
+  @@index([action])                         // For action-based audit queries
+  @@index([createdAt])                      // For time-based audit queries
+  @@index([adminId, createdAt])             // For admin activity over time
+  @@index([action, createdAt])              // For action frequency analysis
 }
 
 // ============================================================================
@@ -767,6 +810,9 @@ model AdminNotification {
   @@index([type])
   @@index([isRead])
   @@index([createdAt])
+  @@index([adminId, isRead])                // For unread notifications per admin
+  @@index([adminId, isRead, createdAt])     // For unread notifications sorted by date
+  @@index([severity, isRead])               // For severity filtering with read status
 }
 
 enum NotificationType {
@@ -791,13 +837,14 @@ enum NotificationSeverity {
 
 model LeaderboardCache {
   id              String    @id @default(cuid())
-  
+
   type            LeaderboardType
   data            String    // JSON encoded leaderboard data
   updatedAt       DateTime  @default(now()) @updatedAt
-  
+
   @@unique([type])
   @@index([type])
+  @@index([updatedAt])                      // For leaderboard freshness checks
 }
 
 enum LeaderboardType {

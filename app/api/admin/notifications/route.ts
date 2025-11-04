@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
 import { NextRequest, NextResponse } from "next/server"
-import { authenticateAdmin } from "../../middleware"
+import { authenticateAdmin } from "@/app/api/admin/middleware"
 import { trackAction, trackError } from "@/lib/admin-utils"
 
 // GET notifications

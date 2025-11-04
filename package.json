@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "node server.js",
+    "dev:next": "next dev",
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -13,6 +14,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@faker-js/faker": "^10.1.0",
     "@hookform/resolvers": "^3.10.0",
     "@prisma/client": "latest",
     "@radix-ui/react-accordion": "1.2.2",

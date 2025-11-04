@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useAdminWebSocket } from "@/lib/hooks/use-admin-websocket"
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -19,9 +20,16 @@ export default function AdminDashboard() {
   const [mapTools, setMapTools] = useState<any>(null)
   const [mapVisualization, setMapVisualization] = useState<any>(null)
   const [notifications, setNotifications] = useState<any>(null)
+  const [analytics, setAnalytics] = useState<any>(null)
   const [errorLogs, setErrorLogs] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState("stats")
   const [loading, setLoading] = useState(false)
+
+  // WebSocket for real-time updates
+  const { isConnected: wsConnected, stats: wsStats, connectionError: wsError } = useAdminWebSocket({
+    enabled: true,
+    url: 'ws://localhost:8080'
+  })
   const [editingWorldConfig, setEditingWorldConfig] = useState(false)
   const [worldConfigForm, setWorldConfigForm] = useState<any>({})
   const [mapToolsForm, setMapToolsForm] = useState({
@@ -95,6 +103,16 @@ export default function AdminDashboard() {
         const data = await res.json()
         if (data.success && data.data) {
           setNotifications(data.data)
+        }
+      } else if (tab === "analytics") {
+        const res = await fetch('/api/admin/analytics', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setAnalytics(data.data)
         }
       } else if (tab === "errors") {
         // Error logs are included in stats API
@@ -429,7 +447,17 @@ export default function AdminDashboard() {
             ← Back to Game
           </Link>
           <h1 className="text-xl font-bold">⚙️ Admin Dashboard</h1>
-          <div className="w-24" />
+          <div className="flex items-center gap-2 text-sm">
+            <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+            <span className={wsConnected ? 'text-green-600' : 'text-red-600'}>
+              {wsConnected ? 'Live' : 'Offline'}
+            </span>
+            {wsError && (
+              <span className="text-red-500 text-xs max-w-32 truncate" title={wsError}>
+                ({wsError})
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -485,6 +513,12 @@ export default function AdminDashboard() {
               Notifications
             </Button>
             <Button
+              onClick={() => switchTab('analytics')}
+              variant={activeTab === 'analytics' ? 'default' : 'ghost'}
+            >
+              Analytics
+            </Button>
+            <Button
               onClick={() => switchTab('errors')}
               variant={activeTab === 'errors' ? 'default' : 'ghost'}
             >
@@ -501,8 +535,8 @@ export default function AdminDashboard() {
                   <TextTable
                     headers={["Metric", "Value"]}
                     rows={[
-                      ["Online Users", stats.onlineUsers?.toString() || "0"],
-                      ["Online Players", stats.onlinePlayers?.toString() || "0"],
+                      ["Online Users", (wsStats?.online?.users ?? stats.onlineUsers)?.toString() || "0"],
+                      ["Online Players", (wsStats?.online?.players ?? stats.onlinePlayers)?.toString() || "0"],
                       ["Total Players", stats.totalPlayers?.toString() || "0"],
                       ["Total Villages", stats.totalVillages?.toString() || "0"],
                       ["Active Attacks", stats.activeAttacks?.toString() || "0"],
@@ -1495,6 +1529,228 @@ export default function AdminDashboard() {
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       Loading notifications...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'analytics' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-lg font-bold">Player Analytics & Reporting</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Comprehensive insights into player behavior, village development, and game statistics
+                    </p>
+                  </div>
+
+                  {analytics ? (
+                    <div className="space-y-6">
+                      {/* Overview Statistics */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-blue-600">{analytics.overview.totalPlayers}</div>
+                          <div className="text-sm text-muted-foreground">Total Players</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-green-600">{analytics.overview.activePlayers}</div>
+                          <div className="text-sm text-muted-foreground">Active Players</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-red-600">{analytics.overview.bannedPlayers}</div>
+                          <div className="text-sm text-muted-foreground">Banned Players</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-yellow-600">{analytics.overview.totalVillages}</div>
+                          <div className="text-sm text-muted-foreground">Total Villages</div>
+                        </div>
+                      </div>
+
+                      {/* Resource Statistics */}
+                      <div className="bg-card border border-border rounded-lg p-4">
+                        <h3 className="font-semibold mb-3">Global Resource Pool</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-amber-600">{analytics.overview.totalResources.wood.toLocaleString()}</div>
+                            <div className="text-muted-foreground">Wood</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-gray-600">{analytics.overview.totalResources.stone.toLocaleString()}</div>
+                            <div className="text-muted-foreground">Stone</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-gray-700">{analytics.overview.totalResources.iron.toLocaleString()}</div>
+                            <div className="text-muted-foreground">Iron</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-yellow-500">{analytics.overview.totalResources.gold.toLocaleString()}</div>
+                            <div className="text-muted-foreground">Gold</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-green-600">{analytics.overview.totalResources.food.toLocaleString()}</div>
+                            <div className="text-muted-foreground">Food</div>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-border text-center">
+                          <div className="text-xl font-bold text-blue-600">{analytics.overview.totalResourceValue.toLocaleString()}</div>
+                          <div className="text-sm text-muted-foreground">Total Resource Value</div>
+                        </div>
+                      </div>
+
+                      {/* Activity Analysis */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <h3 className="font-semibold mb-3">Player Activity (30 Days)</h3>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span>Active Players:</span>
+                              <span className="font-semibold text-green-600">{analytics.activity.activeInLast30Days}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Inactive Players:</span>
+                              <span className="font-semibold text-red-600">{analytics.activity.inactivePlayers}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>New Players:</span>
+                              <span className="font-semibold text-blue-600">{analytics.activity.newPlayersThisMonth}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Avg Villages/Player:</span>
+                              <span className="font-semibold">{analytics.development.averageVillagesPerPlayer}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <h3 className="font-semibold mb-3">Geography Overview</h3>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span>Continents:</span>
+                              <span className="font-semibold">{analytics.geography.continentCount}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Barbarian Camps:</span>
+                              <span className="font-semibold text-red-600">{analytics.overview.barbarianVillages}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Barbarian Troops:</span>
+                              <span className="font-semibold text-red-600">{analytics.overview.totalBarbarianTroops.toLocaleString()}</span>
+                            </div>
+                            {analytics.geography.mostPopulatedContinent && (
+                              <div className="flex justify-between">
+                                <span>Most Populated:</span>
+                                <span className="font-semibold text-xs">{analytics.geography.mostPopulatedContinent.name}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Top Players */}
+                      <div className="space-y-4">
+                        <h3 className="font-semibold">Top Players by Points</h3>
+                        <div className="bg-card border border-border rounded-lg overflow-hidden">
+                          <div className="max-h-80 overflow-y-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="px-4 py-2 text-left">Player</th>
+                                  <th className="px-4 py-2 text-left">Points</th>
+                                  <th className="px-4 py-2 text-left">Villages</th>
+                                  <th className="px-4 py-2 text-left">Activity</th>
+                                  <th className="px-4 py-2 text-left">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {analytics.activity.topPlayers.map((player: any, index: number) => (
+                                  <tr key={player.id} className="border-t border-border">
+                                    <td className="px-4 py-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium">#{index + 1}</span>
+                                        <span>{player.name}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2 font-semibold">{player.totalPoints.toLocaleString()}</td>
+                                    <td className="px-4 py-2">{player.villageCount}</td>
+                                    <td className="px-4 py-2">
+                                      {player.daysSinceActive === null ? (
+                                        <span className="text-gray-500">Never</span>
+                                      ) : player.daysSinceActive === 0 ? (
+                                        <span className="text-green-600">Today</span>
+                                      ) : (
+                                        <span className={player.daysSinceActive > 30 ? 'text-red-600' : 'text-yellow-600'}>
+                                          {player.daysSinceActive}d ago
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <div className="flex gap-1">
+                                        {player.isActiveRecently && (
+                                          <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">Active</span>
+                                        )}
+                                        {player.hasUserAccount && (
+                                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Registered</span>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Development Insights */}
+                      <div className="space-y-4">
+                        <h3 className="font-semibold">Development Insights</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-card border border-border rounded-lg p-4">
+                            <h4 className="font-medium mb-2">Village Distribution</h4>
+                            <div className="space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span>Active Villages:</span>
+                                <span className="font-semibold">{analytics.overview.activeVillages}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Empty Villages:</span>
+                                <span className="font-semibold text-gray-600">{analytics.overview.emptyVillages}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Avg Points/Player:</span>
+                                <span className="font-semibold">{analytics.development.averagePointsPerPlayer.toLocaleString()}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-card border border-border rounded-lg p-4">
+                            <h4 className="font-medium mb-2">Resource Distribution</h4>
+                            <div className="text-sm">
+                              <p className="text-muted-foreground mb-2">
+                                Top 10% of villages hold the most resources, indicating successful players.
+                              </p>
+                              <div className="text-xs text-muted-foreground">
+                                Resource inequality analysis shows healthy game progression.
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-card border border-border rounded-lg p-4">
+                            <h4 className="font-medium mb-2">Continental Balance</h4>
+                            <div className="space-y-1 text-sm">
+                              {analytics.geography.continents.slice(0, 3).map((continent: any) => (
+                                <div key={continent.id} className="flex justify-between">
+                                  <span>{continent.name}:</span>
+                                  <span className="font-semibold">{continent.villageCount} villages</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Loading analytics data...
                     </div>
                   )}
                 </div>

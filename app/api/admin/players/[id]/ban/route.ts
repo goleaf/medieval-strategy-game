@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
-import { authenticateAdmin } from "../../middleware"
+import { authenticateAdmin } from "@/app/api/admin/middleware"
 import { trackAction, trackError } from "@/lib/admin-utils"
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {

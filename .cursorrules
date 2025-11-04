@@ -109,6 +109,10 @@ await prisma.$transaction(async (tx) => {
 - Include migration files for schema changes
 - Audit logging for all administrative actions
 - Separate Admin model for role management
+- AdminNotification model for system alerts
+- TroopBalance model for persistent unit configuration
+- WebSocket server for real-time admin statistics
+- Analytics API for comprehensive player insights
 
 ## Documentation Requirements
 
