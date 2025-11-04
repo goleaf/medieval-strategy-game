@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
+import { ArrowLeft, Home, Hammer, Shield, Eye } from "lucide-react"
 import { ResourceDisplay } from "@/components/game/resource-display"
 import { BuildingQueue } from "@/components/game/building-queue"
 import { TextTable } from "@/components/game/text-table"
@@ -58,7 +59,10 @@ export default function VillageDetailPage() {
         <div className="text-center">
           <p className="mb-4">Village not found</p>
           <Link href="/dashboard">
-            <Button>Back to Dashboard</Button>
+            <Button>
+              <Home className="w-4 h-4" />
+              Back to Dashboard
+            </Button>
           </Link>
         </div>
       </div>
@@ -81,8 +85,11 @@ export default function VillageDetailPage() {
     >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <Link href="/dashboard" className="text-sm hover:underline">
-            ← Back
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
           </Link>
           <h1 className="text-xl font-bold">{village.name}</h1>
           <div className="w-16" />
@@ -134,6 +141,7 @@ export default function VillageDetailPage() {
                 building.isBuilding ? "Building..." : "Ready",
                 <Link key={building.id} href={`/village/${villageId}/buildings`}>
                   <Button variant="outline" size="sm">
+                    <Eye className="w-4 h-4" />
                     View
                   </Button>
                 </Link>,
@@ -155,11 +163,13 @@ export default function VillageDetailPage() {
           <section className="flex gap-2">
             <Link href={`/village/${villageId}/buildings`} className="flex-1">
               <Button variant="outline" className="w-full">
+                <Hammer className="w-4 h-4" />
                 Manage Buildings
               </Button>
             </Link>
             <Link href={`/village/${villageId}/troops`} className="flex-1">
               <Button variant="outline" className="w-full">
+                <Shield className="w-4 h-4" />
                 Manage Troops
               </Button>
             </Link>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { ArrowLeft, Eye } from "lucide-react"
 import { AttackPlanner } from "@/components/game/attack-planner"
 import { TextTable } from "@/components/game/text-table"
 import { CountdownTimer } from "@/components/game/countdown-timer"
@@ -55,8 +56,11 @@ export default function AttacksPage() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <Link href="/dashboard" className="text-sm hover:underline">
-            ← Back
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
           </Link>
           <h1 className="text-xl font-bold">⚔️ Attacks</h1>
           <div className="w-16" />
@@ -110,6 +114,7 @@ export default function AttacksPage() {
                   attack.status,
                   <CountdownTimer key={attack.id} targetDate={attack.arrivalAt} />,
                   <Button key={attack.id} variant="outline" size="sm">
+                    <Eye className="w-4 h-4" />
                     View
                   </Button>,
                 ])}

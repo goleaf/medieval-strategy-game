@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="stone" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#696969;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2F2F2F;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="mountain" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B8B8B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#696969;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Mountain background -->
+  <polygon points="0,64 16,40 32,32 48,40 64,64" fill="url(#mountain)" stroke="#696969" stroke-width="1"/>
+  <polygon points="8,64 20,44 32,36 44,44 56,64" fill="url(#mountain)" stroke="#696969" stroke-width="1"/>
+
+  <!-- Quarry pit -->
+  <rect x="12" y="44" width="40" height="16" fill="#2F2F2F" stroke="#000000" stroke-width="1"/>
+  <polygon points="12,44 32,32 52,44" fill="#2F2F2F" stroke="#000000" stroke-width="1"/>
+
+  <!-- Quarry tools -->
+  <line x1="20" y1="48" x2="28" y2="40" stroke="#C0C0C0" stroke-width="2"/>
+  <line x1="24" y1="44" x2="24" y2="52" stroke="#C0C0C0" stroke-width="1"/>
+  <circle cx="24" cy="38" r="1" fill="#C0C0C0"/>
+  <line x1="36" y1="48" x2="44" y2="40" stroke="#C0C0C0" stroke-width="2"/>
+  <line x1="40" y1="44" x2="40" y2="52" stroke="#C0C0C0" stroke-width="1"/>
+  <circle cx="40" cy="38" r="1" fill="#C0C0C0"/>
+
+  <!-- Stone blocks -->
+  <rect x="16" y="50" width="4" height="4" fill="url(#stone)" stroke="#2F2F2F" stroke-width="1"/>
+  <rect x="22" y="50" width="4" height="4" fill="url(#stone)" stroke="#2F2F2F" stroke-width="1"/>
+  <rect x="28" y="50" width="4" height="4" fill="url(#stone)" stroke="#2F2F2F" stroke-width="1"/>
+  <rect x="34" y="50" width="4" height="4" fill="url(#stone)" stroke="#2F2F2F" stroke-width="1"/>
+  <rect x="40" y="50" width="4" height="4" fill="url(#stone)" stroke="#2F2F2F" stroke-width="1"/>
+
+  <!-- Quarry shack -->
+  <rect x="44" y="40" width="8" height="8" fill="#8B4513" stroke="#654321" stroke-width="1"/>
+  <polygon points="44,40 48,36 52,40" fill="#696969" stroke="#2F2F2F" stroke-width="1"/>
+</svg>

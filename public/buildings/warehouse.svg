@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="wood" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B4513;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#654321;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="roof" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#696969;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2F2F2F;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Warehouse building -->
+  <rect x="8" y="32" width="48" height="20" fill="url(#wood)" stroke="#654321" stroke-width="1"/>
+  <rect x="12" y="28" width="40" height="24" fill="url(#wood)" stroke="#654321" stroke-width="1"/>
+
+  <!-- Roof -->
+  <polygon points="16,28 32,16 48,28" fill="url(#roof)" stroke="#2F2F2F" stroke-width="1"/>
+  <polygon points="20,28 32,20 44,28" fill="url(#roof)" stroke="#2F2F2F" stroke-width="1"/>
+
+  <!-- Large door -->
+  <rect x="26" y="40" width="12" height="12" fill="#654321" stroke="#2F2F2F" stroke-width="1"/>
+  <line x1="32" y1="40" x2="32" y2="52" stroke="#2F2F2F" stroke-width="2"/>
+
+  <!-- Storage crates -->
+  <rect x="16" y="36" width="4" height="4" fill="#DEB887" stroke="#D2B48C" stroke-width="1"/>
+  <rect x="44" y="36" width="4" height="4" fill="#DEB887" stroke="#D2B48C" stroke-width="1"/>
+  <rect x="16" y="42" width="4" height="4" fill="#8B4513" stroke="#654321" stroke-width="1"/>
+  <rect x="44" y="42" width="4" height="4" fill="#8B4513" stroke="#654321" stroke-width="1"/>
+
+  <!-- Goods inside -->
+  <circle cx="18" cy="38" r="1" fill="#FFD700"/>
+  <circle cx="46" cy="38" r="1" fill="#FFD700"/>
+  <circle cx="18" cy="44" r="1" fill="#32CD32"/>
+  <circle cx="46" cy="44" r="1" fill="#32CD32"/>
+</svg>

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="building" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F0E68C;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#DEB887;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="red" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#DC143C;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8B0000;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Hospital building -->
+  <rect x="8" y="32" width="48" height="20" fill="url(#building)" stroke="#DEB887" stroke-width="1"/>
+  <rect x="12" y="28" width="40" height="24" fill="url(#building)" stroke="#DEB887" stroke-width="1"/>
+
+  <!-- Roof -->
+  <polygon points="16,28 32,16 48,28" fill="#696969" stroke="#2F2F2F" stroke-width="1"/>
+  <polygon points="20,28 32,20 44,28" fill="#696969" stroke="#2F2F2F" stroke-width="1"/>
+
+  <!-- Red cross -->
+  <rect x="30" y="16" width="4" height="8" fill="url(#red)" stroke="#8B0000" stroke-width="1"/>
+  <rect x="28" y="18" width="8" height="4" fill="url(#red)" stroke="#8B0000" stroke-width="1"/>
+
+  <!-- Door -->
+  <rect x="28" y="44" width="8" height="8" fill="#8B4513" stroke="#654321" stroke-width="1"/>
+
+  <!-- Windows -->
+  <rect x="16" y="36" width="4" height="4" fill="#FFFF99" stroke="#2F2F2F" stroke-width="1"/>
+  <rect x="44" y="36" width="4" height="4" fill="#FFFF99" stroke-width="1"/>
+  <rect x="16" y="42" width="4" height="4" fill="#FFFF99" stroke-width="1"/>
+  <rect x="44" y="42" width="4" height="4" fill="#FFFF99" stroke-width="1"/>
+
+  <!-- Beds -->
+  <rect x="20" y="46" width="6" height="2" fill="#F5DEB3" stroke="#DEB887" stroke-width="1"/>
+  <rect x="38" y="46" width="6" height="2" fill="#F5DEB3" stroke="#DEB887" stroke-width="1"/>
+</svg>

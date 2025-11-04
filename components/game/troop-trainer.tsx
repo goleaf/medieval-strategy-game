@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
+import { Sword, Check } from "lucide-react"
 import type { TroopType } from "@prisma/client"
 import { TextTable } from "./text-table"
 
@@ -49,10 +50,11 @@ export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
           <button
             key={`action-${troop.type}`}
             onClick={() => setSelected(troop.type)}
-            className={`px-2 py-1 border border-border rounded hover:bg-secondary text-sm ${
+            className={`px-2 py-1 border border-border rounded hover:bg-secondary text-sm flex items-center gap-1 ${
               selected === troop.type ? 'bg-primary/10 font-bold' : ''
             }`}
           >
+            {selected === troop.type ? <Check className="w-3 h-3" /> : null}
             {selected === troop.type ? 'Selected' : 'Select'}
           </button>,
         ])}
@@ -81,6 +83,7 @@ export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
           </div>
 
           <Button onClick={handleTrain} disabled={loading} className="w-full">
+            <Sword className="w-4 h-4" />
             {loading ? 'Training...' : `Train ${quantity} ${troopInfo.name}`}
           </Button>
         </div>

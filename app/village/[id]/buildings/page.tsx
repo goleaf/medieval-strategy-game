@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
+import { ArrowLeft, Zap } from "lucide-react"
 import { BuildingQueue } from "@/components/game/building-queue"
 import { TextTable } from "@/components/game/text-table"
 import { CountdownTimer } from "@/components/game/countdown-timer"
@@ -13,6 +15,29 @@ type VillageWithBuildings = {
   id: string
   name: string
   buildings: Array<{ id: string; type: string; level: number; isBuilding: boolean; completionAt: string | null; queuePosition: number | null }>
+}
+
+function getBuildingImage(type: string): string {
+  const imageMap: Record<string, string> = {
+    HEADQUARTER: "/buildings/headquarter.svg",
+    MARKETPLACE: "/buildings/marketplace.svg",
+    BARRACKS: "/buildings/barracks.svg",
+    STABLES: "/buildings/stables.svg",
+    WATCHTOWER: "/buildings/watchtower.svg",
+    WALL: "/buildings/wall.svg",
+    WAREHOUSE: "/buildings/warehouse.svg",
+    GRANARY: "/buildings/granary.svg",
+    SAWMILL: "/buildings/sawmill.svg",
+    QUARRY: "/buildings/quarry.svg",
+    IRON_MINE: "/buildings/iron_mine.svg",
+    TREASURY: "/buildings/treasury.svg",
+    ACADEMY: "/buildings/academy.svg",
+    TEMPLE: "/buildings/temple.svg",
+    HOSPITAL: "/buildings/hospital.svg",
+    FARM: "/buildings/farm.svg",
+    SNOB: "/buildings/snob.svg",
+  }
+  return imageMap[type] || "/placeholder.svg"
 }
 
 export default function BuildingsPage() {
@@ -89,8 +114,11 @@ export default function BuildingsPage() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <Link href={`/village/${villageId}`} className="text-sm hover:underline">
-            ← Back
+          <Link href={`/village/${villageId}`}>
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
           </Link>
           <h1 className="text-xl font-bold">Buildings - {village.name}</h1>
           <div className="w-16" />
@@ -117,8 +145,17 @@ export default function BuildingsPage() {
           <section>
             <h2 className="text-lg font-bold mb-2">All Buildings</h2>
             <TextTable
-              headers={["Type", "Level", "Status", "Actions"]}
+              headers={["Building", "Type", "Level", "Status", "Actions"]}
               rows={village.buildings.map((building) => [
+                <div key={`image-${building.id}`} className="flex items-center justify-center">
+                  <Image
+                    src={getBuildingImage(building.type)}
+                    alt={building.type}
+                    width={48}
+                    height={48}
+                    className="object-contain"
+                  />
+                </div>,
                 building.type,
                 building.level.toString(),
                 building.isBuilding && building.completionAt ? (
@@ -135,6 +172,7 @@ export default function BuildingsPage() {
                   onClick={() => handleUpgrade(building.id)}
                   disabled={building.isBuilding}
                 >
+                  <Zap className="w-4 h-4" />
                   {building.isBuilding ? "Building..." : "Upgrade"}
                 </Button>,
               ])}

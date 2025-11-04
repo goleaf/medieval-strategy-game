@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { Map, Swords, ShoppingCart, MessageCircle, Users, Trophy, Eye, Hammer, Shield } from "lucide-react"
 import { VillageOverview } from "@/components/game/village-overview"
 import { ResourceDisplay } from "@/components/game/resource-display"
 import { BuildingQueue } from "@/components/game/building-queue"
@@ -100,23 +101,29 @@ export default function Dashboard() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">🏰 Medieval Strategy</h1>
           <nav className="flex gap-2 text-sm">
-            <Link href="/map" className="px-2 py-1 hover:bg-secondary rounded">
-              🗺️ Map
+            <Link href="/map" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
+              <Map className="w-4 h-4" />
+              Map
             </Link>
-            <Link href="/attacks" className="px-2 py-1 hover:bg-secondary rounded">
-              ⚔️ Attacks
+            <Link href="/attacks" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
+              <Swords className="w-4 h-4" />
+              Attacks
             </Link>
-            <Link href="/market" className="px-2 py-1 hover:bg-secondary rounded">
-              🏪 Market
+            <Link href="/market" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
+              <ShoppingCart className="w-4 h-4" />
+              Market
             </Link>
-            <Link href="/messages" className="px-2 py-1 hover:bg-secondary rounded">
-              💬 Messages
+            <Link href="/messages" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
+              <MessageCircle className="w-4 h-4" />
+              Messages
             </Link>
-            <Link href="/tribes" className="px-2 py-1 hover:bg-secondary rounded">
-              👥 Tribes
+            <Link href="/tribes" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
+              <Users className="w-4 h-4" />
+              Tribes
             </Link>
-            <Link href="/leaderboard" className="px-2 py-1 hover:bg-secondary rounded">
-              📊 Rankings
+            <Link href="/leaderboard" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
+              <Trophy className="w-4 h-4" />
+              Rankings
             </Link>
           </nav>
         </div>
@@ -235,16 +242,19 @@ export default function Dashboard() {
                   <section className="flex gap-2">
                     <Link href={`/village/${currentVillage.id}`}>
                       <Button variant="outline" className="w-full">
+                        <Eye className="w-4 h-4" />
                         View Details
                       </Button>
                     </Link>
                     <Link href={`/village/${currentVillage.id}/buildings`}>
                       <Button variant="outline" className="w-full">
+                        <Hammer className="w-4 h-4" />
                         Buildings
                       </Button>
                     </Link>
                     <Link href={`/village/${currentVillage.id}/troops`}>
                       <Button variant="outline" className="w-full">
+                        <Shield className="w-4 h-4" />
                         Troops
                       </Button>
                     </Link>

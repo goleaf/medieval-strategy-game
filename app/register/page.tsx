@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
@@ -120,6 +121,7 @@ export default function RegisterPage() {
           </div>
 
           <Button type="submit" disabled={loading} className="w-full">
+            <UserPlus className="w-4 h-4" />
             {loading ? 'Creating account...' : 'Register'}
           </Button>
         </form>

@@ -23,12 +23,24 @@ export async function POST(req: NextRequest) {
     }
 
     const token = generateToken(user.id)
-    const player = await prisma.player.findFirst({ where: { userId: user.id } })
+    let player = await prisma.player.findFirst({ where: { userId: user.id } })
+
+    // Create player if doesn't exist
+    if (!player) {
+      player = await prisma.player.create({
+        data: {
+          userId: user.id,
+          playerName: user.username,
+        },
+      })
+
+      // Initialize beginner protection
+      const { ProtectionService } = await import("@/lib/game-services/protection-service")
+      await ProtectionService.initializeProtection(player.id)
+    }
 
     // Ensure player has a village
-    if (player) {
-      await VillageService.ensurePlayerHasVillage(player.id)
-    }
+    await VillageService.ensurePlayerHasVillage(player.id)
 
     return NextResponse.json(
       {

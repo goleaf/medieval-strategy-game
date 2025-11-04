@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
+import { ArrowLeft, Home } from "lucide-react"
 import { TroopTrainer } from "@/components/game/troop-trainer"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
@@ -51,7 +52,10 @@ export default function TroopsPage() {
         <div className="text-center">
           <p className="mb-4">Village not found</p>
           <Link href="/dashboard">
-            <Button>Back to Dashboard</Button>
+            <Button>
+              <Home className="w-4 h-4" />
+              Back to Dashboard
+            </Button>
           </Link>
         </div>
       </div>
@@ -74,8 +78,11 @@ export default function TroopsPage() {
     >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <Link href={`/village/${villageId}`} className="text-sm hover:underline">
-            ← Back
+          <Link href={`/village/${villageId}`}>
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
           </Link>
           <h1 className="text-xl font-bold">Troops - {village.name}</h1>
           <div className="w-16" />

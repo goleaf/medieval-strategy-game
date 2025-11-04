@@ -43,7 +43,17 @@ This document describes the admin features implemented for the Medieval Strategy
   - **Relocate Tile**: `/api/admin/map/relocate-tile` - Move any village to new coordinates
   - **Wipe Empty**: `/api/admin/map/wipe-empty` - Delete empty villages (no buildings > level 1, no troops, minimal resources)
 
-### 5. Stats Dashboard
+### 5. Speed Templates
+- **Location**: `/app/api/admin/speed-templates/route.ts`
+- **UI**: Admin Dashboard → Speed Templates tab
+- **Features**:
+  - **Get Templates**: `GET /api/admin/speed-templates` - Retrieve all available speed templates
+  - **Apply Template**: `POST /api/admin/speed-templates` - Apply a speed template to the world configuration
+  - Predefined templates: Normal, Fast, Very Fast, Tournament, Extreme
+  - Each template adjusts: game speed, unit speed, production multiplier, resources per tick, tick interval
+  - Real-time application with immediate effect on game world
+
+### 6. Stats Dashboard
 - **Location**: `/app/api/admin/stats/route.ts`
 - **UI**: Admin Dashboard → Stats tab
 - **Features**:
@@ -91,6 +101,10 @@ Added field:
 - `POST /api/admin/map/relocate-tile` - Relocate village tile
 - `POST /api/admin/map/wipe-empty` - Wipe empty villages
 
+### Speed Templates
+- `GET /api/admin/speed-templates` - Get all available speed templates
+- `POST /api/admin/speed-templates` - Apply a speed template
+
 ### Stats
 - `GET /api/admin/stats` - Get system statistics and error logs
 
@@ -103,7 +117,8 @@ The admin dashboard (`/app/admin/dashboard/page.tsx`) includes:
 3. **Unit Balance Tab**: Read-only view of all troop types and their stats
 4. **Players Tab**: Player search, ban/unban, rename, and move village actions
 5. **Map Tools Tab**: Tools for spawning barbarians, relocating tiles, and wiping empty villages
-6. **Error Logs Tab**: View recent error logs
+6. **Speed Templates Tab**: Apply predefined speed configurations to adjust game pace
+7. **Error Logs Tab**: View recent error logs
 
 ## Validation & Guardrails
 
@@ -122,6 +137,12 @@ The admin dashboard (`/app/admin/dashboard/page.tsx`) includes:
 - Coordinates must be within world bounds
 - Position must not be occupied
 - Wipe empty requires confirmation
+
+### Speed Templates Validation
+- Template ID must be provided and valid
+- Template ID must be a string
+- Only predefined templates can be applied
+- World configuration must exist before applying templates
 
 ## Notes
 

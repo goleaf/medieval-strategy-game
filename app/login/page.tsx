@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
@@ -83,6 +84,7 @@ export default function LoginPage() {
           </div>
 
           <Button type="submit" disabled={loading} className="w-full">
+            <LogIn className="w-4 h-4" />
             {loading ? 'Logging in...' : 'Login'}
           </Button>
         </form>

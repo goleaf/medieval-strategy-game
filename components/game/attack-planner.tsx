@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
+import { Swords, Target, Users, X, ArrowRight, ArrowLeft } from "lucide-react"
 import type { AttackType } from "@prisma/client"
 import type { Troop } from "@prisma/client"
 import { TextTable } from "./text-table"
@@ -59,6 +60,7 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
     <div className="w-full space-y-4">
       {mode === 'inactive' && (
         <Button onClick={() => setMode('coordinates')} className="w-full">
+          <Target className="w-4 h-4" />
           Plan Attack
         </Button>
       )}
@@ -111,9 +113,11 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
               disabled={!targetX || !targetY}
               className="flex-1"
             >
+              <Users className="w-4 h-4" />
               Select Troops
             </Button>
             <Button onClick={() => setMode('inactive')} variant="outline" className="flex-1">
+              <X className="w-4 h-4" />
               Cancel
             </Button>
           </div>
@@ -151,9 +155,11 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
               disabled={loading || Object.keys(troopSelection).length === 0}
               className="flex-1"
             >
+              <Swords className="w-4 h-4" />
               {loading ? 'Launching...' : 'Launch Attack'}
             </Button>
             <Button onClick={() => setMode('coordinates')} variant="outline" className="flex-1">
+              <ArrowLeft className="w-4 h-4" />
               Back
             </Button>
           </div>

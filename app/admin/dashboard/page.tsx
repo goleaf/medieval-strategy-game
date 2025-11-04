@@ -4,13 +4,36 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
   const [players, setPlayers] = useState<any[]>([])
   const [worldConfig, setWorldConfig] = useState<any>(null)
+  const [speedTemplates, setSpeedTemplates] = useState<any>(null)
+  const [unitBalance, setUnitBalance] = useState<any>(null)
+  const [mapTools, setMapTools] = useState<any>(null)
+  const [errorLogs, setErrorLogs] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState("stats")
   const [loading, setLoading] = useState(false)
+  const [editingWorldConfig, setEditingWorldConfig] = useState(false)
+  const [worldConfigForm, setWorldConfigForm] = useState<any>({})
+  const [mapToolsForm, setMapToolsForm] = useState({
+    spawnBarbarian: { x: '', y: '', warriors: '100', spearmen: '50', bowmen: '30', horsemen: '10' },
+    relocateTile: { oldX: '', oldY: '', newX: '', newY: '' },
+    wipeEmpty: { confirmText: '' }
+  })
+  const [playerActions, setPlayerActions] = useState({
+    selectedPlayer: null as any,
+    banReason: '',
+    newName: '',
+    moveX: '',
+    moveY: ''
+  })
+  const [showPlayerActionDialog, setShowPlayerActionDialog] = useState(false)
+  const [currentPlayerAction, setCurrentPlayerAction] = useState('')
 
   const fetchData = async (tab: string) => {
     try {
@@ -33,6 +56,23 @@ export default function AdminDashboard() {
         if (data.success && data.data) {
           setWorldConfig(data.data)
         }
+      } else if (tab === "speed") {
+        const res = await fetch("/api/admin/speed-templates")
+        const data = await res.json()
+        if (data.success && data.data) {
+          setSpeedTemplates(data.data)
+        }
+      } else if (tab === "units") {
+        const res = await fetch('/api/admin/units/balance')
+        const data = await res.json()
+        if (data.success && data.data) {
+          setUnitBalance(data.data)
+        }
+      } else if (tab === "errors") {
+        // Error logs are included in stats API
+        if (stats?.errorLogs) {
+          setErrorLogs(stats.errorLogs)
+        }
       }
     } catch (error) {
       console.error("Failed to fetch admin data:", error)
@@ -46,11 +86,258 @@ export default function AdminDashboard() {
     await fetchData(tab)
   }
 
-  const handleViewUnitBalance = async () => {
-    const res = await fetch('/api/admin/units/balance')
-    const data = await res.json()
-    if (data.success && data.data) {
-      console.log('Unit balance:', data.data)
+  const handleEditWorldConfig = () => {
+    setWorldConfigForm({
+      worldName: worldConfig?.worldName || "Medieval World",
+      speed: worldConfig?.speed || 1,
+      unitSpeed: worldConfig?.unitSpeed || 1.0,
+      resourcePerTick: worldConfig?.resourcePerTick || 10,
+      productionMultiplier: worldConfig?.productionMultiplier || 1.0,
+      tickIntervalMinutes: worldConfig?.tickIntervalMinutes || 5,
+      nightBonusMultiplier: worldConfig?.nightBonusMultiplier || 1.2,
+      beginnerProtectionHours: worldConfig?.beginnerProtectionHours || 72,
+      isRunning: worldConfig?.isRunning || true,
+      beginnerProtectionEnabled: worldConfig?.beginnerProtectionEnabled || true,
+    })
+    setEditingWorldConfig(true)
+  }
+
+  const handleSaveWorldConfig = async () => {
+    try {
+      const res = await fetch('/api/admin/world/config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(worldConfigForm),
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        alert('World configuration updated successfully!')
+        setEditingWorldConfig(false)
+        // Refresh world config
+        const configRes = await fetch("/api/admin/world/config")
+        const configData = await configRes.json()
+        if (configData.success && configData.data) {
+          setWorldConfig(configData.data)
+        }
+      } else {
+        alert('Failed to update world config: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Failed to save world config:', error)
+      alert('Failed to save world config')
+    }
+  }
+
+  const handleCancelWorldConfigEdit = () => {
+    setEditingWorldConfig(false)
+    setWorldConfigForm({})
+  }
+
+  const handleSpawnBarbarian = async () => {
+    const { x, y, warriors, spearmen, bowmen, horsemen } = mapToolsForm.spawnBarbarian
+
+    if (!x || !y) {
+      alert('Please enter coordinates')
+      return
+    }
+
+    try {
+      const res = await fetch('/api/admin/map/spawn-barbarian', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          x: parseInt(x),
+          y: parseInt(y),
+          warriors: parseInt(warriors),
+          spearmen: parseInt(spearmen),
+          bowmen: parseInt(bowmen),
+          horsemen: parseInt(horsemen),
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        alert('Barbarian village spawned successfully!')
+        setMapToolsForm(prev => ({ ...prev, spawnBarbarian: { x: '', y: '', warriors: '100', spearmen: '50', bowmen: '30', horsemen: '10' } }))
+      } else {
+        alert('Failed to spawn barbarian: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Failed to spawn barbarian:', error)
+      alert('Failed to spawn barbarian')
+    }
+  }
+
+  const handleRelocateTile = async () => {
+    const { oldX, oldY, newX, newY } = mapToolsForm.relocateTile
+
+    if (!oldX || !oldY || !newX || !newY) {
+      alert('Please enter all coordinates')
+      return
+    }
+
+    try {
+      const res = await fetch('/api/admin/map/relocate-tile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oldX: parseInt(oldX),
+          oldY: parseInt(oldY),
+          newX: parseInt(newX),
+          newY: parseInt(newY),
+        }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        alert('Village relocated successfully!')
+        setMapToolsForm(prev => ({ ...prev, relocateTile: { oldX: '', oldY: '', newX: '', newY: '' } }))
+      } else {
+        alert('Failed to relocate tile: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Failed to relocate tile:', error)
+      alert('Failed to relocate tile')
+    }
+  }
+
+  const handleWipeEmpty = async () => {
+    if (mapToolsForm.wipeEmpty.confirmText !== 'WIPE_EMPTY_VILLAGES') {
+      alert('Please type "WIPE_EMPTY_VILLAGES" to confirm')
+      return
+    }
+
+    try {
+      const res = await fetch('/api/admin/map/wipe-empty', {
+        method: 'POST',
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        alert(`Successfully wiped ${data.data?.deletedCount || 0} empty villages!`)
+        setMapToolsForm(prev => ({ ...prev, wipeEmpty: { confirmText: '' } }))
+      } else {
+        alert('Failed to wipe empty villages: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Failed to wipe empty villages:', error)
+      alert('Failed to wipe empty villages')
+    }
+  }
+
+  const openPlayerActionDialog = (player: any, action: string) => {
+    setPlayerActions({
+      selectedPlayer: player,
+      banReason: '',
+      newName: player.playerName,
+      moveX: '',
+      moveY: ''
+    })
+    setCurrentPlayerAction(action)
+    setShowPlayerActionDialog(true)
+  }
+
+  const handlePlayerAction = async () => {
+    const player = playerActions.selectedPlayer
+    const action = currentPlayerAction
+
+    if (!player) return
+
+    if (action === 'ban' && !playerActions.banReason.trim()) {
+      alert('Please provide a ban reason')
+      return
+    }
+
+    if (action === 'rename' && !playerActions.newName.trim()) {
+      alert('Please provide a new player name')
+      return
+    }
+
+    if (action === 'move-village' && (!playerActions.moveX || !playerActions.moveY)) {
+      alert('Please provide new coordinates')
+      return
+    }
+
+    try {
+      let endpoint = `/api/admin/players/${player.id}/${action}`
+      let body = {}
+
+      switch (action) {
+        case 'ban':
+          body = { reason: playerActions.banReason }
+          break
+        case 'rename':
+          body = { newName: playerActions.newName }
+          break
+        case 'move-village':
+          body = { x: parseInt(playerActions.moveX), y: parseInt(playerActions.moveY) }
+          break
+        case 'unban':
+          // No body needed for unban
+          break
+      }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        alert(`Player ${action} successful!`)
+        setShowPlayerActionDialog(false)
+        // Reset form
+        setPlayerActions({
+          selectedPlayer: null,
+          banReason: '',
+          newName: '',
+          moveX: '',
+          moveY: ''
+        })
+        // Refresh players list
+        const playersRes = await fetch("/api/admin/players")
+        const playersData = await playersRes.json()
+        if (playersData.success && playersData.data) {
+          setPlayers(playersData.data)
+        }
+      } else {
+        alert(`Failed to ${action} player: ${data.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error(`Failed to ${action} player:`, error)
+      alert(`Failed to ${action} player`)
+    }
+  }
+
+  const handleApplySpeedTemplate = async (templateId: string) => {
+    try {
+      const res = await fetch('/api/admin/speed-templates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ templateId }),
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        alert(data.message || 'Speed template applied successfully!')
+        // Refresh world config
+        const configRes = await fetch("/api/admin/world/config")
+        const configData = await configRes.json()
+        if (configData.success && configData.data) {
+          setWorldConfig(configData.data)
+        }
+      } else {
+        alert('Failed to apply speed template: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Failed to apply speed template:', error)
+      alert('Failed to apply speed template')
     }
   }
 
@@ -97,6 +384,24 @@ export default function AdminDashboard() {
             >
               Unit Balance
             </Button>
+            <Button
+              onClick={() => switchTab('speed')}
+              variant={activeTab === 'speed' ? 'default' : 'ghost'}
+            >
+              Speed Templates
+            </Button>
+            <Button
+              onClick={() => switchTab('map')}
+              variant={activeTab === 'map' ? 'default' : 'ghost'}
+            >
+              Map Tools
+            </Button>
+            <Button
+              onClick={() => switchTab('errors')}
+              variant={activeTab === 'errors' ? 'default' : 'ghost'}
+            >
+              Error Logs
+            </Button>
           </div>
 
           {loading && <div className="text-center py-8">Loading...</div>}
@@ -132,38 +437,272 @@ export default function AdminDashboard() {
                       player.villages?.length?.toString() || "0",
                       player.isDeleted ? "Deleted" : player.banReason ? "Banned" : "Active",
                       <div key={player.id} className="flex gap-1">
-                        <Button variant="outline" size="sm">
-                          View
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openPlayerActionDialog(player, 'rename')}
+                        >
+                          Rename
                         </Button>
-                        <Button variant="outline" size="sm">
-                          Ban
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openPlayerActionDialog(player, 'move-village')}
+                        >
+                          Move
                         </Button>
+                        {player.banReason ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openPlayerActionDialog(player, 'unban')}
+                          >
+                            Unban
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => openPlayerActionDialog(player, 'ban')}
+                          >
+                            Ban
+                          </Button>
+                        )}
                       </div>,
                     ])}
                   />
                 </div>
               )}
 
+              {/* Player Action Dialog */}
+              {showPlayerActionDialog && playerActions.selectedPlayer && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-background border border-border rounded-lg p-6 max-w-md w-full mx-4">
+                    <h3 className="text-lg font-bold mb-4">
+                      {currentPlayerAction === 'ban' && 'Ban Player'}
+                      {currentPlayerAction === 'unban' && 'Unban Player'}
+                      {currentPlayerAction === 'rename' && 'Rename Player'}
+                      {currentPlayerAction === 'move-village' && 'Move Player Village'}
+                    </h3>
+
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Player: <strong>{playerActions.selectedPlayer.playerName}</strong>
+                      </p>
+
+                      {currentPlayerAction === 'ban' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="ban-reason">Ban Reason</Label>
+                          <Input
+                            id="ban-reason"
+                            value={playerActions.banReason}
+                            onChange={(e) => setPlayerActions(prev => ({ ...prev, banReason: e.target.value }))}
+                            placeholder="Enter ban reason..."
+                          />
+                        </div>
+                      )}
+
+                      {currentPlayerAction === 'rename' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="new-name">New Player Name</Label>
+                          <Input
+                            id="new-name"
+                            value={playerActions.newName}
+                            onChange={(e) => setPlayerActions(prev => ({ ...prev, newName: e.target.value }))}
+                            placeholder="Enter new player name..."
+                          />
+                        </div>
+                      )}
+
+                      {currentPlayerAction === 'move-village' && (
+                        <div className="space-y-2">
+                          <Label>New Village Coordinates</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              type="number"
+                              placeholder="X"
+                              value={playerActions.moveX}
+                              onChange={(e) => setPlayerActions(prev => ({ ...prev, moveX: e.target.value }))}
+                            />
+                            <Input
+                              type="number"
+                              placeholder="Y"
+                              value={playerActions.moveY}
+                              onChange={(e) => setPlayerActions(prev => ({ ...prev, moveY: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {currentPlayerAction === 'unban' && (
+                        <p className="text-sm">Are you sure you want to unban this player?</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 mt-6">
+                      <Button onClick={handlePlayerAction}>
+                        {currentPlayerAction === 'ban' && 'Ban Player'}
+                        {currentPlayerAction === 'unban' && 'Unban Player'}
+                        {currentPlayerAction === 'rename' && 'Rename Player'}
+                        {currentPlayerAction === 'move-village' && 'Move Village'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowPlayerActionDialog(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'world' && worldConfig && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">World Configuration</h2>
-                  <TextTable
-                    headers={["Setting", "Value"]}
-                    rows={[
-                      ["World Name", worldConfig.worldName || "Medieval World"],
-                      ["Max X", worldConfig.maxX?.toString() || "100"],
-                      ["Max Y", worldConfig.maxY?.toString() || "100"],
-                      ["Speed", worldConfig.speed?.toString() || "1"],
-                      ["Unit Speed", worldConfig.unitSpeed?.toString() || "1.0"],
-                      ["Resource Per Tick", worldConfig.resourcePerTick?.toString() || "10"],
-                      ["Production Multiplier", worldConfig.productionMultiplier?.toString() || "1.0"],
-                      ["Tick Interval (minutes)", worldConfig.tickIntervalMinutes?.toString() || "5"],
-                      ["Night Bonus", worldConfig.nightBonusMultiplier?.toString() || "1.2"],
-                      ["Beginner Protection (hours)", worldConfig.beginnerProtectionHours?.toString() || "72"],
-                      ["Game Running", worldConfig.isRunning ? "Yes" : "No"],
-                    ]}
-                  />
-                  <Button variant="outline">Edit Configuration</Button>
+
+                  {!editingWorldConfig ? (
+                    <>
+                      <TextTable
+                        headers={["Setting", "Value"]}
+                        rows={[
+                          ["World Name", worldConfig.worldName || "Medieval World"],
+                          ["Max X", worldConfig.maxX?.toString() || "100"],
+                          ["Max Y", worldConfig.maxY?.toString() || "100"],
+                          ["Speed", worldConfig.speed?.toString() || "1"],
+                          ["Unit Speed", worldConfig.unitSpeed?.toString() || "1.0"],
+                          ["Resource Per Tick", worldConfig.resourcePerTick?.toString() || "10"],
+                          ["Production Multiplier", worldConfig.productionMultiplier?.toString() || "1.0"],
+                          ["Tick Interval (minutes)", worldConfig.tickIntervalMinutes?.toString() || "5"],
+                          ["Night Bonus", worldConfig.nightBonusMultiplier?.toString() || "1.2"],
+                          ["Beginner Protection (hours)", worldConfig.beginnerProtectionHours?.toString() || "72"],
+                          ["Beginner Protection Enabled", worldConfig.beginnerProtectionEnabled ? "Yes" : "No"],
+                          ["Game Running", worldConfig.isRunning ? "Yes" : "No"],
+                        ]}
+                      />
+                      <Button variant="outline" onClick={handleEditWorldConfig}>
+                        Edit Configuration
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="space-y-4 max-w-md">
+                      <div className="space-y-2">
+                        <Label htmlFor="worldName">World Name</Label>
+                        <Input
+                          id="worldName"
+                          value={worldConfigForm.worldName}
+                          onChange={(e) => setWorldConfigForm({...worldConfigForm, worldName: e.target.value})}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="speed">Game Speed</Label>
+                          <Input
+                            id="speed"
+                            type="number"
+                            step="0.1"
+                            value={worldConfigForm.speed}
+                            onChange={(e) => setWorldConfigForm({...worldConfigForm, speed: parseFloat(e.target.value)})}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="unitSpeed">Unit Speed</Label>
+                          <Input
+                            id="unitSpeed"
+                            type="number"
+                            step="0.1"
+                            value={worldConfigForm.unitSpeed}
+                            onChange={(e) => setWorldConfigForm({...worldConfigForm, unitSpeed: parseFloat(e.target.value)})}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="resourcePerTick">Resources per Tick</Label>
+                          <Input
+                            id="resourcePerTick"
+                            type="number"
+                            value={worldConfigForm.resourcePerTick}
+                            onChange={(e) => setWorldConfigForm({...worldConfigForm, resourcePerTick: parseInt(e.target.value)})}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="productionMultiplier">Production Multiplier</Label>
+                          <Input
+                            id="productionMultiplier"
+                            type="number"
+                            step="0.1"
+                            value={worldConfigForm.productionMultiplier}
+                            onChange={(e) => setWorldConfigForm({...worldConfigForm, productionMultiplier: parseFloat(e.target.value)})}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="tickIntervalMinutes">Tick Interval (minutes)</Label>
+                          <Input
+                            id="tickIntervalMinutes"
+                            type="number"
+                            value={worldConfigForm.tickIntervalMinutes}
+                            onChange={(e) => setWorldConfigForm({...worldConfigForm, tickIntervalMinutes: parseInt(e.target.value)})}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="nightBonusMultiplier">Night Bonus</Label>
+                          <Input
+                            id="nightBonusMultiplier"
+                            type="number"
+                            step="0.1"
+                            value={worldConfigForm.nightBonusMultiplier}
+                            onChange={(e) => setWorldConfigForm({...worldConfigForm, nightBonusMultiplier: parseFloat(e.target.value)})}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="beginnerProtectionHours">Beginner Protection (hours)</Label>
+                          <Input
+                            id="beginnerProtectionHours"
+                            type="number"
+                            value={worldConfigForm.beginnerProtectionHours}
+                            onChange={(e) => setWorldConfigForm({...worldConfigForm, beginnerProtectionHours: parseInt(e.target.value)})}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="isRunning"
+                            checked={worldConfigForm.isRunning}
+                            onCheckedChange={(checked) => setWorldConfigForm({...worldConfigForm, isRunning: checked})}
+                          />
+                          <Label htmlFor="isRunning">Game Running</Label>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="beginnerProtectionEnabled"
+                            checked={worldConfigForm.beginnerProtectionEnabled}
+                            onCheckedChange={(checked) => setWorldConfigForm({...worldConfigForm, beginnerProtectionEnabled: checked})}
+                          />
+                          <Label htmlFor="beginnerProtectionEnabled">Beginner Protection Enabled</Label>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button onClick={handleSaveWorldConfig}>Save Changes</Button>
+                        <Button variant="outline" onClick={handleCancelWorldConfigEdit}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -171,11 +710,297 @@ export default function AdminDashboard() {
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">Unit Balance</h2>
                   <p className="text-sm text-muted-foreground">
-                    View and manage troop balance settings
+                    View troop balance settings and combat statistics
                   </p>
-                  <Button variant="outline" onClick={handleViewUnitBalance}>
-                    View Unit Balance
-                  </Button>
+
+                  {unitBalance ? (
+                    <div className="space-y-4">
+                      <TextTable
+                        headers={["Unit", "Health", "Attack", "Defense", "Speed", "Wood", "Stone", "Iron", "Gold", "Food"]}
+                        rows={Object.entries(unitBalance).map(([unitName, unitData]: [string, any]) => [
+                          unitName,
+                          unitData.health?.toString() || "0",
+                          unitData.attack?.toString() || "0",
+                          unitData.defense?.toString() || "0",
+                          unitData.speed?.toString() || "0",
+                          unitData.costWood?.toString() || "0",
+                          unitData.costStone?.toString() || "0",
+                          unitData.costIron?.toString() || "0",
+                          unitData.costGold?.toString() || "0",
+                          unitData.costFood?.toString() || "0",
+                        ])}
+                      />
+                      <div className="text-sm text-muted-foreground">
+                        Note: To modify unit balance, update the troop-service.ts file or implement a database-backed system.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No unit balance data available
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'speed' && speedTemplates && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-bold">Speed Templates</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Apply predefined speed configurations to adjust game pace
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {Object.entries(speedTemplates).map(([templateId, template]: [string, any]) => (
+                      <div key={templateId} className="border border-border rounded-lg p-4 space-y-3">
+                        <div>
+                          <h3 className="font-semibold text-lg">{template.name}</h3>
+                          <p className="text-sm text-muted-foreground">{template.description}</p>
+                        </div>
+                        <div className="space-y-1 text-sm">
+                          <div>Game Speed: {template.speed}x</div>
+                          <div>Unit Speed: {template.unitSpeed}x</div>
+                          <div>Production: {template.productionMultiplier}x</div>
+                          <div>Resources/Tick: {template.resourcePerTick}</div>
+                          <div>Tick Interval: {template.tickIntervalMinutes} min</div>
+                        </div>
+                        <Button
+                          onClick={() => handleApplySpeedTemplate(templateId)}
+                          className="w-full"
+                          variant="outline"
+                        >
+                          Apply Template
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'map' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-lg font-bold">Map Tools</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Administrative tools for managing the game map
+                    </p>
+                  </div>
+
+                  <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
+                    {/* Spawn Barbarian */}
+                    <div className="border border-border rounded-lg p-4 space-y-3">
+                      <h3 className="font-semibold">Spawn Barbarian Village</h3>
+                      <p className="text-sm text-muted-foreground">Create a barbarian village at specified coordinates</p>
+
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label htmlFor="barb-x" className="text-xs">X Coordinate</Label>
+                            <Input
+                              id="barb-x"
+                              type="number"
+                              value={mapToolsForm.spawnBarbarian.x}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                spawnBarbarian: { ...prev.spawnBarbarian, x: e.target.value }
+                              }))}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="barb-y" className="text-xs">Y Coordinate</Label>
+                            <Input
+                              id="barb-y"
+                              type="number"
+                              value={mapToolsForm.spawnBarbarian.y}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                spawnBarbarian: { ...prev.spawnBarbarian, y: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label htmlFor="warriors" className="text-xs">Warriors</Label>
+                            <Input
+                              id="warriors"
+                              type="number"
+                              value={mapToolsForm.spawnBarbarian.warriors}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                spawnBarbarian: { ...prev.spawnBarbarian, warriors: e.target.value }
+                              }))}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="spearmen" className="text-xs">Spearmen</Label>
+                            <Input
+                              id="spearmen"
+                              type="number"
+                              value={mapToolsForm.spawnBarbarian.spearmen}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                spawnBarbarian: { ...prev.spawnBarbarian, spearmen: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label htmlFor="bowmen" className="text-xs">Bowmen</Label>
+                            <Input
+                              id="bowmen"
+                              type="number"
+                              value={mapToolsForm.spawnBarbarian.bowmen}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                spawnBarbarian: { ...prev.spawnBarbarian, bowmen: e.target.value }
+                              }))}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="horsemen" className="text-xs">Horsemen</Label>
+                            <Input
+                              id="horsemen"
+                              type="number"
+                              value={mapToolsForm.spawnBarbarian.horsemen}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                spawnBarbarian: { ...prev.spawnBarbarian, horsemen: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        <Button onClick={handleSpawnBarbarian} className="w-full" variant="outline">
+                          Spawn Barbarian
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Relocate Tile */}
+                    <div className="border border-border rounded-lg p-4 space-y-3">
+                      <h3 className="font-semibold">Relocate Village</h3>
+                      <p className="text-sm text-muted-foreground">Move any village to new coordinates</p>
+
+                      <div className="space-y-2">
+                        <div>
+                          <Label className="text-xs">Current Position</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              placeholder="X"
+                              type="number"
+                              value={mapToolsForm.relocateTile.oldX}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                relocateTile: { ...prev.relocateTile, oldX: e.target.value }
+                              }))}
+                            />
+                            <Input
+                              placeholder="Y"
+                              type="number"
+                              value={mapToolsForm.relocateTile.oldY}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                relocateTile: { ...prev.relocateTile, oldY: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs">New Position</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              placeholder="X"
+                              type="number"
+                              value={mapToolsForm.relocateTile.newX}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                relocateTile: { ...prev.relocateTile, newX: e.target.value }
+                              }))}
+                            />
+                            <Input
+                              placeholder="Y"
+                              type="number"
+                              value={mapToolsForm.relocateTile.newY}
+                              onChange={(e) => setMapToolsForm(prev => ({
+                                ...prev,
+                                relocateTile: { ...prev.relocateTile, newY: e.target.value }
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        <Button onClick={handleRelocateTile} className="w-full" variant="outline">
+                          Relocate Tile
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Wipe Empty */}
+                    <div className="border border-border rounded-lg p-4 space-y-3">
+                      <h3 className="font-semibold">Wipe Empty Villages</h3>
+                      <p className="text-sm text-muted-foreground">Delete villages with minimal buildings and resources</p>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="confirm-wipe" className="text-xs">
+                          Type "WIPE_EMPTY_VILLAGES" to confirm
+                        </Label>
+                        <Input
+                          id="confirm-wipe"
+                          value={mapToolsForm.wipeEmpty.confirmText}
+                          onChange={(e) => setMapToolsForm(prev => ({
+                            ...prev,
+                            wipeEmpty: { confirmText: e.target.value }
+                          }))}
+                          placeholder="WIPE_EMPTY_VILLAGES"
+                        />
+
+                        <Button
+                          onClick={handleWipeEmpty}
+                          className="w-full"
+                          variant="destructive"
+                          disabled={mapToolsForm.wipeEmpty.confirmText !== 'WIPE_EMPTY_VILLAGES'}
+                        >
+                          Wipe Empty Villages
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'errors' && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-bold">Error Logs</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Recent system errors and issues
+                  </p>
+
+                  {errorLogs && errorLogs.length > 0 ? (
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {errorLogs.map((error: any, index: number) => (
+                        <div key={index} className="border border-border rounded p-3">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-sm font-mono text-red-600">{error.timestamp || 'Unknown time'}</span>
+                            <span className="text-xs text-muted-foreground">{error.level || 'ERROR'}</span>
+                          </div>
+                          <div className="text-sm">{error.message || 'No message'}</div>
+                          {error.stack && (
+                            <details className="mt-2">
+                              <summary className="text-xs cursor-pointer text-muted-foreground">Stack trace</summary>
+                              <pre className="text-xs mt-1 p-2 bg-muted rounded overflow-x-auto">{error.stack}</pre>
+                            </details>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No recent errors
+                    </div>
+                  )}
                 </div>
               )}
             </>

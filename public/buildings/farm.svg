@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="wood" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B4513;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#654321;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="field" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#228B22;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#006400;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="wheat" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#DAA520;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Farmhouse -->
+  <rect x="8" y="32" width="20" height="16" fill="url(#wood)" stroke="#654321" stroke-width="1"/>
+  <rect x="10" y="28" width="16" height="20" fill="url(#wood)" stroke="#654321" stroke-width="1"/>
+  <polygon points="12,28 18,20 24,28" fill="#696969" stroke="#2F2F2F" stroke-width="1"/>
+
+  <!-- Door -->
+  <rect x="14" y="40" width="4" height="8" fill="#654321" stroke="#2F2F2F" stroke-width="1"/>
+
+  <!-- Window -->
+  <rect x="20" y="34" width="3" height="3" fill="#FFFF99" stroke="#2F2F2F" stroke-width="1"/>
+
+  <!-- Fields -->
+  <rect x="32" y="40" width="16" height="16" fill="url(#field)" stroke="#006400" stroke-width="1"/>
+  <rect x="32" y="24" width="16" height="16" fill="url(#field)" stroke="#006400" stroke-width="1"/>
+  <rect x="48" y="32" width="16" height="16" fill="url(#field)" stroke="#006400" stroke-width="1"/>
+
+  <!-- Wheat -->
+  <path d="M 36 36 L 36 40 M 34 38 L 38 38" stroke="url(#wheat)" stroke-width="1"/>
+  <path d="M 42 36 L 42 40 M 40 38 L 44 38" stroke="url(#wheat)" stroke-width="1"/>
+  <path d="M 36 28 L 36 32 M 34 30 L 38 30" stroke="url(#wheat)" stroke-width="1"/>
+  <path d="M 42 28 L 42 32 M 40 30 L 44 30" stroke="url(#wheat)" stroke-width="1"/>
+  <path d="M 52 36 L 52 40 M 50 38 L 54 38" stroke="url(#wheat)" stroke-width="1"/>
+  <path d="M 58 36 L 58 40 M 56 38 L 60 38" stroke="url(#wheat)" stroke-width="1"/>
+</svg>
