@@ -1,16 +1,33 @@
 import { prisma } from "@/lib/db"
 import { MovementService } from "@/lib/game-services/movement-service"
 import { ProtectionService } from "@/lib/game-services/protection-service"
-import { type NextRequest, NextResponse } from "next/server"
+import { type NextRequest } from "next/server"
+import { attackLaunchSchema } from "@/lib/utils/validation"
+import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
 import type { AttackType } from "@prisma/client"
 
 export async function POST(req: NextRequest) {
   try {
-    const { fromVillageId, toX, toY, troopSelection, attackType } = await req.json()
+    const body = await req.json()
+    
+    // Validate basic structure first
+    const validated = attackLaunchSchema.safeParse({
+      fromVillageId: body.fromVillageId,
+      toVillageId: body.toVillageId,
+      toX: body.toX,
+      toY: body.toY,
+      type: body.attackType,
+      units: Object.entries(body.troopSelection || {}).map(([troopId, quantity]) => ({
+        troopId,
+        quantity: quantity as number,
+      })),
+    })
 
-    if (!fromVillageId || toX === undefined || toY === undefined || !attackType) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    if (!validated.success) {
+      return errorResponse(validated.error, 400)
     }
+
+    const { fromVillageId, toX, toY, type, units } = validated.data
 
     const fromVillage = await prisma.village.findUnique({
       where: { id: fromVillageId },
@@ -18,7 +35,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (!fromVillage) {
-      return NextResponse.json({ error: "Village not found" }, { status: 404 })
+      return notFoundResponse()
     }
 
     // Find target village
@@ -29,36 +46,33 @@ export async function POST(req: NextRequest) {
 
     if (targetVillage) {
       // Check beginner protection (except for scouting)
-      if (attackType !== "SCOUT") {
+      if (type !== "SCOUT") {
         const isProtected = await ProtectionService.isVillageProtected(targetVillage.id)
         if (isProtected) {
-          return NextResponse.json(
-            { error: "Target village is protected by beginner protection" },
-            { status: 403 },
-          )
+          return errorResponse("Target village is protected by beginner protection", 403)
         }
       }
 
       // Check if attacking own village
       if (targetVillage.playerId === fromVillage.playerId) {
-        return NextResponse.json({ error: "Cannot attack your own village" }, { status: 400 })
+        return errorResponse("Cannot attack your own village", 400)
       }
     }
 
-    // Validate troop selection
-    for (const [troopId, quantity] of Object.entries(troopSelection) as any[]) {
-      const troop = fromVillage.troops.find((t) => t.id === troopId)
-      if (!troop || troop.quantity < quantity) {
-        return NextResponse.json({ error: "Invalid troop selection" }, { status: 400 })
+    // Validate troop selection and deduct troops
+    const troopSpeeds: number[] = []
+    for (const unit of units) {
+      const troop = fromVillage.troops.find((t) => t.id === unit.troopId)
+      if (!troop || troop.quantity < unit.quantity) {
+        return errorResponse("Invalid troop selection", 400)
       }
+      troopSpeeds.push(troop.speed)
     }
 
     // Calculate distance and travel time
     const distance = MovementService.distance(fromVillage.x, fromVillage.y, toX, toY)
-    const avgSpeed = 5 // Average troop speed
-
-    const travelTime = MovementService.calculateTravelTime(distance, avgSpeed)
-    const arrivalAt = new Date(Date.now() + travelTime)
+    const travelTimeMs = await MovementService.calculateTravelTime(distance, troopSpeeds)
+    const arrivalAt = new Date(Date.now() + travelTimeMs)
 
     // Create movement
     const path = MovementService.findPath(fromVillage.x, fromVillage.y, toX, toY)
@@ -76,27 +90,36 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // Deduct troops from village
+    for (const unit of units) {
+      await prisma.troop.update({
+        where: { id: unit.troopId },
+        data: { quantity: { decrement: unit.quantity } },
+      })
+    }
+
     // Create attack
     const attack = await prisma.attack.create({
       data: {
         fromVillageId,
         toVillageId: targetVillage?.id || null,
         movementId: movement.id,
-        type: attackType as AttackType,
+        type: type as AttackType,
         arrivalAt,
         attackUnits: {
-          create: Object.entries(troopSelection).map(([troopId, quantity]) => ({
-            troopId,
-            quantity: quantity as number,
+          create: units.map((unit) => ({
+            troopId: unit.troopId,
+            quantity: unit.quantity,
           })),
         },
       },
-      include: { attackUnits: true },
+      include: { attackUnits: { include: { troop: true } } },
     })
 
-    return NextResponse.json(attack, { status: 201 })
+    return successResponse(attack, 201)
   } catch (error) {
-    console.error("[v0] Launch attack error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const validationError = handleValidationError(error)
+    if (validationError) return validationError
+    return serverErrorResponse(error)
   }
 }

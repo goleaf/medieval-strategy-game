@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
@@ -400,8 +399,8 @@ export default function AdminDashboard() {
 
           <TabsContent value="world" className="space-y-4">
             {worldConfig && (
-              <Card className="p-6 space-y-4">
-                <h2 className="font-bold text-lg">World Configuration</h2>
+              <section className="border border-border rounded p-4 space-y-4">
+                <h2 className="text-lg font-bold">World Configuration</h2>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">World Name</label>
@@ -491,7 +490,7 @@ export default function AdminDashboard() {
                 <Button onClick={handleUpdateWorldConfig} className="w-full">
                   Update World Config
                 </Button>
-              </Card>
+              </section>
             )}
           </TabsContent>
 
@@ -682,8 +681,8 @@ export default function AdminDashboard() {
 
           <TabsContent value="map" className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
-              <Card className="p-6 space-y-4">
-                <h2 className="font-bold text-lg">Spawn Barbarian</h2>
+              <section className="border border-border rounded p-4 space-y-4">
+                <h2 className="text-lg font-bold">Spawn Barbarian</h2>
                 <div className="space-y-2">
                   <div>
                     <label className="text-sm font-medium">Coordinates</label>
