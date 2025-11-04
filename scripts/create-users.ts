@@ -1,5 +1,7 @@
-import { prisma } from "@/lib/db"
+import { PrismaClient } from "@prisma/client"
 import { hash } from "bcryptjs"
+
+const prisma = new PrismaClient()
 
 async function main() {
   console.log("[v0] Creating admin and demo users...")
@@ -67,7 +69,7 @@ async function main() {
       })
 
       // Initialize beginner protection
-      const { ProtectionService } = await import("../lib/game-services/protection-service")
+      const { ProtectionService } = await import("../lib/game-services/protection-service.js")
       await ProtectionService.initializeProtection(player.id)
 
       // Create village for demo player

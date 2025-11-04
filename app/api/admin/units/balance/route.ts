@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
 import type { TroopType } from "@prisma/client"
+import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
 interface TroopBalance {
   type: TroopType
@@ -129,6 +130,9 @@ export async function PUT(req: NextRequest) {
     // For now, we'll create a database table or config file to store balances
     // Note: This is a simplified approach - in production, you'd want to store balances in DB
 
+    // Track action
+    trackAction()
+
     // Log action
     await prisma.auditLog.create({
       data: {
@@ -149,6 +153,8 @@ export async function PUT(req: NextRequest) {
       { status: 200 },
     )
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    trackError("Update troop balance failed", errorMessage)
     console.error("[v0] Update troop balance error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

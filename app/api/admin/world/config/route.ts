@@ -77,6 +77,8 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json(updated, { status: 200 })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    trackError("Update world config failed", errorMessage)
     console.error("[v0] Update world config error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

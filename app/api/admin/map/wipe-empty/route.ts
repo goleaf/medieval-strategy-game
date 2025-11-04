@@ -75,6 +75,9 @@ export async function POST(req: NextRequest) {
       where: { id: { in: villageIds } },
     })
 
+    // Track action
+    trackAction()
+
     // Log action
     await prisma.auditLog.create({
       data: {
@@ -95,6 +98,8 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     )
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    trackError("Wipe empty villages failed", errorMessage)
     console.error("[v0] Wipe empty villages error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
