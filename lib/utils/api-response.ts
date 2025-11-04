@@ -45,6 +45,13 @@ export function errorResponse(
   )
 }
 
+export function handleValidationError(error: unknown): NextResponse<ApiResponse> | null {
+  if (error instanceof ZodError) {
+    return errorResponse(error, 400)
+  }
+  return null
+}
+
 export function unauthorizedResponse(): NextResponse<ApiResponse> {
   return errorResponse("Unauthorized", 401)
 }

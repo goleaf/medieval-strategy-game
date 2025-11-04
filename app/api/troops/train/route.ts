@@ -1,30 +1,29 @@
 import { prisma } from "@/lib/db"
 import { TroopService } from "@/lib/game-services/troop-service"
-import { type NextRequest, NextResponse } from "next/server"
-import type { TroopType } from "@prisma/client"
+import { type NextRequest } from "next/server"
+import { troopTrainSchema } from "@/lib/utils/validation"
+import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
 
 export async function POST(req: NextRequest) {
   try {
-    const { villageId, troopType, quantity } = await req.json()
+    const body = await req.json()
+    const validated = troopTrainSchema.parse(body)
 
-    if (!villageId || !troopType || !quantity) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
-    }
-
-    if (quantity < 1 || quantity > 1000) {
-      return NextResponse.json({ error: "Invalid quantity" }, { status: 400 })
-    }
-
-    await TroopService.trainTroops(villageId, troopType as TroopType, quantity)
+    await TroopService.trainTroops(validated.villageId, validated.troopType, validated.quantity)
 
     const updatedVillage = await prisma.village.findUnique({
-      where: { id: villageId },
+      where: { id: validated.villageId },
       include: { troops: true },
     })
 
-    return NextResponse.json(updatedVillage, { status: 200 })
-  } catch (error: any) {
-    console.error("[v0] Train troops error:", error)
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 400 })
+    if (!updatedVillage) {
+      return notFoundResponse()
+    }
+
+    return successResponse(updatedVillage)
+  } catch (error) {
+    const validationError = handleValidationError(error)
+    if (validationError) return validationError
+    return serverErrorResponse(error)
   }
 }

@@ -556,61 +556,86 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="players" className="space-y-4">
-            <Card className="p-6 space-y-4">
-              <h2 className="font-bold text-lg">Player Management</h2>
+            <section>
+              <h2 className="text-lg font-bold mb-2">Player Management</h2>
 
               <input
                 type="text"
                 placeholder="Search players..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full p-2 border border-border rounded bg-background"
+                className="w-full p-2 border border-border rounded bg-background mb-2"
               />
 
               {loading ? (
-                <p className="text-muted-foreground">Loading...</p>
+                <p>Loading...</p>
               ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {players.map((player) => (
-                    <div
-                      key={player.id}
-                      className="p-3 border border-border rounded flex items-center justify-between hover:bg-secondary"
-                    >
-                      <div>
-                        <p className="font-bold">{player.playerName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Points: {player.totalPoints} • Rank: #{player.rank}
-                          {player.isDeleted && " • BANNED"}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedPlayer(player)}>
-                          Details
-                        </Button>
-                        {player.isDeleted ? (
-                          <Button size="sm" variant="outline" onClick={() => handleUnbanPlayer(player.id)}>
-                            Unban
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="destructive" onClick={() => handleBanPlayer(player.id)}>
-                            Ban
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <table className="w-full border-collapse border border-border">
+                  <thead>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Player</th>
+                      <th className="border border-border p-2 text-right bg-secondary">Points</th>
+                      <th className="border border-border p-2 text-right bg-secondary">Rank</th>
+                      <th className="border border-border p-2 text-left bg-secondary">Status</th>
+                      <th className="border border-border p-2 text-left bg-secondary">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {players.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="border border-border p-4 text-center text-muted-foreground">
+                          No players found
+                        </td>
+                      </tr>
+                    ) : (
+                      players.map((player) => (
+                        <tr key={player.id}>
+                          <td className="border border-border p-2 font-bold">{player.playerName}</td>
+                          <td className="border border-border p-2 text-right font-mono">{player.totalPoints.toLocaleString()}</td>
+                          <td className="border border-border p-2 text-right">#{player.rank}</td>
+                          <td className="border border-border p-2">{player.isDeleted ? "BANNED" : "Active"}</td>
+                          <td className="border border-border p-2">
+                            <div className="flex flex-wrap gap-1">
+                              <button
+                                onClick={() => setSelectedPlayer(player)}
+                                className="px-2 py-1 border border-border rounded hover:bg-secondary text-sm"
+                              >
+                                Details
+                              </button>
+                              {player.isDeleted ? (
+                                <button
+                                  onClick={() => handleUnbanPlayer(player.id)}
+                                  className="px-2 py-1 border border-border rounded hover:bg-secondary text-sm"
+                                >
+                                  Unban
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleBanPlayer(player.id)}
+                                  className="px-2 py-1 border border-destructive rounded hover:bg-destructive/10 text-sm text-destructive"
+                                >
+                                  Ban
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               )}
-            </Card>
+            </section>
 
             {selectedPlayer && (
-              <Card className="p-6 space-y-4 border-primary">
-                <h2 className="font-bold text-lg">{selectedPlayer.playerName} - Actions</h2>
+              <section className="border border-primary rounded p-4 bg-primary/5">
+                <h2 className="text-lg font-bold mb-2">{selectedPlayer.playerName} - Actions</h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium">Rename Player</label>
-                    <div className="flex gap-2 mt-1">
+                    <label htmlFor="rename" className="text-sm font-bold block mb-1">Rename Player</label>
+                    <div className="flex gap-2">
                       <input
+                        id="rename"
                         type="text"
                         value={renameName}
                         onChange={(e) => setRenameName(e.target.value)}
@@ -621,8 +646,8 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Move Village</label>
-                    <div className="grid grid-cols-4 gap-2 mt-1">
+                    <label className="text-sm font-bold block mb-1">Move Village</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <input
                         type="text"
                         value={moveVillageId}
@@ -644,14 +669,14 @@ export default function AdminDashboard() {
                         placeholder="Y"
                         className="p-2 border border-border rounded bg-background"
                       />
-                      <Button onClick={() => handleMoveVillage(selectedPlayer.id)}>Move</Button>
+                      <Button onClick={() => handleMoveVillage(selectedPlayer.id)} className="w-full">Move</Button>
                     </div>
                   </div>
                 </div>
-                <Button variant="outline" onClick={() => setSelectedPlayer(null)} className="w-full">
+                <Button variant="outline" onClick={() => setSelectedPlayer(null)} className="w-full mt-2">
                   Close
                 </Button>
-              </Card>
+              </section>
             )}
           </TabsContent>
 
@@ -770,22 +795,31 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="errors" className="space-y-4">
-            <Card className="p-6 space-y-4">
-              <h2 className="font-bold text-lg">Error Logs</h2>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {errorLogs.length === 0 ? (
-                  <p className="text-muted-foreground">No errors logged</p>
-                ) : (
-                  errorLogs.map((error, index) => (
-                    <Card key={index} className="p-3">
-                      <p className="text-xs text-muted-foreground">{error.timestamp}</p>
-                      <p className="font-medium">{error.message}</p>
-                      <p className="text-sm text-red-500">{error.error}</p>
-                    </Card>
-                  ))
-                )}
-              </div>
-            </Card>
+            <section>
+              <h2 className="text-lg font-bold mb-2">Error Logs</h2>
+              {errorLogs.length === 0 ? (
+                <p className="text-muted-foreground">No errors logged</p>
+              ) : (
+                <table className="w-full border-collapse border border-border">
+                  <thead>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Timestamp</th>
+                      <th className="border border-border p-2 text-left bg-secondary">Message</th>
+                      <th className="border border-border p-2 text-left bg-secondary">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {errorLogs.map((error, index) => (
+                      <tr key={index}>
+                        <td className="border border-border p-2 text-sm text-muted-foreground">{error.timestamp}</td>
+                        <td className="border border-border p-2">{error.message}</td>
+                        <td className="border border-border p-2 text-sm text-red-600">{error.error}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
           </TabsContent>
         </Tabs>
       </div>

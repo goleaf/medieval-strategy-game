@@ -1,25 +1,29 @@
 import { prisma } from "@/lib/db"
 import { BuildingService } from "@/lib/game-services/building-service"
-import { type NextRequest, NextResponse } from "next/server"
+import { type NextRequest } from "next/server"
+import { buildingUpgradeSchema } from "@/lib/utils/validation"
+import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
 
 export async function POST(req: NextRequest) {
   try {
-    const { buildingId } = await req.json()
+    const body = await req.json()
+    const validated = buildingUpgradeSchema.parse(body)
 
-    if (!buildingId) {
-      return NextResponse.json({ error: "Building ID required" }, { status: 400 })
-    }
-
-    await BuildingService.upgradeBuilding(buildingId)
+    await BuildingService.upgradeBuilding(validated.buildingId)
 
     const building = await prisma.building.findUnique({
-      where: { id: buildingId },
+      where: { id: validated.buildingId },
       include: { village: true },
     })
 
-    return NextResponse.json(building, { status: 200 })
-  } catch (error: any) {
-    console.error("[v0] Upgrade building error:", error)
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 400 })
+    if (!building) {
+      return notFoundResponse()
+    }
+
+    return successResponse(building)
+  } catch (error) {
+    const validationError = handleValidationError(error)
+    if (validationError) return validationError
+    return serverErrorResponse(error)
   }
 }

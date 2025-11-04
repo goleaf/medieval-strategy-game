@@ -1,14 +1,16 @@
 import { prisma } from "@/lib/db"
 import { VillageService } from "@/lib/game-services/village-service"
 import { ProtectionService } from "@/lib/game-services/protection-service"
-import { type NextRequest, NextResponse } from "next/server"
+import { type NextRequest } from "next/server"
+import { villageSchema } from "@/lib/utils/validation"
+import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
 
 export async function GET(req: NextRequest) {
   try {
     const playerId = req.nextUrl.searchParams.get("playerId")
 
     if (!playerId) {
-      return NextResponse.json({ error: "Player ID required" }, { status: 400 })
+      return errorResponse("Player ID required", 400)
     }
 
     const villages = await prisma.village.findMany({
@@ -38,35 +40,38 @@ export async function GET(req: NextRequest) {
       }),
     )
 
-    return NextResponse.json(villagesWithProtection, { status: 200 })
+    return successResponse(villagesWithProtection)
   } catch (error) {
-    console.error("[v0] Get villages error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return serverErrorResponse(error)
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { playerId, continentId, name, x, y } = await req.json()
-
-    if (!playerId || !continentId) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
-    }
+    const body = await req.json()
+    const validated = villageSchema.parse(body)
 
     // Check if position is occupied
     const existing = await prisma.village.findUnique({
-      where: { x_y: { x, y } },
+      where: { x_y: { x: validated.x, y: validated.y } },
     })
 
     if (existing) {
-      return NextResponse.json({ error: "Position already occupied" }, { status: 409 })
+      return errorResponse("Position already occupied", 409)
     }
 
-    const village = await VillageService.createVillage(playerId, continentId, name || "New Village", x, y)
+    const village = await VillageService.createVillage(
+      validated.playerId,
+      validated.continentId,
+      validated.name || "New Village",
+      validated.x,
+      validated.y,
+    )
 
-    return NextResponse.json(village, { status: 201 })
+    return successResponse(village, 201)
   } catch (error) {
-    console.error("[v0] Create village error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const validationError = handleValidationError(error)
+    if (validationError) return validationError
+    return serverErrorResponse(error)
   }
 }
