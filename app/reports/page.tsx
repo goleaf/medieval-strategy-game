@@ -33,7 +33,6 @@ export default function ReportsPage() {
     }
   }
 
-  // Computed properties as functions
   const attackReports = reports.filter(r => r.type.includes('ATTACK'))
   const scoutReports = reports.filter(r => r.type === 'SCOUT')
   const tradeReports = reports.filter(r => r.type === 'TRADE')
@@ -46,8 +45,6 @@ export default function ReportsPage() {
       default: return attackReports
     }
   }
-
-  const unreadCount = reports.filter(r => !r.isRead).length
 
   useEffect(() => {
     fetchReports()
@@ -65,7 +62,7 @@ export default function ReportsPage() {
             ← Back
           </Link>
           <h1 className="text-xl font-bold">
-            📬 Reports <span x-show="unreadCount > 0" x-text="`(${unreadCount})`" />
+            📬 Reports {reports.filter(r => !r.isRead).length > 0 && `(${reports.filter(r => !r.isRead).length})`}
           </h1>
           <div className="w-16" />
         </div>
@@ -75,29 +72,29 @@ export default function ReportsPage() {
         <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex gap-2">
             <Button
-              x-on:click="activeTab = 'attacks'"
-              x-bind:variant="activeTab === 'attacks' ? 'default' : 'outline'"
+              onClick={() => setActiveTab('attacks')}
+              variant={activeTab === 'attacks' ? 'default' : 'outline'}
             >
-              Attacks (<span x-text="attackReports.length" />)
+              Attacks ({attackReports.length})
             </Button>
             <Button
-              x-on:click="activeTab = 'scouts'"
-              x-bind:variant="activeTab === 'scouts' ? 'default' : 'outline'"
+              onClick={() => setActiveTab('scouts')}
+              variant={activeTab === 'scouts' ? 'default' : 'outline'}
             >
-              Scouts (<span x-text="scoutReports.length" />)
+              Scouts ({scoutReports.length})
             </Button>
             <Button
-              x-on:click="activeTab = 'trade'"
-              x-bind:variant="activeTab === 'trade' ? 'default' : 'outline'"
+              onClick={() => setActiveTab('trade')}
+              variant={activeTab === 'trade' ? 'default' : 'outline'}
             >
-              Trade (<span x-text="tradeReports.length" />)
+              Trade ({tradeReports.length})
             </Button>
           </div>
 
-          <div x-show="activeTab === 'attacks'">
+          {activeTab === 'attacks' && (
             <TextTable
               headers={["Subject", "Date", "Status", "Action"]}
-              rows={reports.filter(r => r.type.includes("ATTACK")).map((report) => [
+              rows={attackReports.map((report) => [
                 <span key="subject" className={!report.isRead ? "font-bold" : ""}>
                   {report.subject}
                 </span>,
@@ -114,11 +111,11 @@ export default function ReportsPage() {
                 </Link>,
               ])}
             />
-          </div>
-          <div x-show="activeTab === 'scouts'">
+          )}
+          {activeTab === 'scouts' && (
             <TextTable
               headers={["Subject", "Date", "Status", "Action"]}
-              rows={reports.filter(r => r.type === "SCOUT").map((report) => [
+              rows={scoutReports.map((report) => [
                 <span key="subject" className={!report.isRead ? "font-bold" : ""}>
                   {report.subject}
                 </span>,
@@ -135,11 +132,11 @@ export default function ReportsPage() {
                 </Link>,
               ])}
             />
-          </div>
-          <div x-show="activeTab === 'trade'">
+          )}
+          {activeTab === 'trade' && (
             <TextTable
               headers={["Subject", "Date", "Status", "Action"]}
-              rows={reports.filter(r => r.type === "TRADE").map((report) => [
+              rows={tradeReports.map((report) => [
                 <span key="subject" className={!report.isRead ? "font-bold" : ""}>
                   {report.subject}
                 </span>,
@@ -156,7 +153,7 @@ export default function ReportsPage() {
                 </Link>,
               ])}
             />
-          </div>
+          )}
         </div>
       </main>
     </div>

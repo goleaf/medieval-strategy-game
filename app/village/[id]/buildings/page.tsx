@@ -19,6 +19,9 @@ export default function BuildingsPage() {
   const params = useParams()
   const villageId = params.id as string
   const [village, setVillage] = useState<VillageWithBuildings | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
 
   const fetchVillage = async () => {
     try {
@@ -34,6 +37,9 @@ export default function BuildingsPage() {
   }
 
   const handleUpgrade = async (buildingId: string) => {
+    setError(null)
+    setSuccess(null)
+    setLoading(true)
     try {
       const res = await fetch("/api/buildings/upgrade", {
         method: "POST",
@@ -42,30 +48,27 @@ export default function BuildingsPage() {
       })
       const data = await res.json()
       if (data.success) {
+        setSuccess("Building upgrade started!")
+        setTimeout(() => setSuccess(null), 5000)
         await fetchVillage()
-        return { success: true, message: "Building upgrade started!" }
       } else {
-        return { success: false, error: data.error || "Failed to upgrade building" }
+        setError(data.error || "Failed to upgrade building")
+        setTimeout(() => setError(null), 5000)
       }
     } catch (error) {
       console.error("Failed to upgrade building:", error)
-      return { success: false, error: "Failed to upgrade building. Please try again." }
+      setError("Failed to upgrade building. Please try again.")
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     fetchVillage()
     const interval = setInterval(fetchVillage, 10000)
-    if (typeof window !== "undefined") {
-      (window as any).__buildingsFetchHandler = fetchVillage
-      (window as any).__buildingsUpgradeHandler = handleUpgrade
-    }
     return () => {
       clearInterval(interval)
-      if (typeof window !== "undefined") {
-        delete (window as any).__buildingsFetchHandler
-        delete (window as any).__buildingsUpgradeHandler
-      }
     }
   }, [villageId])
 
@@ -83,44 +86,7 @@ export default function BuildingsPage() {
   }
 
   return (
-    <div
-      x-data={`{
-        village: ${JSON.stringify(village)},
-        loading: false,
-        error: null,
-        success: null,
-        async init() {
-          if (window.__buildingsFetchHandler) {
-            await window.__buildingsFetchHandler();
-            this.village = ${JSON.stringify(village)};
-          }
-        },
-        async handleUpgrade(buildingId) {
-          this.error = null;
-          this.success = null;
-          this.loading = true;
-          try {
-            if (window.__buildingsUpgradeHandler) {
-              const result = await window.__buildingsUpgradeHandler(buildingId);
-              if (result.success) {
-                this.success = result.message;
-                setTimeout(() => this.success = null, 5000);
-                if (window.__buildingsFetchHandler) {
-                  await window.__buildingsFetchHandler();
-                  this.village = ${JSON.stringify(village)};
-                }
-              } else {
-                this.error = result.error;
-                setTimeout(() => this.error = null, 5000);
-              }
-            }
-          } finally {
-            this.loading = false;
-          }
-        }
-      }`}
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href={`/village/${villageId}`} className="text-sm hover:underline">
@@ -133,15 +99,19 @@ export default function BuildingsPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          <div x-show="error" className="bg-destructive/10 border border-destructive rounded p-3 flex items-center justify-between">
-            <span className="text-destructive text-sm" x-text="`❌ ${error}`" />
-            <button x-on:click="error = null" className="text-destructive hover:text-destructive/80 text-sm">✕</button>
-          </div>
-          <div x-show="success" className="bg-green-500/10 border border-green-500 rounded p-3 flex items-center justify-between">
-            <span className="text-green-600 text-sm" x-text="`✅ ${success}`" />
-            <button x-on:click="success = null" className="text-green-600 hover:text-green-600/80 text-sm">✕</button>
-          </div>
-          <div x-show="loading" className="text-center py-4">Processing...</div>
+          {error && (
+            <div className="bg-destructive/10 border border-destructive rounded p-3 flex items-center justify-between">
+              <span className="text-destructive text-sm">❌ {error}</span>
+              <button onClick={() => setError(null)} className="text-destructive hover:text-destructive/80 text-sm">✕</button>
+            </div>
+          )}
+          {success && (
+            <div className="bg-green-500/10 border border-green-500 rounded p-3 flex items-center justify-between">
+              <span className="text-green-600 text-sm">✅ {success}</span>
+              <button onClick={() => setSuccess(null)} className="text-green-600 hover:text-green-600/80 text-sm">✕</button>
+            </div>
+          )}
+          {loading && <div className="text-center py-4">Processing...</div>}
           <BuildingQueue buildings={village.buildings} />
 
           <section>
@@ -162,11 +132,10 @@ export default function BuildingsPage() {
                   key={building.id}
                   variant="outline"
                   size="sm"
-                  x-on:click={`handleUpgrade('${building.id}')`}
-                  x-bind:disabled={`${building.isBuilding}`}
+                  onClick={() => handleUpgrade(building.id)}
+                  disabled={building.isBuilding}
                 >
-                  <span x-show={`${building.isBuilding}`}>Building...</span>
-                  <span x-show={`${!building.isBuilding}`}>Upgrade</span>
+                  {building.isBuilding ? "Building..." : "Upgrade"}
                 </Button>,
               ])}
             />

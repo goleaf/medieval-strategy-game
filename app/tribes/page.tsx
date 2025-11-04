@@ -17,9 +17,11 @@ interface Tribe {
 
 export default function TribesPage() {
   const [tribes, setTribes] = useState<Tribe[]>([])
+  const [loading, setLoading] = useState(false)
 
   const fetchTribes = async () => {
     try {
+      setLoading(true)
       const res = await fetch("/api/tribes")
       const result = await res.json()
       if (result.success && result.data) {
@@ -27,37 +29,17 @@ export default function TribesPage() {
       }
     } catch (error) {
       console.error("Failed to fetch tribes:", error)
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     fetchTribes()
-    if (typeof window !== "undefined") {
-      (window as any).__tribesFetchHandler = fetchTribes
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__tribesFetchHandler
-      }
-    }
   }, [])
 
   return (
-    <div
-      x-data={`{
-        tribes: ${JSON.stringify(tribes)},
-        loading: false,
-        async init() {
-          this.loading = true;
-          if (window.__tribesFetchHandler) {
-            await window.__tribesFetchHandler();
-            this.tribes = ${JSON.stringify(tribes)};
-          }
-          this.loading = false;
-        }
-      }`}
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -72,8 +54,8 @@ export default function TribesPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          <div x-show="loading" className="text-center py-8">Loading...</div>
-          <div x-show="!loading">
+          {loading && <div className="text-center py-8">Loading...</div>}
+          {!loading && (
             <TextTable
               headers={["Rank", "Name", "Tag", "Points", "Members", "Leader", "Actions"]}
               rows={tribes.map((tribe, idx) => [
@@ -88,7 +70,7 @@ export default function TribesPage() {
                 </Button>,
               ])}
             />
-          </div>
+          )}
         </div>
       </main>
     </div>

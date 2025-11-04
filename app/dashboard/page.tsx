@@ -49,8 +49,22 @@ export default function Dashboard() {
 
   const fetchVillages = useCallback(async () => {
       try {
-      setLoading(true)
-        const res = await fetch("/api/villages?playerId=temp-player-id")
+        setLoading(true)
+        const authToken = localStorage.getItem("authToken")
+        const playerId = localStorage.getItem("playerId")
+
+        if (!authToken || !playerId) {
+          console.error("No auth token or player ID found")
+          setVillages([])
+          setLoading(false)
+          return
+        }
+
+        const res = await fetch(`/api/villages?playerId=${playerId}`, {
+          headers: {
+            "Authorization": `Bearer ${authToken}`,
+          },
+        })
         const data = await res.json()
         if (data.success && data.data) {
           setVillages(data.data)
@@ -170,9 +184,13 @@ export default function Dashboard() {
                       buildings={currentVillage.buildings}
                       onCancel={async (buildingId) => {
                         try {
+                          const authToken = localStorage.getItem("authToken")
                           const res = await fetch("/api/buildings/cancel", {
                             method: "POST",
-                            headers: { "Content-Type": "application/json" },
+                            headers: {
+                              "Content-Type": "application/json",
+                              "Authorization": `Bearer ${authToken}`,
+                            },
                             body: JSON.stringify({ buildingId }),
                           })
                           const data = await res.json()
@@ -194,9 +212,13 @@ export default function Dashboard() {
                       village={currentVillage}
                       onUpgrade={async (buildingId) => {
                         try {
+                          const authToken = localStorage.getItem("authToken")
                           const res = await fetch("/api/buildings/upgrade", {
                             method: "POST",
-                            headers: { "Content-Type": "application/json" },
+                            headers: {
+                              "Content-Type": "application/json",
+                              "Authorization": `Bearer ${authToken}`,
+                            },
                             body: JSON.stringify({ buildingId }),
                           })
                           const data = await res.json()
