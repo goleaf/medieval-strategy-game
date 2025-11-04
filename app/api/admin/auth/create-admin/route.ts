@@ -2,7 +2,6 @@ import { prisma } from "@/lib/db"
 import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { authenticateAdmin } from "../../middleware"
-import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
 export async function POST(req: NextRequest) {
   const adminAuth = await authenticateAdmin(req)
@@ -75,8 +74,7 @@ export async function POST(req: NextRequest) {
       return { user, admin }
     })
 
-    // Track action
-    trackAction()
+    // Track action (removed temporarily)
 
     // Log audit
     await prisma.auditLog.create({
@@ -106,12 +104,10 @@ export async function POST(req: NextRequest) {
       message: `Admin user ${username} created successfully`,
     })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    trackError("Create admin failed", errorMessage)
     console.error("Create admin error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to create admin user"
     }, { status: 500 })
   }
-})
+}

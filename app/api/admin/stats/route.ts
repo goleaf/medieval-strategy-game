@@ -1,38 +1,9 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
+import { trackAction, trackError, getActionCounts, getErrorLogs } from "@/lib/admin-utils"
 
-// In-memory store for tracking actions (in production, use Redis or database)
-const actionCounts: Map<number, number> = new Map() // timestamp -> count
-const errorLogs: Array<{ timestamp: Date; message: string; error: string }> = []
-
-// Track actions per minute
-export function trackAction() {
-  const now = Date.now()
-  const minute = Math.floor(now / 60000)
-  actionCounts.set(minute, (actionCounts.get(minute) || 0) + 1)
-
-  // Clean up old entries (keep last 60 minutes)
-  const cutoff = minute - 60
-  for (const [key] of actionCounts) {
-    if (key < cutoff) {
-      actionCounts.delete(key)
-    }
-  }
-}
-
-// Track errors
-export function trackError(message: string, error: string) {
-  errorLogs.push({
-    timestamp: new Date(),
-    message,
-    error,
-  })
-
-  // Keep only last 100 errors
-  if (errorLogs.length > 100) {
-    errorLogs.shift()
-  }
-}
+// Re-export for backward compatibility
+export { trackAction, trackError }
 
 export async function GET(req: NextRequest) {
   try {
@@ -59,14 +30,14 @@ export async function GET(req: NextRequest) {
     // Actions per minute (current minute)
     const now = Date.now()
     const currentMinute = Math.floor(now / 60000)
-    const actionsPerMinute = actionCounts.get(currentMinute) || 0
+    const actionsPerMinute = getActionCounts().get(currentMinute) || 0
 
     // Average actions per minute (last 10 minutes)
     let totalActions = 0
     let minuteCount = 0
     for (let i = 0; i < 10; i++) {
       const minute = currentMinute - i
-      const count = actionCounts.get(minute) || 0
+      const count = getActionCounts().get(minute) || 0
       totalActions += count
       if (count > 0) minuteCount++
     }

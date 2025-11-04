@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
 import { authenticateAdmin } from "../../middleware"
-import { trackAction, trackError } from "@/app/api/admin/stats/route"
+import { trackAction, trackError } from "@/lib/admin-utils"
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const adminAuth = await authenticateAdmin(req)

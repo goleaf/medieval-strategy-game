@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
 import type { TroopType } from "@prisma/client"
 import { authenticateAdmin } from "../../middleware"
-import { trackAction, trackError } from "@/app/api/admin/stats/route"
+import { trackAction, trackError } from "@/lib/admin-utils"
 
 interface TroopBalance {
   type: TroopType

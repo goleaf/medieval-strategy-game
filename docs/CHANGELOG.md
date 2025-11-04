@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error logging and monitoring system ✅
 - World configuration management ✅
 - **Database-backed unit balance system** ✅
+- **Map visualization dashboard with interactive world overview** ✅
+- **Admin notifications system with severity levels and types** ✅
 - Real-time statistics dashboard ✅
 - Admin authentication system with JWT tokens ✅
 - Bulk player operations (mass ban, unban, delete) ✅
@@ -40,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Implemented transaction-safe unit balance updates**
 - **Added live unit balance editing interface**
 - **Enhanced validation system for unit statistics**
+- **Created AdminNotification system with severity-based alerts**
+- **Built comprehensive map visualization with village and barbarian data**
+- **Added notification management with read/unread status tracking**
 
 ### Changed
 - Reorganized project structure with proper documentation

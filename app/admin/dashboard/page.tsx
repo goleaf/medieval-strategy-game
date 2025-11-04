@@ -17,6 +17,8 @@ export default function AdminDashboard() {
   const [editingUnitBalance, setEditingUnitBalance] = useState(false)
   const [unitBalanceForm, setUnitBalanceForm] = useState<any[]>([])
   const [mapTools, setMapTools] = useState<any>(null)
+  const [mapVisualization, setMapVisualization] = useState<any>(null)
+  const [notifications, setNotifications] = useState<any>(null)
   const [errorLogs, setErrorLogs] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState("stats")
   const [loading, setLoading] = useState(false)
@@ -73,6 +75,26 @@ export default function AdminDashboard() {
         const data = await res.json()
         if (data.success && data.data) {
           setUnitBalance(data.data)
+        }
+      } else if (tab === "mapviz") {
+        const res = await fetch('/api/admin/map/visualization', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setMapVisualization(data.data)
+        }
+      } else if (tab === "notifications") {
+        const res = await fetch('/api/admin/notifications', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setNotifications(data.data)
         }
       } else if (tab === "errors") {
         // Error logs are included in stats API
@@ -449,6 +471,18 @@ export default function AdminDashboard() {
               variant={activeTab === 'map' ? 'default' : 'ghost'}
             >
               Map Tools
+            </Button>
+            <Button
+              onClick={() => switchTab('mapviz')}
+              variant={activeTab === 'mapviz' ? 'default' : 'ghost'}
+            >
+              Map Visualization
+            </Button>
+            <Button
+              onClick={() => switchTab('notifications')}
+              variant={activeTab === 'notifications' ? 'default' : 'ghost'}
+            >
+              Notifications
             </Button>
             <Button
               onClick={() => switchTab('errors')}
@@ -1174,6 +1208,295 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {activeTab === 'mapviz' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-lg font-bold">Map Visualization</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Interactive world map showing all villages, barbarians, and game statistics
+                    </p>
+                  </div>
+
+                  {mapVisualization ? (
+                    <div className="space-y-6">
+                      {/* Map Statistics */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-blue-600">{mapVisualization.stats.totalVillages}</div>
+                          <div className="text-sm text-muted-foreground">Total Villages</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-green-600">{mapVisualization.stats.playerVillages}</div>
+                          <div className="text-sm text-muted-foreground">Player Villages</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-red-600">{mapVisualization.stats.barbarianVillages}</div>
+                          <div className="text-sm text-muted-foreground">Barbarian Camps</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-yellow-600">{mapVisualization.stats.bannedPlayers}</div>
+                          <div className="text-sm text-muted-foreground">Banned Players</div>
+                        </div>
+                      </div>
+
+                      {/* World Info */}
+                      <div className="bg-card border border-border rounded-lg p-4">
+                        <h3 className="font-semibold mb-2">World Information</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div><span className="font-medium">World:</span> {mapVisualization.worldConfig.name}</div>
+                          <div><span className="font-medium">Size:</span> {mapVisualization.worldConfig.maxX} x {mapVisualization.worldConfig.maxY}</div>
+                          <div><span className="font-medium">Speed:</span> {mapVisualization.worldConfig.speed}x</div>
+                          <div><span className="font-medium">Status:</span>
+                            <span className={mapVisualization.worldConfig.isRunning ? "text-green-600" : "text-red-600"}>
+                              {mapVisualization.worldConfig.isRunning ? "Running" : "Paused"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Villages List */}
+                      <div className="space-y-4">
+                        <h3 className="font-semibold">Villages Overview</h3>
+                        <div className="bg-card border border-border rounded-lg overflow-hidden">
+                          <div className="max-h-96 overflow-y-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="px-4 py-2 text-left">Village</th>
+                                  <th className="px-4 py-2 text-left">Owner</th>
+                                  <th className="px-4 py-2 text-left">Position</th>
+                                  <th className="px-4 py-2 text-left">Buildings</th>
+                                  <th className="px-4 py-2 text-left">Resources</th>
+                                  <th className="px-4 py-2 text-left">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {mapVisualization.villages.slice(0, 50).map((village: any) => (
+                                  <tr key={village.id} className="border-t border-border">
+                                    <td className="px-4 py-2">
+                                      <div>
+                                        <div className="font-medium">{village.name}</div>
+                                        {village.isCapital && <span className="text-xs bg-yellow-100 text-yellow-800 px-1 rounded">Capital</span>}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      {village.player ? (
+                                        <div>
+                                          <div className="font-medium">{village.player.name}</div>
+                                          {village.player.isBanned && <span className="text-xs text-red-600">Banned</span>}
+                                        </div>
+                                      ) : (
+                                        <span className="text-muted-foreground">Abandoned</span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2">({village.x}, {village.y})</td>
+                                    <td className="px-4 py-2">
+                                      <div>
+                                        <div>{village.buildings} buildings</div>
+                                        <div className="text-xs text-muted-foreground">Level {village.totalBuildingLevels}</div>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <div className="text-xs">
+                                        {village.totalResources.toLocaleString()} total
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <div className="flex gap-1">
+                                        <span className={`px-2 py-1 rounded text-xs ${
+                                          village.loyalty >= 80 ? 'bg-green-100 text-green-800' :
+                                          village.loyalty >= 50 ? 'bg-yellow-100 text-yellow-800' :
+                                          'bg-red-100 text-red-800'
+                                        }`}>
+                                          Loyalty: {village.loyalty}%
+                                        </span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                        {mapVisualization.villages.length > 50 && (
+                          <div className="text-sm text-muted-foreground text-center">
+                            Showing first 50 villages. Total: {mapVisualization.villages.length}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Barbarians List */}
+                      {mapVisualization.barbarians.length > 0 && (
+                        <div className="space-y-4">
+                          <h3 className="font-semibold">Barbarian Camps</h3>
+                          <div className="bg-card border border-border rounded-lg overflow-hidden">
+                            <div className="max-h-64 overflow-y-auto">
+                              <table className="w-full text-sm">
+                                <thead className="bg-muted">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left">Position</th>
+                                    <th className="px-4 py-2 text-left">Troops</th>
+                                    <th className="px-4 py-2 text-left">Last Attack</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {mapVisualization.barbarians.map((barbarian: any) => (
+                                    <tr key={barbarian.id} className="border-t border-border">
+                                      <td className="px-4 py-2">({barbarian.x}, {barbarian.y})</td>
+                                      <td className="px-4 py-2">
+                                        <div className="text-xs">
+                                          <div>Warriors: {barbarian.troops.warriors}</div>
+                                          <div>Spearmen: {barbarian.troops.spearmen}</div>
+                                          <div>Bowmen: {barbarian.troops.bowmen}</div>
+                                          <div>Horsemen: {barbarian.troops.horsemen}</div>
+                                          <div className="font-medium">Total: {barbarian.totalTroops}</div>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-2">
+                                        {barbarian.lastAttacked ?
+                                          new Date(barbarian.lastAttacked).toLocaleDateString() :
+                                          'Never'
+                                        }
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Loading map data...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'notifications' && (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h2 className="text-lg font-bold">Notifications</h2>
+                      <p className="text-sm text-muted-foreground">
+                        System alerts and important administrative notifications
+                      </p>
+                    </div>
+                    {notifications?.unreadCount > 0 && (
+                      <div className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium">
+                        {notifications.unreadCount} unread
+                      </div>
+                    )}
+                  </div>
+
+                  {notifications ? (
+                    <div className="space-y-4">
+                      {/* Notification Stats */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-blue-600">{notifications.total}</div>
+                          <div className="text-sm text-muted-foreground">Total Notifications</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-red-600">{notifications.unreadCount}</div>
+                          <div className="text-sm text-muted-foreground">Unread</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-yellow-600">
+                            {notifications.notifications.filter((n: any) => n.severity === 'warning').length}
+                          </div>
+                          <div className="text-sm text-muted-foreground">Warnings</div>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4">
+                          <div className="text-2xl font-bold text-red-700">
+                            {notifications.notifications.filter((n: any) => n.severity === 'critical').length}
+                          </div>
+                          <div className="text-sm text-muted-foreground">Critical</div>
+                        </div>
+                      </div>
+
+                      {/* Notifications List */}
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h3 className="font-semibold">Recent Notifications</h3>
+                          <Button variant="outline" size="sm">
+                            Create Notification
+                          </Button>
+                        </div>
+
+                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                          {notifications.notifications.length > 0 ? (
+                            notifications.notifications.map((notification: any) => (
+                              <div
+                                key={notification.id}
+                                className={`border border-border rounded-lg p-4 ${
+                                  !notification.isRead ? 'bg-blue-50 border-blue-200' : 'bg-card'
+                                }`}
+                              >
+                                <div className="flex justify-between items-start mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                      notification.severity === 'critical' ? 'bg-red-100 text-red-800' :
+                                      notification.severity === 'error' ? 'bg-red-100 text-red-800' :
+                                      notification.severity === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-blue-100 text-blue-800'
+                                    }`}>
+                                      {notification.severity.toUpperCase()}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {notification.type}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {!notification.isRead && (
+                                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                    )}
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(notification.createdAt).toLocaleString()}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <h4 className="font-medium mb-1">{notification.title}</h4>
+                                <p className="text-sm text-muted-foreground mb-2">{notification.message}</p>
+
+                                <div className="flex justify-between items-center">
+                                  <div className="text-xs text-muted-foreground">
+                                    Created by: {notification.createdBy}
+                                  </div>
+                                  <div className="flex gap-1">
+                                    {!notification.isRead && (
+                                      <Button variant="outline" size="sm">
+                                        Mark as Read
+                                      </Button>
+                                    )}
+                                    {notification.targetId && (
+                                      <Button variant="outline" size="sm">
+                                        View Details
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                              No notifications found
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Loading notifications...
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -711,6 +711,7 @@ model Admin {
   
   // Relations
   auditLogs       AuditLog[]
+  notifications   AdminNotification[]
   
   @@index([userId])
 }
@@ -723,19 +724,65 @@ enum AdminRole {
 
 model AuditLog {
   id              String    @id @default(cuid())
-  
+
   adminId         String
   admin           Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
-  
+
   action          String
   details         String?
   targetType      String
   targetId        String
-  
+
   createdAt       DateTime  @default(now())
-  
+
   @@index([adminId])
   @@index([targetType, targetId])
+}
+
+// ============================================================================
+// ADMIN NOTIFICATIONS
+// ============================================================================
+
+model AdminNotification {
+  id              String    @id @default(cuid())
+
+  adminId         String
+  admin           Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  type            NotificationType
+  title           String
+  message         String
+  severity        NotificationSeverity @default(info)
+
+  targetId        String?
+  targetType      String?
+
+  isRead          Boolean   @default(false)
+  readAt          DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([adminId])
+  @@index([type])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  SYSTEM
+  PLAYER
+  SECURITY
+  MAINTENANCE
+  BALANCE
+  REPORT
+}
+
+enum NotificationSeverity {
+  info
+  warning
+  error
+  critical
 }
 
 // ============================================================================
