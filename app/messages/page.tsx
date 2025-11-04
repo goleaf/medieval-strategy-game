@@ -17,9 +17,12 @@ interface Message {
 
 export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([])
+  const [filter, setFilter] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   const fetchMessages = async (messageFilter: string | null) => {
     try {
+      setLoading(true)
       const url = messageFilter
         ? `/api/messages?playerId=temp-player-id&type=${messageFilter}`
         : `/api/messages?playerId=temp-player-id`
@@ -30,7 +33,14 @@ export default function MessagesPage() {
       }
     } catch (error) {
       console.error("Failed to fetch messages:", error)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const switchFilter = async (newFilter: string | null) => {
+    setFilter(newFilter)
+    await fetchMessages(newFilter)
   }
 
   const markAsRead = async (messageId: string) => {
@@ -40,6 +50,7 @@ export default function MessagesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId, isRead: true }),
       })
+      await fetchMessages(filter)
       return { success: true }
     } catch (error) {
       console.error("Failed to mark as read:", error)
@@ -48,47 +59,11 @@ export default function MessagesPage() {
   }
 
   useEffect(() => {
-    fetchMessages(null)
-    if (typeof window !== "undefined") {
-      (window as any).__messagesFetchHandler = fetchMessages
-      (window as any).__messagesMarkReadHandler = markAsRead
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__messagesFetchHandler
-        delete (window as any).__messagesMarkReadHandler
-      }
-    }
+    switchFilter(null)
   }, [])
 
   return (
-    <div
-      x-data={`{
-        filter: null,
-        messages: ${JSON.stringify(messages)},
-        loading: false,
-        async switchFilter(newFilter) {
-          this.filter = newFilter;
-          this.loading = true;
-          if (window.__messagesFetchHandler) {
-            await window.__messagesFetchHandler(this.filter);
-            this.messages = ${JSON.stringify(messages)};
-          }
-          this.loading = false;
-        },
-        async markAsRead(messageId) {
-          if (window.__messagesMarkReadHandler) {
-            const result = await window.__messagesMarkReadHandler(messageId);
-            if (result.success && window.__messagesFetchHandler) {
-              await window.__messagesFetchHandler(this.filter);
-              this.messages = ${JSON.stringify(messages)};
-            }
-          }
-        }
-      }`}
-      x-init="switchFilter(null)"
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -105,27 +80,29 @@ export default function MessagesPage() {
         <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex gap-2">
             <Button
-              x-on:click="switchFilter(null)"
-              x-bind:variant="filter === null ? 'default' : 'outline'"
+              onClick={() => switchFilter(null)}
+              variant={filter === null ? 'default' : 'outline'}
             >
               All
             </Button>
             <Button
-              x-on:click="switchFilter('SYSTEM')"
-              x-bind:variant="filter === 'SYSTEM' ? 'default' : 'outline'"
+              onClick={() => switchFilter('SYSTEM')}
+              variant={filter === 'SYSTEM' ? 'default' : 'outline'}
             >
               System
             </Button>
             <Button
-              x-on:click="switchFilter('ATTACK_RESULT')"
-              x-bind:variant="filter === 'ATTACK_RESULT' ? 'default' : 'outline'"
+              onClick={() => switchFilter('ATTACK_RESULT')}
+              variant={filter === 'ATTACK_RESULT' ? 'default' : 'outline'}
             >
               Battles
             </Button>
           </div>
 
-          <div x-show="loading" className="text-center py-4">Loading...</div>
-          <div x-show="!loading">
+          {loading && (
+            <div className="text-center py-4">Loading...</div>
+          )}
+          {!loading && (
             <TextTable
               headers={["Type", "Subject", "From", "Date", "Status", "Actions"]}
               rows={messages.map((msg) => [
@@ -138,15 +115,14 @@ export default function MessagesPage() {
                   key={msg.id}
                   variant="outline"
                   size="sm"
-                  x-on:click={`markAsRead('${msg.id}')`}
-                  x-bind:disabled={`${msg.isRead}`}
+                  onClick={() => markAsRead(msg.id)}
+                  disabled={msg.isRead}
                 >
-                  <span x-show={`${msg.isRead}`}>Read</span>
-                  <span x-show={`${!msg.isRead}`}>Mark Read</span>
+                  {msg.isRead ? 'Read' : 'Mark Read'}
                 </Button>,
               ])}
             />
-          </div>
+          )}
         </div>
       </main>
     </div>

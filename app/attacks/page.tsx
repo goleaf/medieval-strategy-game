@@ -47,47 +47,12 @@ export default function AttacksPage() {
 
   useEffect(() => {
     fetchData()
-    if (typeof window !== "undefined") {
-      (window as any).__attacksFetchHandler = fetchData
-      ;(window as any).__attacksSetSelectedVillage = (id: string | null) => {
-        setSelectedVillageId(id)
-      }
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__attacksFetchHandler
-        delete (window as any).__attacksSetSelectedVillage
-      }
-    }
   }, [])
-
-  useEffect(() => {
-    // Sync Alpine.js state when React state changes
-    if (typeof window !== "undefined" && (window as any).Alpine) {
-      const alpineElement = document.querySelector('[x-data]')
-      if (alpineElement && (alpineElement as any)._x_dataStack) {
-        const alpineData = (alpineElement as any)._x_dataStack[0]
-        if (alpineData && alpineData.selectedVillageId !== selectedVillageId) {
-          alpineData.selectedVillageId = selectedVillageId || ''
-        }
-      }
-    }
-  }, [selectedVillageId])
 
   const currentVillage = villages.find(v => v.id === selectedVillageId)
 
   return (
-    <div
-      x-data={`{
-        selectedVillageId: '${selectedVillageId || ''}',
-        handleChange() {
-          if (window.__attacksSetSelectedVillage) {
-            window.__attacksSetSelectedVillage(this.selectedVillageId);
-          }
-        }
-      }`}
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -104,8 +69,8 @@ export default function AttacksPage() {
             <div className="p-3 border border-border rounded bg-secondary">
               <label className="text-sm font-bold block mb-2">Select Village</label>
               <select
-                x-model="selectedVillageId"
-                x-on:change="handleChange()"
+                value={selectedVillageId || ''}
+                onChange={(e) => setSelectedVillageId(e.target.value)}
                 className="w-full p-2 border border-border rounded bg-background"
               >
                 {villages.map((village) => (

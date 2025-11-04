@@ -17,6 +17,7 @@ type TabType = "attacks" | "scouts" | "trade"
 
 export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([])
+  const [activeTab, setActiveTab] = useState<TabType>("attacks")
 
   const fetchReports = async () => {
     try {
@@ -32,52 +33,32 @@ export default function ReportsPage() {
     }
   }
 
+  // Computed properties as functions
+  const attackReports = reports.filter(r => r.type.includes('ATTACK'))
+  const scoutReports = reports.filter(r => r.type === 'SCOUT')
+  const tradeReports = reports.filter(r => r.type === 'TRADE')
+
+  const getDisplayReports = () => {
+    switch (activeTab) {
+      case 'attacks': return attackReports
+      case 'scouts': return scoutReports
+      case 'trade': return tradeReports
+      default: return attackReports
+    }
+  }
+
+  const unreadCount = reports.filter(r => !r.isRead).length
+
   useEffect(() => {
     fetchReports()
     const interval = setInterval(fetchReports, 15000)
-    if (typeof window !== "undefined") {
-      (window as any).__reportsFetchHandler = fetchReports
-    }
     return () => {
       clearInterval(interval)
-      if (typeof window !== "undefined") {
-        delete (window as any).__reportsFetchHandler
-      }
     }
   }, [])
 
   return (
-    <div
-      x-data={`{
-        activeTab: 'attacks',
-        reports: ${JSON.stringify(reports)},
-        get attackReports() {
-          return this.reports.filter(r => r.type.includes('ATTACK'));
-        },
-        get scoutReports() {
-          return this.reports.filter(r => r.type === 'SCOUT');
-        },
-        get tradeReports() {
-          return this.reports.filter(r => r.type === 'TRADE');
-        },
-        get displayReports() {
-          if (this.activeTab === 'attacks') return this.attackReports;
-          if (this.activeTab === 'scouts') return this.scoutReports;
-          return this.tradeReports;
-        },
-        get unreadCount() {
-          return this.reports.filter(r => !r.isRead).length;
-        },
-        async refresh() {
-          if (window.__reportsFetchHandler) {
-            await window.__reportsFetchHandler();
-            this.reports = ${JSON.stringify(reports)};
-          }
-        }
-      }`}
-      x-init="refresh()"
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">

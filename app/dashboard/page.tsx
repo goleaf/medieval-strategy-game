@@ -74,46 +74,14 @@ export default function Dashboard() {
   useEffect(() => {
     fetchVillages()
     const interval = setInterval(fetchVillages, 30000) // Refresh every 30 seconds
-    if (typeof window !== "undefined") {
-      (window as any).__dashboardFetchHandler = fetchVillages
-      ;(window as any).__dashboardSetSelectedVillage = (id: string | null) => {
-        setSelectedVillageId(id)
-      }
-    }
     return () => {
       clearInterval(interval)
-      if (typeof window !== "undefined") {
-        delete (window as any).__dashboardFetchHandler
-        delete (window as any).__dashboardSetSelectedVillage
-      }
     }
   }, [fetchVillages])
 
-  useEffect(() => {
-    // Sync Alpine.js state when React state changes
-    if (typeof window !== "undefined" && (window as any).Alpine) {
-      const alpineElement = document.querySelector('[x-data]')
-      if (alpineElement && (alpineElement as any)._x_dataStack) {
-        const alpineData = (alpineElement as any)._x_dataStack[0]
-        if (alpineData && alpineData.selectedVillageId !== selectedVillageId) {
-          alpineData.selectedVillageId = selectedVillageId || ''
-        }
-      }
-    }
-  }, [selectedVillageId])
 
   return (
-    <div
-      x-data={`{
-        selectedVillageId: '${selectedVillageId || ''}',
-        handleChange() {
-          if (window.__dashboardSetSelectedVillage) {
-            window.__dashboardSetSelectedVillage(this.selectedVillageId);
-          }
-        }
-      }`}
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">🏰 Medieval Strategy</h1>
@@ -157,8 +125,8 @@ export default function Dashboard() {
                 <div className="p-3 border border-border rounded bg-secondary">
                   <label className="text-sm font-bold block mb-2">Select Village</label>
                   <select
-                    x-model="selectedVillageId"
-                    x-on:change="handleChange()"
+                    value={selectedVillageId || ''}
+                    onChange={(e) => setSelectedVillageId(e.target.value)}
                     className="w-full p-2 border border-border rounded bg-background"
                   >
                     {villages.map((village) => (

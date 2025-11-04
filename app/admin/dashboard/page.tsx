@@ -9,9 +9,12 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
   const [players, setPlayers] = useState<any[]>([])
   const [worldConfig, setWorldConfig] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState("stats")
+  const [loading, setLoading] = useState(false)
 
   const fetchData = async (tab: string) => {
     try {
+      setLoading(true)
       if (tab === "stats") {
         const res = await fetch("/api/admin/stats")
         const data = await res.json()
@@ -33,51 +36,30 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error("Failed to fetch admin data:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const switchTab = async (tab: string) => {
+    setActiveTab(tab)
+    await fetchData(tab)
+  }
+
+  const handleViewUnitBalance = async () => {
+    const res = await fetch('/api/admin/units/balance')
+    const data = await res.json()
+    if (data.success && data.data) {
+      console.log('Unit balance:', data.data)
     }
   }
 
   useEffect(() => {
-    fetchData("stats")
-    if (typeof window !== "undefined") {
-      (window as any).__adminFetchData = fetchData
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__adminFetchData
-      }
-    }
+    switchTab("stats")
   }, [])
 
   return (
-    <div
-      x-data={`{
-        activeTab: 'stats',
-        stats: ${JSON.stringify(stats)},
-        players: ${JSON.stringify(players)},
-        worldConfig: ${JSON.stringify(worldConfig)},
-        loading: false,
-        async switchTab(tab) {
-          this.activeTab = tab;
-          this.loading = true;
-          if (window.__adminFetchData) {
-            await window.__adminFetchData(tab);
-            this.stats = ${JSON.stringify(stats)};
-            this.players = ${JSON.stringify(players)};
-            this.worldConfig = ${JSON.stringify(worldConfig)};
-          }
-          this.loading = false;
-        },
-        async handleViewUnitBalance() {
-          const res = await fetch('/api/admin/units/balance');
-          const data = await res.json();
-          if (data.success && data.data) {
-            console.log('Unit balance:', data.data);
-          }
-        }
-      }`}
-      x-init="switchTab('stats')"
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -92,34 +74,35 @@ export default function AdminDashboard() {
         <div className="max-w-6xl mx-auto space-y-4">
           <div className="flex gap-2 border-b border-border">
             <Button
-              x-on:click="switchTab('stats')"
-              x-bind:variant="activeTab === 'stats' ? 'default' : 'ghost'"
+              onClick={() => switchTab('stats')}
+              variant={activeTab === 'stats' ? 'default' : 'ghost'}
             >
               Statistics
             </Button>
             <Button
-              x-on:click="switchTab('players')"
-              x-bind:variant="activeTab === 'players' ? 'default' : 'ghost'"
+              onClick={() => switchTab('players')}
+              variant={activeTab === 'players' ? 'default' : 'ghost'}
             >
               Players
             </Button>
             <Button
-              x-on:click="switchTab('world')"
-              x-bind:variant="activeTab === 'world' ? 'default' : 'ghost'"
+              onClick={() => switchTab('world')}
+              variant={activeTab === 'world' ? 'default' : 'ghost'}
             >
               World Config
             </Button>
             <Button
-              x-on:click="switchTab('units')"
-              x-bind:variant="activeTab === 'units' ? 'default' : 'ghost'"
+              onClick={() => switchTab('units')}
+              variant={activeTab === 'units' ? 'default' : 'ghost'}
             >
               Unit Balance
             </Button>
           </div>
 
-          <div x-show="loading" className="text-center py-8">Loading...</div>
-          <div x-show="!loading">
-            <div x-show="activeTab === 'stats' && stats">
+          {loading && <div className="text-center py-8">Loading...</div>}
+          {!loading && (
+            <>
+              {activeTab === 'stats' && stats && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">System Statistics</h2>
                   <TextTable
@@ -135,9 +118,9 @@ export default function AdminDashboard() {
                     ]}
                   />
                 </div>
-            </div>
+              )}
 
-            <div x-show="activeTab === 'players'">
+              {activeTab === 'players' && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">Player Management</h2>
                   <TextTable
@@ -159,9 +142,9 @@ export default function AdminDashboard() {
                     ])}
                   />
                 </div>
-            </div>
+              )}
 
-            <div x-show="activeTab === 'world' && worldConfig">
+              {activeTab === 'world' && worldConfig && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">World Configuration</h2>
                   <TextTable
@@ -182,20 +165,21 @@ export default function AdminDashboard() {
                   />
                   <Button variant="outline">Edit Configuration</Button>
                 </div>
-            </div>
+              )}
 
-            <div x-show="activeTab === 'units'">
+              {activeTab === 'units' && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">Unit Balance</h2>
                   <p className="text-sm text-muted-foreground">
                     View and manage troop balance settings
                   </p>
-                  <Button variant="outline" x-on:click={`handleViewUnitBalance()`}>
+                  <Button variant="outline" onClick={handleViewUnitBalance}>
                     View Unit Balance
                   </Button>
                 </div>
-            </div>
-          </div>
+              )}
+            </>
+          )}
         </div>
       </main>
     </div>

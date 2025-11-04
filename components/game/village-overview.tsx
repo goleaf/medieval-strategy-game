@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import type { Village, Building, Troop } from "@prisma/client"
-import { useEffect } from "react"
+import { useState } from "react"
 import { CountdownTimer } from "./countdown-timer"
 import { TextTable } from "./text-table"
 
@@ -13,32 +13,20 @@ interface VillageOverviewProps {
 }
 
 export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
-  useEffect(() => {
-    if (typeof window !== "undefined" && onUpgrade) {
-      (window as any).__villageOverviewUpgradeHandler = onUpgrade
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null)
+
+  const toggleBuilding = (buildingId: string) => {
+    setSelectedBuildingId(selectedBuildingId === buildingId ? null : buildingId)
+  }
+
+  const handleUpgrade = async (buildingId: string) => {
+    if (onUpgrade) {
+      await onUpgrade(buildingId)
     }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__villageOverviewUpgradeHandler
-      }
-    }
-  }, [onUpgrade])
+  }
 
   return (
-    <div
-      x-data={`{
-        selectedBuildingId: null,
-        toggleBuilding(buildingId) {
-          this.selectedBuildingId = this.selectedBuildingId === buildingId ? null : buildingId;
-        },
-        async handleUpgrade(buildingId) {
-          if (window.__villageOverviewUpgradeHandler) {
-            await window.__villageOverviewUpgradeHandler(buildingId);
-          }
-        }
-      }`}
-      className="w-full space-y-4"
-    >
+    <div className="w-full space-y-4">
       {/* Village Info */}
       <section>
         <h2 className="text-lg font-bold mb-2">{village.name}</h2>
@@ -84,21 +72,20 @@ export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
             ),
             <button
               key={`action-${building.id}`}
-              x-on:click={`toggleBuilding('${building.id}')`}
+              onClick={() => toggleBuilding(building.id)}
               className="px-2 py-1 border border-border rounded hover:bg-secondary text-sm"
             >
-              <span x-show={`selectedBuildingId === '${building.id}'`}>Hide</span>
-              <span x-show={`selectedBuildingId !== '${building.id}'`}>Select</span>
+              {selectedBuildingId === building.id ? 'Hide' : 'Select'}
             </button>,
           ])}
         />
         
         {village.buildings.map((building) => (
-          <div
-            key={building.id}
-            x-show={`selectedBuildingId === '${building.id}'`}
-            className="mt-2 p-3 border border-border rounded bg-secondary"
-          >
+          selectedBuildingId === building.id && (
+            <div
+              key={building.id}
+              className="mt-2 p-3 border border-border rounded bg-secondary"
+            >
             <div>
               <h4 className="font-bold mb-2">{building.type} (Level {building.level})</h4>
               {building.isBuilding && building.completionAt && (
@@ -110,7 +97,7 @@ export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
               )}
               {(!building.isBuilding || !building.completionAt) && (
                 <Button
-                  x-on:click={`handleUpgrade('${building.id}')`}
+                  onClick={() => handleUpgrade(building.id)}
                   className="w-full"
                 >
                   Upgrade
@@ -118,6 +105,7 @@ export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
               )}
             </div>
           </div>
+          )
         ))}
       </section>
 

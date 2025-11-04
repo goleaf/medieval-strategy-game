@@ -18,9 +18,12 @@ interface MarketOrder {
 
 export default function MarketPage() {
   const [orders, setOrders] = useState<MarketOrder[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchOrders = async () => {
     try {
+      setLoading(true)
       const res = await fetch("/api/market/orders")
       const result = await res.json()
       if (result.success && result.data) {
@@ -28,10 +31,14 @@ export default function MarketPage() {
       }
     } catch (error) {
       console.error("Failed to fetch orders:", error)
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleAccept = async (orderId: string) => {
+    setLoading(true)
+    setError(null)
     try {
       const res = await fetch("/api/market/orders", {
         method: "PATCH",
@@ -41,65 +48,25 @@ export default function MarketPage() {
       const result = await res.json()
       if (result.success) {
         await fetchOrders()
-        return { success: true }
       } else {
-        return { success: false, error: result.error || "Failed to accept order" }
+        setError(result.error || "Failed to accept order")
+        setTimeout(() => setError(null), 5000)
       }
     } catch (error) {
       console.error("Failed to accept order:", error)
-      return { success: false, error: "Failed to accept order" }
+      setError("Failed to accept order")
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     fetchOrders()
-    if (typeof window !== "undefined") {
-      (window as any).__marketAcceptHandler = handleAccept
-      (window as any).__marketFetchHandler = fetchOrders
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__marketAcceptHandler
-        delete (window as any).__marketFetchHandler
-      }
-    }
   }, [])
 
   return (
-    <div
-      x-data={`{
-        orders: ${JSON.stringify(orders)},
-        loading: false,
-        error: null,
-        async init() {
-          if (window.__marketFetchHandler) {
-            await window.__marketFetchHandler();
-            this.orders = ${JSON.stringify(orders)};
-          }
-        },
-        async handleAccept(orderId) {
-          this.loading = true;
-          this.error = null;
-          try {
-            if (window.__marketAcceptHandler) {
-              const result = await window.__marketAcceptHandler(orderId);
-              if (result.success) {
-                if (window.__marketFetchHandler) {
-                  await window.__marketFetchHandler();
-                  this.orders = ${JSON.stringify(orders)};
-                }
-              } else {
-                this.error = result.error;
-                setTimeout(() => this.error = null, 5000);
-              }
-            }
-          } finally {
-            this.loading = false;
-          }
-        }
-      }`}
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -114,9 +81,9 @@ export default function MarketPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          <div x-show="error" className="bg-destructive/10 border border-destructive rounded p-3 text-sm text-destructive" x-text="error" />
-          <div x-show="loading" className="text-center py-4">Processing...</div>
-          <div x-show="!loading">
+          {error && <div className="bg-destructive/10 border border-destructive rounded p-3 text-sm text-destructive">{error}</div>}
+          {loading && <div className="text-center py-4">Processing...</div>}
+          {!loading && (
             <TextTable
               headers={["Type", "Offering", "Requesting", "Player", "Village", "Actions"]}
               rows={orders.map((order) => [
@@ -129,13 +96,13 @@ export default function MarketPage() {
                   key={order.id}
                   variant="outline"
                   size="sm"
-                  x-on:click={`handleAccept('${order.id}')`}
+                  onClick={() => handleAccept(order.id)}
                 >
                   Accept
                 </Button>,
               ])}
             />
-          </div>
+          )}
         </div>
       </main>
     </div>
