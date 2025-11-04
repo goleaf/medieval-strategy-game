@@ -1,0 +1,758 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USERS & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  username      String    @unique
+  password      String
+  displayName   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastActiveAt  DateTime  @default(now())
+  
+  // Relations
+  players       Player[]
+  admin         Admin?
+  
+  @@index([email])
+  @@index([username])
+}
+
+// ============================================================================
+// GAME PLAYERS & ACCOUNT MANAGEMENT
+// ============================================================================
+
+model Player {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  playerName      String    @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastActiveAt    DateTime  @default(now())
+  
+  // Player Stats
+  totalPoints     Int       @default(0)
+  rank            Int       @default(0)
+  wavesSurvived   Int       @default(0)
+  troopsKilled    Int       @default(0)
+  troopsLost      Int       @default(0)
+  
+  // Status
+  isDeleted       Boolean   @default(false)
+  deletedAt       DateTime?
+  banReason       String?
+  beginnerProtectionUntil DateTime? // When beginner protection expires
+  
+  // Relations
+  villages        Village[]
+  tribe           Tribe?    @relation("TribeMembers")
+  tribeLeader     Tribe?    @relation("TribeLeader")
+  tribeInvites    TribeInvite[]
+  messages        Message[]
+  marketOrders    MarketOrder[]
+  
+  @@index([userId])
+  @@index([playerName])
+  @@index([totalPoints])
+  @@index([rank])
+}
+
+// ============================================================================
+// WORLD & MAP
+// ============================================================================
+
+model WorldConfig {
+  id              String    @id @default(cuid())
+  
+  // World Settings
+  worldName       String    @default("Medieval World")
+  maxX            Int       @default(100)
+  maxY            Int       @default(100)
+  speed           Int       @default(1)
+  unitSpeed       Float     @default(1.0) // Base unit speed multiplier
+  
+  // Game State
+  isRunning       Boolean   @default(true)
+  startedAt       DateTime  @default(now())
+  
+  // Game Balance
+  resourcePerTick Int       @default(10)
+  productionMultiplier Float @default(1.0)
+  tickIntervalMinutes Int   @default(5) // Game tick interval in minutes
+  constructionQueueLimit Int @default(3) // Max buildings in queue per village
+  
+  // Night Bonus & Protection
+  nightBonusMultiplier Float @default(1.2) // Defense bonus during night (20% increase)
+  beginnerProtectionHours Int @default(72) // Hours of protection for new players
+  beginnerProtectionEnabled Boolean @default(true) // Enable/disable beginner protection
+  
+  @@unique([id])
+}
+
+model Continent {
+  id              String    @id @default(cuid())
+  name            String
+  x               Int
+  y               Int
+  size            Int
+  createdAt       DateTime  @default(now())
+  
+  villages        Village[]
+  
+  @@unique([x, y])
+  @@index([name])
+}
+
+model Barbarian {
+  id              String    @id @default(cuid())
+  x               Int
+  y               Int
+  villageId       String?
+  village         Village?  @relation(fields: [villageId], references: [id])
+  
+  // Barbarian Troops
+  warriors        Int       @default(100)
+  spearmen        Int       @default(50)
+  bowmen          Int       @default(30)
+  horsemen        Int       @default(10)
+  
+  spawnedAt       DateTime  @default(now())
+  lastAttackAt    DateTime?
+  
+  @@index([x, y])
+  @@index([villageId])
+}
+
+// ============================================================================
+// VILLAGES & BUILDINGS
+// ============================================================================
+
+model Village {
+  id              String    @id @default(cuid())
+  playerId        String
+  player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  continentId     String
+  continent       Continent @relation(fields: [continentId], references: [id])
+  
+  x               Int
+  y               Int
+  name            String    @default("New Village")
+  isCapital       Boolean   @default(false)
+  
+  // Resources
+  wood            Int       @default(1000)
+  stone           Int       @default(1000)
+  iron            Int       @default(500)
+  gold            Int       @default(200)
+  food            Int       @default(2000)
+  population      Int       @default(100)
+  
+  // Production Rates (per game tick)
+  woodProduction  Int       @default(10)
+  stoneProduction Int       @default(8)
+  ironProduction  Int       @default(5)
+  goldProduction  Int       @default(2)
+  foodProduction  Int       @default(15)
+  
+  // Loyalty & Control
+  loyalty         Int       @default(100) // 0-100, affects production
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastTickAt      DateTime  @default(now())
+  
+  // Relations
+  buildings       Building[]
+  troops          Troop[]
+  attacks         Attack[]
+  defenses        Defense[]
+  barbarians      Barbarian[]
+  marketOrders    MarketOrder[]
+  messages        Message[]
+  
+  @@unique([x, y])
+  @@index([playerId])
+  @@index([continentId])
+  @@index([isCapital])
+}
+
+model Building {
+  id              String    @id @default(cuid())
+  villageId       String
+  village         Village   @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  
+  type            BuildingType
+  level           Int       @default(1)
+  
+  // Construction
+  isBuilding      Boolean   @default(false)
+  completionAt    DateTime?
+  queuePosition   Int?      // Position in construction queue (null if not queued)
+  
+  // Refund tracking
+  constructionCostWood  Int @default(0)
+  constructionCostStone Int @default(0)
+  constructionCostIron  Int @default(0)
+  constructionCostGold  Int @default(0)
+  constructionCostFood  Int @default(0)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  troopProduction TroopProduction[]
+  research        Research?
+  
+  @@unique([villageId, type])
+  @@index([villageId])
+  @@index([villageId, queuePosition])
+}
+
+enum BuildingType {
+  HEADQUARTER
+  MARKETPLACE
+  BARRACKS
+  STABLES
+  WATCHTOWER
+  WALL
+  WAREHOUSE
+  GRANARY
+  SAWMILL
+  QUARRY
+  IRON_MINE
+  TREASURY
+  ACADEMY
+  TEMPLE
+  HOSPITAL
+  FARM
+  SNOB
+}
+
+// ============================================================================
+// TROOPS & MILITARY
+// ============================================================================
+
+model Troop {
+  id              String    @id @default(cuid())
+  villageId       String
+  village         Village   @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  
+  type            TroopType
+  quantity        Int       @default(0)
+  
+  // Combat Stats
+  health          Int       @default(100)
+  attack          Int       @default(10)
+  defense         Int       @default(5)
+  speed           Int       @default(5)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  movements       Movement[]
+  attackUnits     AttackUnit[]
+  defenseUnits    DefenseUnit[]
+  
+  @@unique([villageId, type])
+  @@index([villageId])
+}
+
+enum TroopType {
+  WARRIOR
+  SPEARMAN
+  BOWMAN
+  HORSEMAN
+  PALADIN
+  EAGLE_KNIGHT
+  RAM
+  CATAPULT
+  KNIGHT
+  NOBLEMAN
+}
+
+model TroopProduction {
+  id              String    @id @default(cuid())
+  buildingId      String
+  building        Building  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  
+  troopType       TroopType
+  quantity        Int
+  completionAt    DateTime
+  
+  @@index([buildingId])
+  @@index([completionAt])
+}
+
+// ============================================================================
+// MOVEMENT & NAVIGATION
+// ============================================================================
+
+model Movement {
+  id              String    @id @default(cuid())
+  troopId         String
+  troop           Troop     @relation(fields: [troopId], references: [id], onDelete: Cascade)
+  
+  fromX           Int
+  fromY           Int
+  toX             Int
+  toY             Int
+  
+  // Pathfinding
+  path            String    // JSON encoded path
+  currentStep     Int       @default(0)
+  totalSteps      Int
+  
+  // Timing
+  startedAt       DateTime  @default(now())
+  arrivalAt       DateTime
+  
+  // Status
+  status          MovementStatus @default(IN_PROGRESS)
+  cancelledAt     DateTime?
+  
+  // Relations
+  attack          Attack?
+  
+  @@index([troopId])
+  @@index([arrivalAt])
+}
+
+enum MovementStatus {
+  IN_PROGRESS
+  ARRIVED
+  CANCELLED
+}
+
+// ============================================================================
+// COMBAT & ATTACKS
+// ============================================================================
+
+model Attack {
+  id              String    @id @default(cuid())
+  
+  // Attacker
+  fromVillageId   String
+  fromVillage     Village   @relation(fields: [fromVillageId], references: [id], onDelete: Cascade)
+  
+  // Defender
+  toVillageId     String?
+  toVillage       Village?  @relation(fields: [toVillageId], references: [id], onDelete: SetNull)
+  
+  // Movement
+  movementId      String    @unique
+  movement        Movement  @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  
+  // Attack Type
+  type            AttackType
+  
+  // Resources (only for raid)
+  targetWood      Int       @default(0)
+  targetStone     Int       @default(0)
+  targetIron      Int       @default(0)
+  targetGold      Int       @default(0)
+  targetFood      Int       @default(0)
+  
+  // Status
+  status          AttackStatus @default(IN_PROGRESS)
+  arrivalAt       DateTime
+  resolvedAt      DateTime?
+  
+  // Result
+  attackerWon     Boolean?
+  lootWood        Int       @default(0)
+  lootStone       Int       @default(0)
+  lootIron        Int       @default(0)
+  lootGold        Int       @default(0)
+  lootFood        Int       @default(0)
+  
+  // Scouting results (JSON encoded)
+  scoutingData    String?   // Units, buildings, storage revealed
+  
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  attackUnits     AttackUnit[]
+  defenseUnits    DefenseUnit[]
+  
+  @@index([fromVillageId])
+  @@index([toVillageId])
+  @@index([status])
+  @@index([arrivalAt])
+}
+
+enum AttackType {
+  RAID
+  CONQUEST
+  SUPPRESSION
+  SCOUT
+}
+
+enum AttackStatus {
+  IN_PROGRESS
+  ARRIVED
+  RESOLVED
+  CANCELLED
+}
+
+model AttackUnit {
+  id              String    @id @default(cuid())
+  attackId        String
+  attack          Attack    @relation(fields: [attackId], references: [id], onDelete: Cascade)
+  
+  troopId         String
+  troop           Troop     @relation(fields: [troopId], references: [id], onDelete: Cascade)
+  
+  quantity        Int
+  
+  @@index([attackId])
+  @@index([troopId])
+}
+
+model DefenseUnit {
+  id              String    @id @default(cuid())
+  attackId        String
+  attack          Attack    @relation(fields: [attackId], references: [id], onDelete: Cascade)
+  
+  troopId         String
+  troop           Troop     @relation(fields: [troopId], references: [id], onDelete: Cascade)
+  
+  quantity        Int
+  
+  @@index([attackId])
+  @@index([troopId])
+}
+
+model Defense {
+  id              String    @id @default(cuid())
+  villageId       String
+  village         Village   @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  
+  // Defense Configuration
+  wallLevel       Int       @default(0)
+  archers         Int       @default(0)
+  catapults       Int       @default(0)
+  
+  // Defensive Perks
+  bonusAgainstRaid      Int @default(0)
+  bonusAgainstConquest  Int @default(0)
+  
+  @@unique([villageId])
+  @@index([villageId])
+}
+
+// ============================================================================
+// RESEARCH & TECHNOLOGY
+// ============================================================================
+
+model Research {
+  id              String    @id @default(cuid())
+  buildingId      String    @unique
+  building        Building  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  
+  type            ResearchType
+  level           Int       @default(0)
+  
+  // Research Progress
+  isResearching   Boolean   @default(false)
+  completionAt    DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([buildingId])
+}
+
+enum ResearchType {
+  CONSTRUCTION
+  MILITARY_OFFENSE
+  MILITARY_DEFENSE
+  ECONOMY
+  CULTURE
+}
+
+// ============================================================================
+// TRIBES & DIPLOMACY
+// ============================================================================
+
+model Tribe {
+  id              String    @id @default(cuid())
+  
+  name            String    @unique
+  tag             String    @unique @db.VarChar(4)
+  description     String?
+  motd            String?   // Message of the day
+  
+  leaderId        String    @unique
+  leader          Player    @relation("TribeLeader", fields: [leaderId], references: [id], onDelete: Restrict)
+  
+  // Tribe Stats
+  totalPoints     Int       @default(0)
+  memberCount     Int       @default(1)
+  
+  // Settings
+  joinPolicy      JoinPolicy @default(INVITE_ONLY)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  members         Player[]  @relation("TribeMembers")
+  invites         TribeInvite[]
+  alliances       Alliance[]
+  attacks         War[]     @relation("AttackerTribe")
+  defenses        War[]     @relation("DefenderTribe")
+  
+  @@index([name])
+  @@index([leaderId])
+}
+
+enum JoinPolicy {
+  INVITE_ONLY
+  OPEN
+  APPLICATION
+}
+
+model TribeInvite {
+  id              String    @id @default(cuid())
+  
+  tribeId         String
+  tribe           Tribe     @relation(fields: [tribeId], references: [id], onDelete: Cascade)
+  
+  playerId        String
+  player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  status          InviteStatus @default(PENDING)
+  
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime
+  
+  @@unique([tribeId, playerId])
+  @@index([tribeId])
+  @@index([playerId])
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+model Alliance {
+  id              String    @id @default(cuid())
+  
+  tribe1Id        String
+  tribe1          Tribe     @relation(fields: [tribe1Id], references: [id], onDelete: Cascade)
+  
+  tribe2Id        String
+  
+  // Alliance Duration
+  startedAt       DateTime  @default(now())
+  endsAt          DateTime?
+  
+  createdAt       DateTime  @default(now())
+  
+  @@unique([tribe1Id, tribe2Id])
+  @@index([tribe1Id])
+}
+
+model War {
+  id              String    @id @default(cuid())
+  
+  attackerTribeId String
+  attackerTribe   Tribe     @relation("AttackerTribe", fields: [attackerTribeId], references: [id], onDelete: Cascade)
+  
+  defenderTribeId String
+  defenderTribe   Tribe     @relation("DefenderTribe", fields: [defenderTribeId], references: [id], onDelete: Cascade)
+  
+  status          WarStatus @default(ACTIVE)
+  
+  startedAt       DateTime  @default(now())
+  endsAt          DateTime?
+  
+  @@unique([attackerTribeId, defenderTribeId])
+  @@index([attackerTribeId])
+  @@index([defenderTribeId])
+}
+
+enum WarStatus {
+  ACTIVE
+  TRUCE
+  PEACE
+}
+
+// ============================================================================
+// MARKETPLACE & TRADING
+// ============================================================================
+
+model MarketOrder {
+  id              String    @id @default(cuid())
+  
+  villageId       String
+  village         Village   @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  
+  playerId        String
+  player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  type            OrderType
+  
+  // Offering
+  offeringResource  Resource
+  offeringAmount    Int
+  
+  // Requesting
+  requestResource   Resource
+  requestAmount     Int
+  
+  // Status
+  status          OrderStatus @default(OPEN)
+  acceptedById    String?
+  acceptedAt      DateTime?
+  
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime
+  
+  @@index([villageId])
+  @@index([playerId])
+  @@index([status])
+}
+
+enum OrderType {
+  SELL
+  BUY
+}
+
+enum Resource {
+  WOOD
+  STONE
+  IRON
+  GOLD
+  FOOD
+}
+
+enum OrderStatus {
+  OPEN
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+// ============================================================================
+// MESSAGING & COMMUNICATION
+// ============================================================================
+
+model Message {
+  id              String    @id @default(cuid())
+  
+  senderId        String
+  sender          Player    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  
+  villageId       String?
+  village         Village?  @relation(fields: [villageId], references: [id], onDelete: SetNull)
+  
+  type            MessageType
+  subject         String
+  content         String
+  
+  isRead          Boolean   @default(false)
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([villageId])
+  @@index([senderId])
+  @@index([isRead])
+}
+
+enum MessageType {
+  ATTACK_INCOMING
+  ATTACK_RESULT
+  SCOUT_RESULT
+  SCOUT_DETECTED
+  ALLY_REQUEST
+  DIPLOMACY
+  TRADE_OFFER
+  SYSTEM
+}
+
+// ============================================================================
+// ADMIN & MODERATION
+// ============================================================================
+
+model Admin {
+  id              String    @id @default(cuid())
+  
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  role            AdminRole @default(MODERATOR)
+  
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  auditLogs       AuditLog[]
+  
+  @@index([userId])
+}
+
+enum AdminRole {
+  MODERATOR
+  ADMIN
+  SUPERADMIN
+}
+
+model AuditLog {
+  id              String    @id @default(cuid())
+  
+  adminId         String
+  admin           Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  
+  action          String
+  details         String?
+  targetType      String
+  targetId        String
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([adminId])
+  @@index([targetType, targetId])
+}
+
+// ============================================================================
+// LEADERBOARD CACHE
+// ============================================================================
+
+model LeaderboardCache {
+  id              String    @id @default(cuid())
+  
+  type            LeaderboardType
+  data            String    // JSON encoded leaderboard data
+  updatedAt       DateTime  @default(now()) @updatedAt
+  
+  @@unique([type])
+  @@index([type])
+}
+
+enum LeaderboardType {
+  PLAYERS
+  TRIBES
+  VILLAGES
+}
