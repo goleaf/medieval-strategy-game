@@ -97,6 +97,14 @@ export default function LoginPage() {
             </Link>
           </p>
         </div>
+
+        <div className="border border-border rounded p-4 bg-muted/50">
+          <h3 className="text-sm font-bold mb-2">Demo Login</h3>
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p><strong>Admin:</strong> admin@game.local / pass123</p>
+            <p><strong>Demo User:</strong> demo@game.local / pass123</p>
+          </div>
+        </div>
       </div>
     </main>
   )

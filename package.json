@@ -9,6 +9,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node scripts/seed.ts",
+    "prisma:create-users": "ts-node scripts/create-users.ts",
     "start": "next start"
   },
   "dependencies": {

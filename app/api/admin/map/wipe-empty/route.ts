@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
+import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
 export async function POST(req: NextRequest) {
   try {

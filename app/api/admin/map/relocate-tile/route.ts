@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
+import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
 export async function POST(req: NextRequest) {
   try {
@@ -63,6 +64,9 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // Track action
+    trackAction()
+
     // Log action
     await prisma.auditLog.create({
       data: {
@@ -82,6 +86,8 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     )
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    trackError("Relocate tile failed", errorMessage)
     console.error("[v0] Relocate tile error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
