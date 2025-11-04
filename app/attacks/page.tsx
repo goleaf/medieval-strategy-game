@@ -6,7 +6,7 @@ import { AttackPlanner } from "@/components/game/attack-planner"
 import { TextTable } from "@/components/game/text-table"
 import { CountdownTimer } from "@/components/game/countdown-timer"
 import { Button } from "@/components/ui/button"
-// Types inferred from API responses
+
 type VillageWithTroops = {
   id: string
   name: string
@@ -25,10 +25,7 @@ interface Attack {
 export default function AttacksPage() {
   const [villages, setVillages] = useState<VillageWithTroops[]>([])
   const [attacks, setAttacks] = useState<Attack[]>([])
-
-  useEffect(() => {
-    fetchData()
-  }, [])
+  const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
 
   const fetchData = async () => {
     try {
@@ -36,6 +33,9 @@ export default function AttacksPage() {
       const villagesData = await villagesRes.json()
       if (villagesData.success && villagesData.data) {
         setVillages(villagesData.data)
+        if (villagesData.data.length > 0 && !selectedVillageId) {
+          setSelectedVillageId(villagesData.data[0].id)
+        }
       }
 
       // TODO: Fetch attacks from API
@@ -45,18 +45,14 @@ export default function AttacksPage() {
     }
   }
 
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const currentVillage = villages.find(v => v.id === selectedVillageId)
+
   return (
-    <div
-      x-data={`{
-        selectedVillageId: ${villages.length > 0 ? `'${villages[0].id}'` : 'null'},
-        villages: ${JSON.stringify(villages)},
-        attacks: ${JSON.stringify(attacks)},
-        get currentVillage() {
-          return this.villages.find(v => v.id === this.selectedVillageId);
-        }
-      }`}
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -73,7 +69,8 @@ export default function AttacksPage() {
             <div className="p-3 border border-border rounded bg-secondary">
               <label className="text-sm font-bold block mb-2">Select Village</label>
               <select
-                x-model="selectedVillageId"
+                value={selectedVillageId || ""}
+                onChange={(e) => setSelectedVillageId(e.target.value)}
                 className="w-full p-2 border border-border rounded bg-background"
               >
                 {villages.map((village) => (
@@ -84,23 +81,25 @@ export default function AttacksPage() {
               </select>
             </div>
           )}
-          <div x-show="currentVillage">
+          {currentVillage && (
             <section>
               <h2 className="text-lg font-bold mb-2">Plan Attack</h2>
-              {villages.length > 0 && (
-                <AttackPlanner
-                  villageId={villages[0].id}
-                  troops={villages[0].troops}
-                  onLaunchAttack={fetchData}
-                />
-              )}
+              <AttackPlanner
+                villageId={currentVillage.id}
+                troops={currentVillage.troops}
+                onLaunchAttack={async () => {
+                  await fetchData()
+                }}
+              />
             </section>
-          </div>
+          )}
 
           <section>
             <h2 className="text-lg font-bold mb-2">Active Attacks</h2>
-            <div x-show="attacks.length === 0" className="text-sm text-muted-foreground">No active attacks</div>
-            <div x-show="attacks.length > 0">
+            {attacks.length === 0 && (
+              <div className="text-sm text-muted-foreground">No active attacks</div>
+            )}
+            {attacks.length > 0 && (
               <TextTable
                 headers={["Type", "From", "To", "Status", "Arrival", "Actions"]}
                 rows={attacks.map((attack) => [
@@ -116,11 +115,10 @@ export default function AttacksPage() {
                   </Button>,
                 ])}
               />
-            </div>
+            )}
           </section>
         </div>
       </main>
     </div>
   )
 }
-

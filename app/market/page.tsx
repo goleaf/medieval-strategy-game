@@ -86,6 +86,7 @@ export default function MarketPage() {
               if (result.success) {
                 if (window.__marketFetchHandler) {
                   await window.__marketFetchHandler();
+                  this.orders = ${JSON.stringify(orders)};
                 }
               } else {
                 this.error = result.error;

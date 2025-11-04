@@ -18,10 +18,10 @@ interface Message {
 export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([])
 
-  const fetchMessages = async (filter: string | null) => {
+  const fetchMessages = async (messageFilter: string | null) => {
     try {
-      const url = filter
-        ? `/api/messages?playerId=temp-player-id&type=${filter}`
+      const url = messageFilter
+        ? `/api/messages?playerId=temp-player-id&type=${messageFilter}`
         : `/api/messages?playerId=temp-player-id`
       const res = await fetch(url)
       const result = await res.json()
@@ -40,7 +40,6 @@ export default function MessagesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId, isRead: true }),
       })
-      // Refresh with current filter
       return { success: true }
     } catch (error) {
       console.error("Failed to mark as read:", error)
@@ -153,4 +152,3 @@ export default function MessagesPage() {
     </div>
   )
 }
-

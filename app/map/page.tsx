@@ -20,11 +20,16 @@ interface MapTile {
 export default function MapPage() {
   const [tiles, setTiles] = useState<MapTile[]>([])
   const [bounds, setBounds] = useState({ startX: 0, startY: 0, endX: 20, endY: 20 })
+  const [centerX, setCenterX] = useState(50)
+  const [centerY, setCenterY] = useState(50)
+  const [zoom, setZoom] = useState(1)
+  const [loading, setLoading] = useState(false)
 
-  const fetchMap = async (centerX: number, centerY: number, zoom: number) => {
+  const fetchMap = async (x: number, y: number, z: number) => {
+    setLoading(true)
     try {
       const res = await fetch(
-        `/api/world/map?centerX=${centerX}&centerY=${centerY}&zoom=${zoom}&playerId=temp-player-id`,
+        `/api/world/map?centerX=${x}&centerY=${y}&zoom=${z}&playerId=temp-player-id`,
       )
       const data = await res.json()
       if (data.success && data.data) {
@@ -33,52 +38,34 @@ export default function MapPage() {
       }
     } catch (error) {
       console.error("Failed to fetch map:", error)
+    } finally {
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      (window as any).__mapFetchHandler = fetchMap
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__mapFetchHandler
-      }
-    }
+    fetchMap(centerX, centerY, zoom)
   }, [])
+
+  const moveMap = (dx: number, dy: number) => {
+    const newX = Math.max(0, Math.min(100, centerX + dx))
+    const newY = Math.max(0, Math.min(100, centerY + dy))
+    setCenterX(newX)
+    setCenterY(newY)
+    fetchMap(newX, newY, zoom)
+  }
+
+  const adjustZoom = (delta: number) => {
+    const newZoom = Math.max(0.5, Math.min(5, zoom + delta))
+    setZoom(newZoom)
+    fetchMap(centerX, centerY, newZoom)
+  }
 
   const gridWidth = bounds.endX - bounds.startX
   const gridHeight = bounds.endY - bounds.startY
 
   return (
-    <div
-      x-data={`{
-        centerX: 50,
-        centerY: 50,
-        zoom: 1,
-        loading: false,
-        async init() {
-          await this.fetchMap();
-        },
-        async fetchMap() {
-          this.loading = true;
-          if (window.__mapFetchHandler) {
-            await window.__mapFetchHandler(this.centerX, this.centerY, this.zoom);
-          }
-          this.loading = false;
-        },
-        moveMap(dx, dy) {
-          this.centerX = Math.max(0, Math.min(100, this.centerX + dx));
-          this.centerY = Math.max(0, Math.min(100, this.centerY + dy));
-          this.fetchMap();
-        },
-        adjustZoom(delta) {
-          this.zoom = Math.max(0.5, Math.min(5, this.zoom + delta));
-          this.fetchMap();
-        }
-      }`}
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -86,11 +73,11 @@ export default function MapPage() {
           </Link>
           <h1 className="text-xl font-bold">🗺️ World Map</h1>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" x-on:click="adjustZoom(-0.5)">
+            <Button variant="outline" size="sm" onClick={() => adjustZoom(-0.5)}>
               -
             </Button>
-            <span className="text-xs" x-text="`Zoom: ${zoom}x`" />
-            <Button variant="outline" size="sm" x-on:click="adjustZoom(0.5)">
+            <span className="text-xs">Zoom: {zoom}x</span>
+            <Button variant="outline" size="sm" onClick={() => adjustZoom(0.5)}>
               +
             </Button>
           </div>
@@ -99,21 +86,22 @@ export default function MapPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          <div x-show="loading" className="text-center py-4">Loading map...</div>
-          <div x-show="!loading">
+          {loading && <div className="text-center py-4">Loading map...</div>}
+          {!loading && (
+            <>
             <div className="flex items-center justify-between text-sm">
-              <div x-text="`Center: (${centerX}, ${centerY}) | View: ${gridWidth}×${gridHeight}`" />
+                <div>Center: ({centerX}, {centerY}) | View: {gridWidth}×{gridHeight}</div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" x-on:click="moveMap(0, -5)">
+                  <Button variant="outline" size="sm" onClick={() => moveMap(0, -5)}>
                   ↑
                 </Button>
-                <Button variant="outline" size="sm" x-on:click="moveMap(-5, 0)">
+                  <Button variant="outline" size="sm" onClick={() => moveMap(-5, 0)}>
                   ←
                 </Button>
-                <Button variant="outline" size="sm" x-on:click="moveMap(5, 0)">
+                  <Button variant="outline" size="sm" onClick={() => moveMap(5, 0)}>
                   →
                 </Button>
-                <Button variant="outline" size="sm" x-on:click="moveMap(0, 5)">
+                  <Button variant="outline" size="sm" onClick={() => moveMap(0, 5)}>
                   ↓
                 </Button>
               </div>
@@ -122,7 +110,7 @@ export default function MapPage() {
             <div className="overflow-x-auto">
               <div className="inline-block">
                 <div className="grid gap-0 font-mono text-xs" style={{ gridTemplateColumns: `repeat(${gridWidth}, minmax(20px, 1fr))` }}>
-                  {tiles.map((tile, idx) => {
+                    {tiles.map((tile) => {
                     const symbol = tile.fogOfWar
                       ? "?"
                       : tile.village
@@ -150,7 +138,8 @@ export default function MapPage() {
               <div>· = Empty</div>
               <div>? = Unknown (fog of war)</div>
             </div>
-          </div>
+            </>
+          )}
         </div>
       </main>
     </div>
