@@ -740,10 +740,10 @@ export default function AdminDashboard() {
                     Spawn Barbarian
                   </Button>
                 </div>
-              </Card>
+              </section>
 
-              <Card className="p-6 space-y-4">
-                <h2 className="font-bold text-lg">Relocate Tile</h2>
+              <section className="border border-border rounded p-4 space-y-4">
+                <h2 className="text-lg font-bold">Relocate Tile</h2>
                 <div className="space-y-2">
                   <div>
                     <label className="text-sm font-medium">Village ID</label>
@@ -778,18 +778,18 @@ export default function AdminDashboard() {
                     Relocate Tile
                   </Button>
                 </div>
-              </Card>
+              </section>
 
-              <Card className="p-6 space-y-4 md:col-span-2">
-                <h2 className="font-bold text-lg">Wipe Empty Villages</h2>
-                <p className="text-sm text-muted-foreground">
+              <section className="border border-border rounded p-4 md:col-span-2">
+                <h2 className="text-lg font-bold mb-2">Wipe Empty Villages</h2>
+                <p className="text-sm text-muted-foreground mb-2">
                   This will delete all villages with no buildings above level 1, no troops, and minimal
                   resources.
                 </p>
                 <Button onClick={handleWipeEmpty} variant="destructive" className="w-full">
                   Wipe Empty Villages
                 </Button>
-              </Card>
+              </section>
             </div>
           </TabsContent>
 

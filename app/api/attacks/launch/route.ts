@@ -71,7 +71,13 @@ export async function POST(req: NextRequest) {
 
     // Calculate distance and travel time
     const distance = MovementService.distance(fromVillage.x, fromVillage.y, toX, toY)
-    const travelTimeMs = await MovementService.calculateTravelTime(distance, troopSpeeds)
+    const slowestSpeed = MovementService.getSlowestSpeed(
+      units.map((u) => {
+        const troop = fromVillage.troops.find((t) => t.id === u.troopId)!
+        return { speed: troop.speed, quantity: u.quantity }
+      }),
+    )
+    const travelTimeMs = await MovementService.calculateTravelTime(distance, [slowestSpeed])
     const arrivalAt = new Date(Date.now() + travelTimeMs)
 
     // Create movement

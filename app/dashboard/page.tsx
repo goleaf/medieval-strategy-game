@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { VillageOverview } from "@/components/game/village-overview"
-import { TroopTrainer } from "@/components/game/troop-trainer"
-import { AttackPlanner } from "@/components/game/attack-planner"
-import { Navbar } from "@/components/game/navbar"
+import { ResourceDisplay } from "@/components/game/resource-display"
+import { BuildingQueue } from "@/components/game/building-queue"
 import { Button } from "@/components/ui/button"
 import type { Village, Building, Troop } from "@prisma/client"
 
@@ -18,16 +18,25 @@ export default function Dashboard() {
       try {
         const res = await fetch("/api/villages?playerId=temp-player-id")
         const data = await res.json()
-        setVillages(data)
-        if (data.length > 0) {
-          setSelectedVillage(data[0].id)
+        if (data.success && data.data) {
+          setVillages(data.data)
+          if (data.data.length > 0) {
+            setSelectedVillage(data.data[0].id)
+          }
+        } else {
+          setVillages([])
         }
+      } catch (error) {
+        console.error("Failed to fetch villages:", error)
+        setVillages([])
       } finally {
         setLoading(false)
       }
     }
 
     fetchVillages()
+    const interval = setInterval(fetchVillages, 30000) // Refresh every 30 seconds
+    return () => clearInterval(interval)
   }, [])
 
   const currentVillage = villages.find((v) => v.id === selectedVillage)
@@ -41,20 +50,37 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <Navbar
-        villages={villages}
-        currentVillageId={selectedVillage}
-        onVillageChange={setSelectedVillage}
-        notificationCount={0}
-      />
-      
-      <main className="flex-1 w-full p-4">
-        <div className="w-full max-w-4xl mx-auto space-y-4">
-          <h1 className="text-2xl font-bold">Dashboard</h1>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border p-4">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <h1 className="text-xl font-bold">🏰 Medieval Strategy</h1>
+          <nav className="flex gap-2 text-sm">
+            <Link href="/map" className="px-2 py-1 hover:bg-secondary rounded">
+              🗺️ Map
+            </Link>
+            <Link href="/attacks" className="px-2 py-1 hover:bg-secondary rounded">
+              ⚔️ Attacks
+            </Link>
+            <Link href="/market" className="px-2 py-1 hover:bg-secondary rounded">
+              🏪 Market
+            </Link>
+            <Link href="/messages" className="px-2 py-1 hover:bg-secondary rounded">
+              💬 Messages
+            </Link>
+            <Link href="/tribes" className="px-2 py-1 hover:bg-secondary rounded">
+              👥 Tribes
+            </Link>
+            <Link href="/leaderboard" className="px-2 py-1 hover:bg-secondary rounded">
+              📊 Rankings
+            </Link>
+          </nav>
+        </div>
+      </header>
 
+      <main className="w-full p-4">
+        <div className="max-w-4xl mx-auto space-y-4">
           {villages.length === 0 ? (
-            <section>
+            <section className="text-center py-8">
               <p className="mb-4">No villages yet. Create your first village!</p>
               <Button>Create Village</Button>
             </section>
@@ -62,39 +88,86 @@ export default function Dashboard() {
             <>
               {currentVillage && (
                 <>
-                  <VillageOverview
-                    village={currentVillage}
-                    onUpgrade={async (buildingId) => {
-                      // TODO: Implement upgrade
-                      console.log("Upgrade building:", buildingId)
-                    }}
-                  />
-                  
+                  <section className="space-y-2">
+                    <h2 className="text-lg font-bold">{currentVillage.name}</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Position: ({currentVillage.x}, {currentVillage.y}) • Loyalty: {currentVillage.loyalty}%
+                    </p>
+                  </section>
+
                   <section>
-                    <h2 className="text-xl font-bold mb-2">Train Troops</h2>
-                    <TroopTrainer
-                      villageId={currentVillage.id}
-                      onTrain={async () => {
-                        // Refresh villages
-                        const res = await fetch("/api/villages?playerId=temp-player-id")
-                        const data = await res.json()
-                        setVillages(data)
+                    <h3 className="text-md font-semibold mb-2">Resources</h3>
+                    <ResourceDisplay
+                      wood={currentVillage.wood}
+                      stone={currentVillage.stone}
+                      iron={currentVillage.iron}
+                      gold={currentVillage.gold}
+                      food={currentVillage.food}
+                      woodProduction={currentVillage.woodProduction}
+                      stoneProduction={currentVillage.stoneProduction}
+                      ironProduction={currentVillage.ironProduction}
+                      goldProduction={currentVillage.goldProduction}
+                      foodProduction={currentVillage.foodProduction}
+                      showProduction
+                    />
+                  </section>
+
+                  <section>
+                    <BuildingQueue
+                      buildings={currentVillage.buildings}
+                      onCancel={async (buildingId) => {
+                        try {
+                          // TODO: Implement cancel API call
+                          console.log("Cancel building:", buildingId)
+                        } catch (error) {
+                          console.error("Failed to cancel building:", error)
+                        }
                       }}
                     />
                   </section>
-                  
+
                   <section>
-                    <h2 className="text-xl font-bold mb-2">Plan Attack</h2>
-                    <AttackPlanner
-                      villageId={currentVillage.id}
-                      troops={currentVillage.troops}
-                      onLaunchAttack={async () => {
-                        // Refresh villages
-                        const res = await fetch("/api/villages?playerId=temp-player-id")
-                        const data = await res.json()
-                        setVillages(data)
+                    <VillageOverview
+                      village={currentVillage}
+                      onUpgrade={async (buildingId) => {
+                        try {
+                          const res = await fetch("/api/buildings/upgrade", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ buildingId }),
+                          })
+                          const data = await res.json()
+                          if (data.success) {
+                            // Refresh villages
+                            const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
+                            const villagesData = await villagesRes.json()
+                            if (villagesData.success && villagesData.data) {
+                              setVillages(villagesData.data)
+                            }
+                          }
+                        } catch (error) {
+                          console.error("Failed to upgrade building:", error)
+                        }
                       }}
                     />
+                  </section>
+
+                  <section className="flex gap-2">
+                    <Link href={`/village/${currentVillage.id}`}>
+                      <Button variant="outline" className="w-full">
+                        View Details
+                      </Button>
+                    </Link>
+                    <Link href={`/village/${currentVillage.id}/buildings`}>
+                      <Button variant="outline" className="w-full">
+                        Buildings
+                      </Button>
+                    </Link>
+                    <Link href={`/village/${currentVillage.id}/troops`}>
+                      <Button variant="outline" className="w-full">
+                        Troops
+                      </Button>
+                    </Link>
                   </section>
                 </>
               )}

@@ -56,6 +56,32 @@ export async function processGameTick() {
       await TroopService.completeTroopTraining(production.id)
     }
 
+    // Process arrived movements
+    const arrivedMovements = await prisma.movement.findMany({
+      where: {
+        status: "IN_PROGRESS",
+        arrivalAt: { lte: now },
+      },
+      include: { attack: true },
+    })
+
+    console.log(`[v0] Processing ${arrivedMovements.length} arrived movements`)
+    for (const movement of arrivedMovements) {
+      // Mark movement as arrived
+      await prisma.movement.update({
+        where: { id: movement.id },
+        data: { status: "ARRIVED" },
+      })
+
+      // If movement has an attack, mark attack as arrived
+      if (movement.attack) {
+        await prisma.attack.update({
+          where: { id: movement.attack.id },
+          data: { status: "ARRIVED" },
+        })
+      }
+    }
+
     // Process arrived attacks
     const arrivedAttacks = await prisma.attack.findMany({
       where: {
@@ -66,7 +92,11 @@ export async function processGameTick() {
 
     console.log(`[v0] Resolving ${arrivedAttacks.length} attacks`)
     for (const attack of arrivedAttacks) {
-      await CombatService.processAttackResolution(attack.id)
+      try {
+        await CombatService.processAttackResolution(attack.id)
+      } catch (error) {
+        console.error(`[v0] Error resolving attack ${attack.id}:`, error)
+      }
     }
 
     // Process expired market orders
