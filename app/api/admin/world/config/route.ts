@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
-import { trackAction } from "@/app/api/admin/stats/route"
+import { requireAdminAuth } from "../../middleware"
+import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
-export async function GET() {
+export const GET = requireAdminAuth(async (req: NextRequest, context) => {
   try {
     const config = await prisma.worldConfig.findFirst()
 
@@ -20,7 +21,7 @@ export async function GET() {
   }
 }
 
-export async function PUT(req: NextRequest) {
+export const PUT = requireAdminAuth(async (req: NextRequest, context) => {
   try {
     const {
       worldName,
@@ -67,7 +68,7 @@ export async function PUT(req: NextRequest) {
     // Log action
     await prisma.auditLog.create({
       data: {
-        adminId: "admin-id",
+        adminId: context.admin.adminId,
         action: "UPDATE_WORLD_CONFIG",
         details: "Updated world configuration",
         targetType: "WORLD_CONFIG",

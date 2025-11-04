@@ -2,6 +2,16 @@
 
 A full-stack browser-based strategy game built with Next.js, Prisma, and SQLite. Inspired by Tribal Wars.
 
+## 📚 Documentation
+
+📖 **[Complete Documentation](./docs/README.md)** - Comprehensive guides for development, administration, and deployment
+
+Key documentation areas:
+- **Admin Features**: Complete admin dashboard with player management, world configuration, and monitoring
+- **API Reference**: Detailed API endpoints with examples
+- **Development Guide**: Code standards, architecture, and contribution guidelines
+- **Changelog**: Version history and feature updates
+
 ## Features
 
 - **Village Management** - Build and expand multiple villages with resource production
@@ -163,9 +173,21 @@ Combat uses a power-based algorithm with randomness:
 - \`GET /api/tribes\` - List all tribes
 
 ### Admin
-- \`GET /api/admin/players\` - List all players (admin only)
-- \`POST /api/admin/players/[id]/ban\` - Ban player
-- \`POST /api/admin/players/[id]/adjust-resources\` - Adjust village resources
+- \`POST /api/admin/auth/login\` - Admin authentication
+- \`POST /api/admin/auth/create-admin\` - Create admin users
+- \`GET /api/admin/stats\` - System statistics and monitoring
+- \`GET /api/admin/players\` - Player management dashboard
+- \`POST /api/admin/players/[id]/ban\` - Ban/unban players
+- \`POST /api/admin/players/[id]/rename\` - Rename players
+- \`POST /api/admin/players/[id]/move-village\` - Relocate player villages
+- \`POST /api/admin/players/bulk\` - Bulk player operations
+- \`GET /api/admin/world/config\` - World configuration
+- \`POST /api/admin/world/config\` - Update world settings
+- \`GET /api/admin/speed-templates\` - Speed templates
+- \`POST /api/admin/speed-templates\` - Apply speed configurations
+- \`POST /api/admin/map/spawn-barbarian\` - Spawn barbarian villages
+- \`POST /api/admin/map/relocate-tile\` - Move villages
+- \`POST /api/admin/map/wipe-empty\` - Clean up empty villages
 
 ### Leaderboard
 - \`GET /api/leaderboard\` - Get global rankings

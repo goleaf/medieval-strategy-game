@@ -1,0 +1,201 @@
+# Medieval Strategy Game - Cursor Rules
+
+## Project Overview
+This is a Next.js medieval strategy game built with TypeScript, Prisma, and Tailwind CSS. It features real-time gameplay, admin dashboard, and comprehensive game mechanics.
+
+## Code Style & Structure
+
+### File Organization
+- `/app` - Next.js 13+ app router structure
+- `/components` - React components organized by feature
+- `/lib` - Business logic and utilities
+- `/docs` - Documentation for all features
+- `/prisma` - Database schema and migrations
+
+### Naming Conventions
+- **Files**: kebab-case for components and pages, camelCase for utilities
+- **Components**: PascalCase, descriptive names
+- **Functions**: camelCase, verb-based names
+- **Constants**: UPPER_SNAKE_CASE
+- **Types**: PascalCase with descriptive names
+
+### Code Patterns
+
+#### API Routes
+```typescript
+// Good: Clear structure with validation
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    // Validate input
+    const validatedData = validateInput(body)
+    // Process data
+    const result = await processData(validatedData)
+    return NextResponse.json({ success: true, data: result })
+  } catch (error) {
+    return NextResponse.json({ error: "Something went wrong" }, { status: 500 })
+  }
+}
+```
+
+#### React Components
+```typescript
+// Good: Clean, functional components with proper typing
+interface Props {
+  data: SomeType
+  onAction: (id: string) => void
+}
+
+export function ComponentName({ data, onAction }: Props) {
+  return (
+    <div>
+      {/* Component content */}
+    </div>
+  )
+}
+```
+
+#### Database Operations
+```typescript
+// Good: Use transactions for related operations
+await prisma.$transaction(async (tx) => {
+  await tx.table1.update({ where: { id }, data: updateData1 })
+  await tx.table2.update({ where: { id }, data: updateData2 })
+})
+```
+
+## Development Guidelines
+
+### Error Handling
+- Always use try/catch blocks in API routes
+- Return consistent error responses
+- Log errors appropriately
+- Validate user input on both client and server
+
+### State Management
+- Use React hooks for component state
+- Consider context for shared state
+- Keep state as local as possible
+
+### Performance
+- Use React.memo for expensive components
+- Implement proper loading states
+- Optimize database queries with proper indexing
+
+## Game-Specific Rules
+
+### Admin Features
+- All admin actions must be logged to AuditLog table
+- Validate all inputs server-side
+- Use confirmation dialogs for destructive actions
+- Provide clear success/error feedback
+
+### API Design
+- Use RESTful conventions
+- Return consistent response format: `{ success: boolean, data?: any, error?: string }`
+- Include proper HTTP status codes
+- Document all endpoints in `/docs/api/`
+
+### Database Schema
+- Use Prisma for type safety
+- Add proper indexes for performance
+- Use transactions for complex operations
+- Include migration files for schema changes
+
+## Documentation Requirements
+
+### Feature Documentation
+- Every feature must have documentation in `/docs/features/`
+- Include setup, usage, and API examples
+- Update docs when features change
+
+### API Documentation
+- Document all endpoints in `/docs/api/`
+- Include request/response examples
+- Specify required parameters and validation rules
+
+### Changelog
+- Maintain `/docs/CHANGELOG.md`
+- Update with every significant change
+- Follow semantic versioning
+
+## Testing & Quality
+
+### Code Quality
+- Run TypeScript checks
+- Fix all linting errors
+- Write clear, readable code
+- Add comments for complex logic
+
+### Database Migrations
+- Always test migrations on development database
+- Include rollback plans for complex changes
+- Update schema documentation
+
+## Security
+
+### Input Validation
+- Validate all user inputs
+- Sanitize database queries
+- Use parameterized queries
+- Implement rate limiting for sensitive endpoints
+
+### Authentication
+- Secure admin endpoints
+- Implement proper session management
+- Log security events
+
+## Git Workflow
+
+### Commits
+- Write clear, descriptive commit messages
+- Commit related changes together
+- Use conventional commit format when possible
+
+### Branching
+- Use feature branches for new work
+- Merge to main only after review
+- Keep branches focused and short-lived
+
+## File Structure Standards
+
+### Components
+```
+components/
+  ui/           # Reusable UI components
+  game/         # Game-specific components
+  admin/        # Admin dashboard components
+```
+
+### API Routes
+```
+app/api/
+  admin/        # Admin-only endpoints
+  game/         # Game logic endpoints
+  auth/         # Authentication endpoints
+```
+
+### Documentation
+```
+docs/
+  features/     # Feature documentation
+  api/          # API documentation
+  admin/        # Admin feature docs
+  development/  # Development guides
+```
+
+## Performance Considerations
+
+- Optimize images and assets
+- Use proper caching strategies
+- Minimize bundle size
+- Profile performance regularly
+
+## Accessibility
+
+- Include proper ARIA labels
+- Ensure keyboard navigation
+- Maintain proper color contrast
+- Test with screen readers
+
+Remember: Clean code is readable, maintainable, and scalable. Always consider the impact of your changes on the overall system.

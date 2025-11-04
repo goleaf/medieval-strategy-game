@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
+import { requireAdminAuth } from "../middleware"
 
 // GET all players with pagination and search
-export async function GET(req: NextRequest) {
+export const GET = requireAdminAuth(async (req: NextRequest, context) => {
   try {
     const page = Number.parseInt(req.nextUrl.searchParams.get("page") || "1")
     const limit = Number.parseInt(req.nextUrl.searchParams.get("limit") || "50")
@@ -18,24 +19,34 @@ export async function GET(req: NextRequest) {
       ]
     }
 
-    const [players, total] = await Promise.all([
-      prisma.player.findMany({
-        where,
-        include: { user: true, tribe: true },
-        orderBy: { totalPoints: "desc" },
-        skip,
-        take: limit,
-      }),
-      prisma.player.count({ where }),
-    ])
-
-    return NextResponse.json(
-      {
-        players,
-        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    const players = await prisma.player.findMany({
+      where,
+      include: {
+        villages: {
+          select: {
+            id: true,
+            name: true,
+            x: true,
+            y: true,
+          },
+        },
       },
-      { status: 200 },
-    )
+      orderBy: { totalPoints: "desc" },
+      take: 100, // Limit for admin dashboard
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: players.map(player => ({
+        id: player.id,
+        playerName: player.playerName,
+        totalPoints: player.totalPoints,
+        rank: player.rank,
+        villages: player.villages,
+        isDeleted: player.isDeleted,
+        banReason: player.banReason,
+      })),
+    }, { status: 200 })
   } catch (error) {
     console.error("[v0] Get players error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
