@@ -25,7 +25,6 @@ interface Attack {
 export default function AttacksPage() {
   const [villages, setVillages] = useState<VillageWithTroops[]>([])
   const [attacks, setAttacks] = useState<Attack[]>([])
-  const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
 
   const fetchData = async () => {
     try {
@@ -33,9 +32,6 @@ export default function AttacksPage() {
       const villagesData = await villagesRes.json()
       if (villagesData.success && villagesData.data) {
         setVillages(villagesData.data)
-        if (villagesData.data.length > 0 && !selectedVillageId) {
-          setSelectedVillageId(villagesData.data[0].id)
-        }
       }
 
       // TODO: Fetch attacks from API
@@ -47,12 +43,36 @@ export default function AttacksPage() {
 
   useEffect(() => {
     fetchData()
+    if (typeof window !== "undefined") {
+      (window as any).__attacksFetchHandler = fetchData
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__attacksFetchHandler
+      }
+    }
   }, [])
 
-  const currentVillage = villages.find(v => v.id === selectedVillageId)
-
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div
+      x-data={`{
+        selectedVillageId: ${villages.length > 0 ? `'${villages[0].id}'` : 'null'},
+        villages: ${JSON.stringify(villages)},
+        attacks: ${JSON.stringify(attacks)},
+        get currentVillage() {
+          return this.villages.find(v => v.id === this.selectedVillageId);
+        },
+        async refresh() {
+          if (window.__attacksFetchHandler) {
+            await window.__attacksFetchHandler();
+            this.villages = ${JSON.stringify(villages)};
+            this.attacks = ${JSON.stringify(attacks)};
+          }
+        }
+      }`}
+      x-init="refresh()"
+      className="min-h-screen bg-background text-foreground"
+    >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -65,41 +85,38 @@ export default function AttacksPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          {villages.length > 1 && (
-            <div className="p-3 border border-border rounded bg-secondary">
-              <label className="text-sm font-bold block mb-2">Select Village</label>
-              <select
-                value={selectedVillageId || ""}
-                onChange={(e) => setSelectedVillageId(e.target.value)}
-                className="w-full p-2 border border-border rounded bg-background"
-              >
-                {villages.map((village) => (
-                  <option key={village.id} value={village.id}>
-                    {village.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          {currentVillage && (
+          <div x-show="villages.length > 1" className="p-3 border border-border rounded bg-secondary">
+            <label className="text-sm font-bold block mb-2">Select Village</label>
+            <select
+              x-model="selectedVillageId"
+              className="w-full p-2 border border-border rounded bg-background"
+            >
+              {villages.map((village) => (
+                <option key={village.id} value={village.id}>
+                  {village.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div x-show="currentVillage">
             <section>
               <h2 className="text-lg font-bold mb-2">Plan Attack</h2>
               <AttackPlanner
-                villageId={currentVillage.id}
-                troops={currentVillage.troops}
+                villageId={currentVillage?.id || ''}
+                troops={currentVillage?.troops || []}
                 onLaunchAttack={async () => {
-                  await fetchData()
+                  if (window.__attacksFetchHandler) {
+                    await (window as any).__attacksFetchHandler()
+                  }
                 }}
               />
             </section>
-          )}
+          </div>
 
           <section>
             <h2 className="text-lg font-bold mb-2">Active Attacks</h2>
-            {attacks.length === 0 && (
-              <div className="text-sm text-muted-foreground">No active attacks</div>
-            )}
-            {attacks.length > 0 && (
+            <div x-show="attacks.length === 0" className="text-sm text-muted-foreground">No active attacks</div>
+            <div x-show="attacks.length > 0">
               <TextTable
                 headers={["Type", "From", "To", "Status", "Arrival", "Actions"]}
                 rows={attacks.map((attack) => [
@@ -115,7 +132,7 @@ export default function AttacksPage() {
                   </Button>,
                 ])}
               />
-            )}
+            </div>
           </section>
         </div>
       </main>

@@ -13,8 +13,11 @@ interface Report {
   isRead: boolean
 }
 
+type TabType = "attacks" | "scouts" | "trade"
+
 export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([])
+  const [activeTab, setActiveTab] = useState<TabType>("attacks")
 
   const fetchReports = async () => {
     try {
@@ -33,15 +36,7 @@ export default function ReportsPage() {
   useEffect(() => {
     fetchReports()
     const interval = setInterval(fetchReports, 15000)
-    if (typeof window !== "undefined") {
-      (window as any).__reportsFetchHandler = fetchReports
-    }
-    return () => {
-      clearInterval(interval)
-      if (typeof window !== "undefined") {
-        delete (window as any).__reportsFetchHandler
-      }
-    }
+    return () => clearInterval(interval)
   }, [])
 
   const attackReports = reports.filter((r) => r.type.includes("ATTACK"))
@@ -49,45 +44,17 @@ export default function ReportsPage() {
   const tradeReports = reports.filter((r) => r.type === "TRADE")
   const unreadCount = reports.filter((r) => !r.isRead).length
 
+  const displayReports = activeTab === "attacks" ? attackReports : activeTab === "scouts" ? scoutReports : tradeReports
+
   return (
-    <div
-      x-data={`{
-        activeTab: 'attacks',
-        reports: ${JSON.stringify(reports)},
-        get attackReports() {
-          return this.reports.filter(r => r.type.includes('ATTACK'));
-        },
-        get scoutReports() {
-          return this.reports.filter(r => r.type === 'SCOUT');
-        },
-        get tradeReports() {
-          return this.reports.filter(r => r.type === 'TRADE');
-        },
-        get displayReports() {
-          if (this.activeTab === 'attacks') return this.attackReports;
-          if (this.activeTab === 'scouts') return this.scoutReports;
-          return this.tradeReports;
-        },
-        get unreadCount() {
-          return this.reports.filter(r => !r.isRead).length;
-        },
-        async refresh() {
-          if (window.__reportsFetchHandler) {
-            await window.__reportsFetchHandler();
-            this.reports = ${JSON.stringify(reports)};
-          }
-        }
-      }`}
-      x-init="refresh()"
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
             ← Back
           </Link>
           <h1 className="text-xl font-bold">
-            📬 Reports <span x-show="unreadCount > 0" x-text="`(${unreadCount})`" />
+            📬 Reports {unreadCount > 0 && `(${unreadCount})`}
           </h1>
           <div className="w-16" />
         </div>
@@ -97,29 +64,29 @@ export default function ReportsPage() {
         <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex gap-2">
             <Button
-              x-on:click="activeTab = 'attacks'"
-              x-bind:variant="activeTab === 'attacks' ? 'default' : 'outline'"
+              onClick={() => setActiveTab("attacks")}
+              variant={activeTab === "attacks" ? "default" : "outline"}
             >
-              Attacks (<span x-text="attackReports.length" />)
+              Attacks ({attackReports.length})
             </Button>
             <Button
-              x-on:click="activeTab = 'scouts'"
-              x-bind:variant="activeTab === 'scouts' ? 'default' : 'outline'"
+              onClick={() => setActiveTab("scouts")}
+              variant={activeTab === "scouts" ? "default" : "outline"}
             >
-              Scouts (<span x-text="scoutReports.length" />)
+              Scouts ({scoutReports.length})
             </Button>
             <Button
-              x-on:click="activeTab = 'trade'"
-              x-bind:variant="activeTab === 'trade' ? 'default' : 'outline'"
+              onClick={() => setActiveTab("trade")}
+              variant={activeTab === "trade" ? "default" : "outline"}
             >
-              Trade (<span x-text="tradeReports.length" />)
+              Trade ({tradeReports.length})
             </Button>
           </div>
 
           <TextTable
             headers={["Subject", "Date", "Status", "Action"]}
-            rows={reports.map((report) => [
-              <span key="subject" x-bind:class={`${!report.isRead ? 'font-bold' : ''}`}>
+            rows={displayReports.map((report) => [
+              <span key="subject" className={!report.isRead ? "font-bold" : ""}>
                 {report.subject}
               </span>,
               <span key="date" className="text-sm">
