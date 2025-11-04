@@ -1,10 +1,21 @@
 import { prisma } from "@/lib/db"
 import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
-import { requireAdminAuth } from "../../middleware"
+import { authenticateAdmin } from "../../middleware"
 import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
-export const POST = requireAdminAuth(async (req: NextRequest, context) => {
+export async function POST(req: NextRequest) {
+  const adminAuth = await authenticateAdmin(req)
+
+  if (!adminAuth) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Admin authentication required"
+    }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    })
+  }
   try {
     const { username, email, password, displayName, role = "MODERATOR" } = await req.json()
 
@@ -70,7 +81,7 @@ export const POST = requireAdminAuth(async (req: NextRequest, context) => {
     // Log audit
     await prisma.auditLog.create({
       data: {
-        adminId: context.admin.adminId,
+        adminId: adminAuth.adminId,
         action: "CREATE_ADMIN",
         details: `Created admin user: ${username} (${role})`,
         targetType: "ADMIN",

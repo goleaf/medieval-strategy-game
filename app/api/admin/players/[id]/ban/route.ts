@@ -1,10 +1,22 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAdminAuth } from "../../middleware"
+import { authenticateAdmin } from "../../middleware"
 import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
-export const POST = requireAdminAuth(async (req: NextRequest, context) => {
-  const { id } = context.params as { id: string }
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const adminAuth = await authenticateAdmin(req)
+
+  if (!adminAuth) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Admin authentication required"
+    }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    })
+  }
+
+  const { id } = params
   try {
     const { reason, duration } = await req.json()
 
@@ -35,7 +47,7 @@ export const POST = requireAdminAuth(async (req: NextRequest, context) => {
     // Log action
     await prisma.auditLog.create({
       data: {
-        adminId: context.admin.adminId,
+        adminId: adminAuth.adminId,
         action: "BAN_PLAYER",
         details: `Banned player ${player.playerName} for: ${reason}`,
         targetType: "PLAYER",

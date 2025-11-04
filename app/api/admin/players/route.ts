@@ -1,9 +1,20 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAdminAuth } from "../middleware"
+import { authenticateAdmin } from "../middleware"
 
 // GET all players with pagination and search
-export const GET = requireAdminAuth(async (req: NextRequest, context) => {
+export async function GET(req: NextRequest) {
+  const adminAuth = await authenticateAdmin(req)
+
+  if (!adminAuth) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Admin authentication required"
+    }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    })
+  }
   try {
     const page = Number.parseInt(req.nextUrl.searchParams.get("page") || "1")
     const limit = Number.parseInt(req.nextUrl.searchParams.get("limit") || "50")

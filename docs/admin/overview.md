@@ -21,10 +21,12 @@ This document describes the admin features implemented for the Medieval Strategy
 - **UI**: Admin Dashboard → Unit Balance tab
 - **Features**:
   - View all troop types with costs and stats
+  - Edit unit costs and combat statistics in real-time
+  - Database-backed storage with transaction safety
   - Guardrails: Stat sum validation (min 50, max 200)
-  - Ensures all stats are positive
-  - Ensures all costs are non-negative
-  - Read-only view (to modify, update troop-service.ts or implement DB-backed system)
+  - Ensures all stats are positive and costs are non-negative
+  - Live preview of balance changes before saving
+  - Audit logging of all balance modifications
 
 ### 3. Player Moderation
 - **Location**: `/app/api/admin/players/[id]/`
@@ -158,11 +160,11 @@ The admin dashboard (`/app/admin/dashboard/page.tsx`) includes:
 
 ## Future Enhancements
 
-- Implement database-backed unit balance system
-- Add action tracking to all API routes
-- Implement proper error logging service
-- Add admin authentication/authorization
-- Add bulk operations for player moderation
-- Add map visualization tools
-- Add real-time stats via WebSocket
+- Add map visualization tools with interactive world map
+- Implement real-time statistics via WebSocket connections
+- Add advanced player analytics and behavior tracking
+- Create automated balance testing tools
+- Implement scheduled maintenance operations
+- Add multi-admin collaboration features
+- Create custom reporting and analytics dashboards
 

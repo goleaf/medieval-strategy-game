@@ -14,6 +14,8 @@ export default function AdminDashboard() {
   const [worldConfig, setWorldConfig] = useState<any>(null)
   const [speedTemplates, setSpeedTemplates] = useState<any>(null)
   const [unitBalance, setUnitBalance] = useState<any>(null)
+  const [editingUnitBalance, setEditingUnitBalance] = useState(false)
+  const [unitBalanceForm, setUnitBalanceForm] = useState<any[]>([])
   const [mapTools, setMapTools] = useState<any>(null)
   const [errorLogs, setErrorLogs] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState("stats")
@@ -63,7 +65,11 @@ export default function AdminDashboard() {
           setSpeedTemplates(data.data)
         }
       } else if (tab === "units") {
-        const res = await fetch('/api/admin/units/balance')
+        const res = await fetch('/api/admin/units/balance', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
         const data = await res.json()
         if (data.success && data.data) {
           setUnitBalance(data.data)
@@ -134,6 +140,54 @@ export default function AdminDashboard() {
   const handleCancelWorldConfigEdit = () => {
     setEditingWorldConfig(false)
     setWorldConfigForm({})
+  }
+
+  const handleEditUnitBalance = () => {
+    setUnitBalanceForm(unitBalance.map((unit: any) => ({
+      type: unit.type,
+      cost: { ...unit.cost },
+      stats: { ...unit.stats }
+    })))
+    setEditingUnitBalance(true)
+  }
+
+  const handleSaveUnitBalance = async () => {
+    try {
+      const res = await fetch('/api/admin/units/balance', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+        },
+        body: JSON.stringify({ balances: unitBalanceForm }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        alert('Unit balance updated successfully!')
+        setEditingUnitBalance(false)
+        // Refresh unit balance
+        const balanceRes = await fetch('/api/admin/units/balance', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const balanceData = await balanceRes.json()
+        if (balanceData.success && balanceData.data) {
+          setUnitBalance(balanceData.data)
+        }
+      } else {
+        alert('Failed to update unit balance: ' + (data.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Failed to save unit balance:', error)
+      alert('Failed to save unit balance')
+    }
+  }
+
+  const handleCancelUnitBalanceEdit = () => {
+    setEditingUnitBalance(false)
+    setUnitBalanceForm([])
   }
 
   const handleSpawnBarbarian = async () => {
@@ -322,7 +376,7 @@ export default function AdminDashboard() {
         },
         body: JSON.stringify({ templateId }),
       })
-      const data = await res.json()
+    const data = await res.json()
 
       if (data.success) {
         alert(data.message || 'Speed template applied successfully!')
@@ -563,23 +617,23 @@ export default function AdminDashboard() {
 
                   {!editingWorldConfig ? (
                     <>
-                      <TextTable
-                        headers={["Setting", "Value"]}
-                        rows={[
-                          ["World Name", worldConfig.worldName || "Medieval World"],
-                          ["Max X", worldConfig.maxX?.toString() || "100"],
-                          ["Max Y", worldConfig.maxY?.toString() || "100"],
-                          ["Speed", worldConfig.speed?.toString() || "1"],
-                          ["Unit Speed", worldConfig.unitSpeed?.toString() || "1.0"],
-                          ["Resource Per Tick", worldConfig.resourcePerTick?.toString() || "10"],
-                          ["Production Multiplier", worldConfig.productionMultiplier?.toString() || "1.0"],
-                          ["Tick Interval (minutes)", worldConfig.tickIntervalMinutes?.toString() || "5"],
-                          ["Night Bonus", worldConfig.nightBonusMultiplier?.toString() || "1.2"],
-                          ["Beginner Protection (hours)", worldConfig.beginnerProtectionHours?.toString() || "72"],
+                  <TextTable
+                    headers={["Setting", "Value"]}
+                    rows={[
+                      ["World Name", worldConfig.worldName || "Medieval World"],
+                      ["Max X", worldConfig.maxX?.toString() || "100"],
+                      ["Max Y", worldConfig.maxY?.toString() || "100"],
+                      ["Speed", worldConfig.speed?.toString() || "1"],
+                      ["Unit Speed", worldConfig.unitSpeed?.toString() || "1.0"],
+                      ["Resource Per Tick", worldConfig.resourcePerTick?.toString() || "10"],
+                      ["Production Multiplier", worldConfig.productionMultiplier?.toString() || "1.0"],
+                      ["Tick Interval (minutes)", worldConfig.tickIntervalMinutes?.toString() || "5"],
+                      ["Night Bonus", worldConfig.nightBonusMultiplier?.toString() || "1.2"],
+                      ["Beginner Protection (hours)", worldConfig.beginnerProtectionHours?.toString() || "72"],
                           ["Beginner Protection Enabled", worldConfig.beginnerProtectionEnabled ? "Yes" : "No"],
-                          ["Game Running", worldConfig.isRunning ? "Yes" : "No"],
-                        ]}
-                      />
+                      ["Game Running", worldConfig.isRunning ? "Yes" : "No"],
+                    ]}
+                  />
                       <Button variant="outline" onClick={handleEditWorldConfig}>
                         Edit Configuration
                       </Button>
@@ -710,33 +764,185 @@ export default function AdminDashboard() {
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold">Unit Balance</h2>
                   <p className="text-sm text-muted-foreground">
-                    View troop balance settings and combat statistics
+                    View and edit troop balance settings and combat statistics
                   </p>
 
-                  {unitBalance ? (
-                    <div className="space-y-4">
-                      <TextTable
-                        headers={["Unit", "Health", "Attack", "Defense", "Speed", "Wood", "Stone", "Iron", "Gold", "Food"]}
-                        rows={Object.entries(unitBalance).map(([unitName, unitData]: [string, any]) => [
-                          unitName,
-                          unitData.health?.toString() || "0",
-                          unitData.attack?.toString() || "0",
-                          unitData.defense?.toString() || "0",
-                          unitData.speed?.toString() || "0",
-                          unitData.costWood?.toString() || "0",
-                          unitData.costStone?.toString() || "0",
-                          unitData.costIron?.toString() || "0",
-                          unitData.costGold?.toString() || "0",
-                          unitData.costFood?.toString() || "0",
-                        ])}
-                      />
-                      <div className="text-sm text-muted-foreground">
-                        Note: To modify unit balance, update the troop-service.ts file or implement a database-backed system.
-                      </div>
-                    </div>
+                  {!editingUnitBalance ? (
+                    <>
+                      {unitBalance ? (
+                        <div className="space-y-4">
+                          <TextTable
+                            headers={["Unit", "Health", "Attack", "Defense", "Speed", "Wood", "Stone", "Iron", "Gold", "Food"]}
+                            rows={unitBalance.map((unit: any) => [
+                              unit.type,
+                              unit.stats.health?.toString() || "0",
+                              unit.stats.attack?.toString() || "0",
+                              unit.stats.defense?.toString() || "0",
+                              unit.stats.speed?.toString() || "0",
+                              unit.cost.wood?.toString() || "0",
+                              unit.cost.stone?.toString() || "0",
+                              unit.cost.iron?.toString() || "0",
+                              unit.cost.gold?.toString() || "0",
+                              unit.cost.food?.toString() || "0",
+                            ])}
+                          />
+                          <div className="flex gap-2">
+                            <Button variant="outline" onClick={handleEditUnitBalance}>
+                              Edit Unit Balance
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          No unit balance data available
+                        </div>
+                      )}
+                    </>
                   ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No unit balance data available
+                    <div className="space-y-6">
+                      <div className="text-sm text-muted-foreground">
+                        Edit unit costs and combat statistics. Changes will be saved to the database.
+                      </div>
+
+                      <div className="grid gap-4">
+                        {unitBalanceForm.map((unit: any, index: number) => (
+                          <div key={unit.type} className="border border-border rounded-lg p-4">
+                            <h3 className="font-semibold mb-3">{unit.type}</h3>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              {/* Stats */}
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Health</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.stats.health}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].stats.health = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Attack</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.stats.attack}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].stats.attack = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Defense</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.stats.defense}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].stats.defense = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Speed</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.stats.speed}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].stats.speed = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+                              {/* Costs */}
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Wood</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.cost.wood}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].cost.wood = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Stone</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.cost.stone}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].cost.stone = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Iron</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.cost.iron}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].cost.iron = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Gold</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.cost.gold}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].cost.gold = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Food</Label>
+                                <Input
+                                  type="number"
+                                  value={unit.cost.food}
+                                  onChange={(e) => {
+                                    const newForm = [...unitBalanceForm]
+                                    newForm[index].cost.food = parseInt(e.target.value) || 0
+                                    setUnitBalanceForm(newForm)
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button onClick={handleSaveUnitBalance}>
+                          Save Changes
+                        </Button>
+                        <Button variant="outline" onClick={handleCancelUnitBalanceEdit}>
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -964,7 +1170,7 @@ export default function AdminDashboard() {
                           disabled={mapToolsForm.wipeEmpty.confirmText !== 'WIPE_EMPTY_VILLAGES'}
                         >
                           Wipe Empty Villages
-                        </Button>
+                  </Button>
                       </div>
                     </div>
                   </div>

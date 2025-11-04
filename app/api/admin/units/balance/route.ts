@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
 import type { TroopType } from "@prisma/client"
+import { authenticateAdmin } from "../../middleware"
 import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
 interface TroopBalance {
@@ -66,9 +67,52 @@ function validateTroopBalance(balance: TroopBalance): { valid: boolean; error?: 
 }
 
 // GET current troop balances
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const adminAuth = await authenticateAdmin(req)
+
+  if (!adminAuth) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Admin authentication required"
+    }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    })
+  }
+
   try {
-    // Import from troop service
+    // First try to get balances from database
+    const dbBalances = await prisma.troopBalance.findMany({
+      orderBy: { troopType: 'asc' }
+    })
+
+    if (dbBalances.length > 0) {
+      // Return database balances
+      const balances: TroopBalance[] = dbBalances.map(balance => ({
+        type: balance.troopType,
+        cost: {
+          wood: balance.costWood,
+          stone: balance.costStone,
+          iron: balance.costIron,
+          gold: balance.costGold,
+          food: balance.costFood,
+        },
+        stats: {
+          attack: balance.attack,
+          defense: balance.defense,
+          speed: balance.speed,
+          health: balance.health,
+        },
+      }))
+
+      return NextResponse.json({
+        success: true,
+        data: balances,
+        source: 'database'
+      }, { status: 200 })
+    }
+
+    // Fallback to troop service if no database entries
     const { TroopService } = await import("@/lib/game-services/troop-service")
     const balances: TroopBalance[] = []
 
@@ -94,20 +138,42 @@ export async function GET() {
       })
     }
 
-    return NextResponse.json({ balances }, { status: 200 })
+    return NextResponse.json({
+      success: true,
+      data: balances,
+      source: 'fallback'
+    }, { status: 200 })
   } catch (error) {
     console.error("[v0] Get troop balances error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({
+      success: false,
+      error: "Failed to retrieve troop balances"
+    }, { status: 500 })
   }
 }
 
 // PUT update troop balance
 export async function PUT(req: NextRequest) {
+  const adminAuth = await authenticateAdmin(req)
+
+  if (!adminAuth) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Admin authentication required"
+    }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    })
+  }
+
   try {
     const { balances }: { balances: TroopBalance[] } = await req.json()
 
     if (!Array.isArray(balances) || balances.length === 0) {
-      return NextResponse.json({ error: "Invalid balances array" }, { status: 400 })
+      return NextResponse.json({
+        success: false,
+        error: "Invalid balances array"
+      }, { status: 400 })
     }
 
     // Validate all balances
@@ -120,15 +186,49 @@ export async function PUT(req: NextRequest) {
     }
 
     if (validationErrors.length > 0) {
-      return NextResponse.json(
-        { error: "Validation failed", details: validationErrors },
-        { status: 400 },
-      )
+      return NextResponse.json({
+        success: false,
+        error: "Validation failed",
+        details: validationErrors
+      }, { status: 400 })
     }
 
-    // Update troop-service.ts file (in production, you'd store this in database)
-    // For now, we'll create a database table or config file to store balances
-    // Note: This is a simplified approach - in production, you'd want to store balances in DB
+    // Update balances in database using transaction
+    const updatedBalances = await prisma.$transaction(async (tx) => {
+      const results = []
+
+      for (const balance of balances) {
+        const updated = await tx.troopBalance.upsert({
+          where: { troopType: balance.type },
+          update: {
+            costWood: balance.cost.wood,
+            costStone: balance.cost.stone,
+            costIron: balance.cost.iron,
+            costGold: balance.cost.gold,
+            costFood: balance.cost.food,
+            health: balance.stats.health,
+            attack: balance.stats.attack,
+            defense: balance.stats.defense,
+            speed: balance.stats.speed,
+          },
+          create: {
+            troopType: balance.type,
+            costWood: balance.cost.wood,
+            costStone: balance.cost.stone,
+            costIron: balance.cost.iron,
+            costGold: balance.cost.gold,
+            costFood: balance.cost.food,
+            health: balance.stats.health,
+            attack: balance.stats.attack,
+            defense: balance.stats.defense,
+            speed: balance.stats.speed,
+          },
+        })
+        results.push(updated)
+      }
+
+      return results
+    })
 
     // Track action
     trackAction()
@@ -136,27 +236,27 @@ export async function PUT(req: NextRequest) {
     // Log action
     await prisma.auditLog.create({
       data: {
-        adminId: "admin-id",
+        adminId: adminAuth.adminId,
         action: "UPDATE_TROOP_BALANCE",
-        details: `Updated ${balances.length} troop balances`,
+        details: `Updated ${balances.length} troop balances in database`,
         targetType: "TROOP_BALANCE",
         targetId: "all",
       },
     })
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: `Updated ${balances.length} troop balances`,
-        balances,
-      },
-      { status: 200 },
-    )
+    return NextResponse.json({
+      success: true,
+      message: `Successfully updated ${balances.length} troop balances in database`,
+      data: updatedBalances,
+    }, { status: 200 })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Update troop balance failed", errorMessage)
     console.error("[v0] Update troop balance error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({
+      success: false,
+      error: "Failed to update troop balances"
+    }, { status: 500 })
   }
 }
 

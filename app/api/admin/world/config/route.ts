@@ -1,9 +1,21 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAdminAuth } from "../../middleware"
+import { authenticateAdmin } from "../../middleware"
 import { trackAction, trackError } from "@/app/api/admin/stats/route"
 
-export const GET = requireAdminAuth(async (req: NextRequest, context) => {
+export async function GET(req: NextRequest) {
+  const adminAuth = await authenticateAdmin(req)
+
+  if (!adminAuth) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Admin authentication required"
+    }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    })
+  }
+
   try {
     const config = await prisma.worldConfig.findFirst()
 
@@ -21,7 +33,19 @@ export const GET = requireAdminAuth(async (req: NextRequest, context) => {
   }
 }
 
-export const PUT = requireAdminAuth(async (req: NextRequest, context) => {
+export async function PUT(req: NextRequest) {
+  const adminAuth = await authenticateAdmin(req)
+
+  if (!adminAuth) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: "Admin authentication required"
+    }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
+    })
+  }
+
   try {
     const {
       worldName,
@@ -68,7 +92,7 @@ export const PUT = requireAdminAuth(async (req: NextRequest, context) => {
     // Log action
     await prisma.auditLog.create({
       data: {
-        adminId: context.admin.adminId,
+        adminId: adminAuth.adminId,
         action: "UPDATE_WORLD_CONFIG",
         details: "Updated world configuration",
         targetType: "WORLD_CONFIG",

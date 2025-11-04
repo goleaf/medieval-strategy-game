@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Map, Swords, ShoppingCart, MessageCircle, Users, Trophy, Eye, Hammer, Shield } from "lucide-react"
+import { Map, Swords, ShoppingCart, MessageCircle, Users, Trophy, Eye, Hammer, Shield, LogOut } from "lucide-react"
 import { VillageOverview } from "@/components/game/village-overview"
 import { ResourceDisplay } from "@/components/game/resource-display"
 import { BuildingQueue } from "@/components/game/building-queue"
@@ -44,6 +45,7 @@ type VillageWithRelations = {
 }
 
 export default function Dashboard() {
+  const router = useRouter()
   const [villages, setVillages] = useState<VillageWithRelations[]>([])
   const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -86,6 +88,30 @@ export default function Dashboard() {
       }
   }, [])
 
+  const handleLogout = async () => {
+    try {
+      const authToken = localStorage.getItem("authToken")
+      if (authToken) {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${authToken}`,
+          },
+        })
+      }
+    } catch (error) {
+      console.error("Logout API call failed:", error)
+      // Continue with logout even if API call fails
+    }
+
+    // Clear localStorage
+    localStorage.removeItem("authToken")
+    localStorage.removeItem("playerId")
+
+    // Redirect to login page
+    router.push("/login")
+  }
+
   useEffect(() => {
     fetchVillages()
     const interval = setInterval(fetchVillages, 30000) // Refresh every 30 seconds
@@ -125,6 +151,13 @@ export default function Dashboard() {
               <Trophy className="w-4 h-4" />
               Rankings
             </Link>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded text-red-400 hover:text-red-300"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </button>
           </nav>
         </div>
       </header>

@@ -89,18 +89,26 @@ await prisma.$transaction(async (tx) => {
 - Validate all inputs server-side
 - Use confirmation dialogs for destructive actions
 - Provide clear success/error feedback
+- JWT authentication required for all admin endpoints
+- Role-based permissions (MODERATOR, ADMIN, SUPERADMIN)
+- Bulk operations for efficient player management
+- Real-time action tracking and error monitoring
 
 ### API Design
 - Use RESTful conventions
 - Return consistent response format: `{ success: boolean, data?: any, error?: string }`
 - Include proper HTTP status codes
-- Document all endpoints in `/docs/api/`
+- Document all endpoints in `/docs/admin/`
+- Admin endpoints require Bearer token authentication
+- Comprehensive error handling and validation
 
 ### Database Schema
 - Use Prisma for type safety
 - Add proper indexes for performance
 - Use transactions for complex operations
 - Include migration files for schema changes
+- Audit logging for all administrative actions
+- Separate Admin model for role management
 
 ## Documentation Requirements
 

@@ -758,3 +758,32 @@ enum LeaderboardType {
   TRIBES
   VILLAGES
 }
+
+// ============================================================================
+// TROOP BALANCE CONFIGURATION
+// ============================================================================
+
+model TroopBalance {
+  id              String    @id @default(cuid())
+
+  troopType       TroopType @unique
+
+  // Resource costs
+  costWood        Int       @default(0)
+  costStone       Int       @default(0)
+  costIron        Int       @default(0)
+  costGold        Int       @default(0)
+  costFood        Int       @default(0)
+
+  // Combat stats
+  health          Int       @default(100)
+  attack          Int       @default(10)
+  defense         Int       @default(5)
+  speed           Int       @default(5)
+
+  // Metadata
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([troopType])
+}
