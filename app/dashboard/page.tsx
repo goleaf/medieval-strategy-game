@@ -68,12 +68,12 @@ export default function Dashboard() {
         const data = await res.json()
         if (data.success && data.data) {
           setVillages(data.data)
-        setSelectedVillageId((prev) => {
-          if (!prev && data.data.length > 0) {
-            return data.data[0].id
-          }
-          return prev
-        })
+          setSelectedVillageId((prev) => {
+            if (!prev && data.data.length > 0) {
+              return data.data[0].id
+            }
+            return prev
+          })
         } else {
           setVillages([])
         }
@@ -129,8 +129,8 @@ export default function Dashboard() {
           )}
           {!loading && villages.length === 0 && (
             <div className="text-center py-8">
-              <p className="mb-4">No villages yet. Create your first village!</p>
-              <Button>Create Village</Button>
+              <p className="mb-4">Setting up your kingdom...</p>
+              <p className="text-sm text-muted-foreground">Your first village is being created.</p>
             </div>
           )}
           {!loading && villages.length > 0 && (
