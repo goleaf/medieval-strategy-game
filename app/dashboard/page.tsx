@@ -44,7 +44,6 @@ type VillageWithRelations = {
 
 export default function Dashboard() {
   const [villages, setVillages] = useState<VillageWithRelations[]>([])
-  const [selectedVillage, setSelectedVillage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -54,9 +53,6 @@ export default function Dashboard() {
         const data = await res.json()
         if (data.success && data.data) {
           setVillages(data.data)
-          if (data.data.length > 0) {
-            setSelectedVillage(data.data[0].id)
-          }
         } else {
           setVillages([])
         }
@@ -73,8 +69,6 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  const currentVillage = villages.find((v) => v.id === selectedVillage)
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -84,7 +78,16 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div
+      x-data={`{
+        selectedVillageId: ${villages.length > 0 ? `'${villages[0].id}'` : 'null'},
+        villages: ${JSON.stringify(villages)},
+        get currentVillage() {
+          return this.villages.find(v => v.id === this.selectedVillageId);
+        }
+      }`}
+      className="min-h-screen bg-background text-foreground"
+    >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">🏰 Medieval Strategy</h1>
@@ -113,42 +116,59 @@ export default function Dashboard() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          {villages.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-8">Loading...</div>
+          ) : villages.length === 0 ? (
             <section className="text-center py-8">
               <p className="mb-4">No villages yet. Create your first village!</p>
               <Button>Create Village</Button>
             </section>
           ) : (
             <>
-              {currentVillage && (
-                <>
-                  <section className="space-y-2">
-                    <h2 className="text-lg font-bold">{currentVillage.name}</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Position: ({currentVillage.x}, {currentVillage.y}) • Loyalty: {currentVillage.loyalty}%
-                    </p>
-                  </section>
+              {villages.length > 1 && (
+                <div className="p-3 border border-border rounded bg-secondary">
+                  <label className="text-sm font-bold block mb-2">Select Village</label>
+                  <select
+                    x-model="selectedVillageId"
+                    className="w-full p-2 border border-border rounded bg-background"
+                  >
+                    {villages.map((village) => (
+                      <option key={village.id} value={village.id}>
+                        {village.name} ({village.x}, {village.y})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div x-show="currentVillage">
+                <section className="space-y-2">
+                  <h2 className="text-lg font-bold" x-text="currentVillage.name" />
+                  <p className="text-sm text-muted-foreground" x-text="`Position: (${currentVillage.x}, ${currentVillage.y}) • Loyalty: ${currentVillage.loyalty}%`" />
+                </section>
 
-                  <section>
-                    <h3 className="text-md font-semibold mb-2">Resources</h3>
+                <section>
+                  <h3 className="text-md font-semibold mb-2">Resources</h3>
+                  {villages.length > 0 && (
                     <ResourceDisplay
-                      wood={currentVillage.wood}
-                      stone={currentVillage.stone}
-                      iron={currentVillage.iron}
-                      gold={currentVillage.gold}
-                      food={currentVillage.food}
-                      woodProduction={currentVillage.woodProduction}
-                      stoneProduction={currentVillage.stoneProduction}
-                      ironProduction={currentVillage.ironProduction}
-                      goldProduction={currentVillage.goldProduction}
-                      foodProduction={currentVillage.foodProduction}
+                      wood={villages.find(v => v.id === villages[0]?.id)?.wood || 0}
+                      stone={villages.find(v => v.id === villages[0]?.id)?.stone || 0}
+                      iron={villages.find(v => v.id === villages[0]?.id)?.iron || 0}
+                      gold={villages.find(v => v.id === villages[0]?.id)?.gold || 0}
+                      food={villages.find(v => v.id === villages[0]?.id)?.food || 0}
+                      woodProduction={villages.find(v => v.id === villages[0]?.id)?.woodProduction || 0}
+                      stoneProduction={villages.find(v => v.id === villages[0]?.id)?.stoneProduction || 0}
+                      ironProduction={villages.find(v => v.id === villages[0]?.id)?.ironProduction || 0}
+                      goldProduction={villages.find(v => v.id === villages[0]?.id)?.goldProduction || 0}
+                      foodProduction={villages.find(v => v.id === villages[0]?.id)?.foodProduction || 0}
                       showProduction
                     />
-                  </section>
+                  )}
+                </section>
 
-                  <section>
+                <section>
+                  {villages.length > 0 && (
                     <BuildingQueue
-                      buildings={currentVillage.buildings}
+                      buildings={villages.find(v => v.id === villages[0]?.id)?.buildings || []}
                       onCancel={async (buildingId) => {
                         try {
                           const res = await fetch("/api/buildings/cancel", {
@@ -158,12 +178,7 @@ export default function Dashboard() {
                           })
                           const data = await res.json()
                           if (data.success) {
-                            // Refresh villages
-                            const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
-                            const villagesData = await villagesRes.json()
-                            if (villagesData.success && villagesData.data) {
-                              setVillages(villagesData.data)
-                            }
+                            window.location.reload()
                           } else {
                             alert(data.error || "Failed to cancel building")
                           }
@@ -173,11 +188,13 @@ export default function Dashboard() {
                         }
                       }}
                     />
-                  </section>
+                  )}
+                </section>
 
-                  <section>
+                <section>
+                  {villages.length > 0 && (
                     <VillageOverview
-                      village={currentVillage}
+                      village={villages.find(v => v.id === villages[0]?.id) || villages[0]}
                       onUpgrade={async (buildingId) => {
                         try {
                           const res = await fetch("/api/buildings/upgrade", {
@@ -187,39 +204,38 @@ export default function Dashboard() {
                           })
                           const data = await res.json()
                           if (data.success) {
-                            // Refresh villages
-                            const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
-                            const villagesData = await villagesRes.json()
-                            if (villagesData.success && villagesData.data) {
-                              setVillages(villagesData.data)
-                            }
+                            window.location.reload()
                           }
                         } catch (error) {
                           console.error("Failed to upgrade building:", error)
                         }
                       }}
                     />
-                  </section>
+                  )}
+                </section>
 
-                  <section className="flex gap-2">
-                    <Link href={`/village/${currentVillage.id}`}>
-                      <Button variant="outline" className="w-full">
-                        View Details
-                      </Button>
-                    </Link>
-                    <Link href={`/village/${currentVillage.id}/buildings`}>
-                      <Button variant="outline" className="w-full">
-                        Buildings
-                      </Button>
-                    </Link>
-                    <Link href={`/village/${currentVillage.id}/troops`}>
-                      <Button variant="outline" className="w-full">
-                        Troops
-                      </Button>
-                    </Link>
-                  </section>
-                </>
-              )}
+                <section className="flex gap-2">
+                  {villages.length > 0 && (
+                    <>
+                      <Link href={`/village/${villages[0].id}`}>
+                        <Button variant="outline" className="w-full">
+                          View Details
+                        </Button>
+                      </Link>
+                      <Link href={`/village/${villages[0].id}/buildings`}>
+                        <Button variant="outline" className="w-full">
+                          Buildings
+                        </Button>
+                      </Link>
+                      <Link href={`/village/${villages[0].id}/troops`}>
+                        <Button variant="outline" className="w-full">
+                          Troops
+                        </Button>
+                      </Link>
+                    </>
+                  )}
+                </section>
+              </div>
             </>
           )}
         </div>

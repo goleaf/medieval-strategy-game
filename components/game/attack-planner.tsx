@@ -13,22 +13,26 @@ interface AttackPlannerProps {
 }
 
 export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlannerProps) {
-  useEffect(() => {
-    // Ensure Alpine.js is ready
-    if (typeof window !== "undefined" && window.Alpine) {
-      window.Alpine.initTree(document.querySelector('[x-data*="attackPlanner"]') || document.body)
-    }
-  }, [])
-
-  const handleLaunch = async (targetX: string, targetY: string, troopSelection: Record<string, number>, attackType: AttackType) => {
+  const attackLaunchHandler = async (targetX: string, targetY: string, troopSelection: Record<string, number>, attackType: AttackType) => {
     if (!targetX || !targetY || Object.keys(troopSelection).length === 0) return
-
     try {
       await onLaunchAttack(Number.parseInt(targetX), Number.parseInt(targetY), troopSelection, attackType)
     } catch (error) {
       console.error("Failed to launch attack:", error)
     }
   }
+
+  // Make handler available globally for Alpine.js
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__attackLaunchHandler = attackLaunchHandler
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__attackLaunchHandler
+      }
+    }
+  }, [attackLaunchHandler])
 
   return (
     <div
@@ -50,7 +54,9 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
           if (!this.targetX || !this.targetY || Object.keys(this.troopSelection).length === 0) return;
           this.loading = true;
           try {
-            await handleLaunch(this.targetX, this.targetY, this.troopSelection, this.attackType);
+            if (window.__attackLaunchHandler) {
+              await window.__attackLaunchHandler(this.targetX, this.targetY, this.troopSelection, this.attackType);
+            }
             this.mode = 'inactive';
             this.targetX = '';
             this.targetY = '';
@@ -139,8 +145,7 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
                 type="number"
                 min="0"
                 max={troop.quantity}
-                x-data={`{ value: 0 }`}
-                x-model="value"
+                x-model={`troopSelection['${troop.id}']`}
                 x-on:input={`handleTroopChange('${troop.id}', parseInt($event.target.value) || 0)`}
                 className="w-full p-2 border border-border rounded bg-background text-foreground"
                 aria-label={`Send ${troop.type}`}
