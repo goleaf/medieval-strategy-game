@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { useEffect } from "react"
+import { useState } from "react"
 import type { TroopType } from "@prisma/client"
 import { TextTable } from "./text-table"
 
@@ -21,43 +21,26 @@ const TROOP_TYPES: { type: TroopType; name: string; cost: string }[] = [
 ]
 
 export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      (window as any).__troopTrainHandler = onTrain
+  const [selected, setSelected] = useState<TroopType | null>(null)
+  const [quantity, setQuantity] = useState(1)
+  const [loading, setLoading] = useState(false)
+
+  const troopInfo = selected ? TROOP_TYPES.find(t => t.type === selected) : null
+
+  const handleTrain = async () => {
+    if (!selected) return
+    setLoading(true)
+    try {
+      await onTrain(selected, quantity)
+      setSelected(null)
+      setQuantity(1)
+    } finally {
+      setLoading(false)
     }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__troopTrainHandler
-      }
-    }
-  }, [onTrain])
+  }
 
   return (
-    <div
-      x-data={`{
-        selected: null,
-        quantity: 1,
-        loading: false,
-        troopTypes: ${JSON.stringify(TROOP_TYPES)},
-        get troopInfo() {
-          return this.selected ? this.troopTypes.find(t => t.type === this.selected) : null;
-        },
-        async handleTrain() {
-          if (!this.selected) return;
-          this.loading = true;
-          try {
-            if (window.__troopTrainHandler) {
-              await window.__troopTrainHandler(this.selected, this.quantity);
-            }
-            this.selected = null;
-            this.quantity = 1;
-          } finally {
-            this.loading = false;
-          }
-        }
-      }`}
-      className="w-full space-y-4"
-    >
+    <div className="w-full space-y-4">
       <TextTable
         headers={["Type", "Cost", "Action"]}
         rows={TROOP_TYPES.map((troop) => [
@@ -65,21 +48,21 @@ export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
           <span key={`cost-${troop.type}`} className="text-sm">{troop.cost}</span>,
           <button
             key={`action-${troop.type}`}
-            x-on:click={`selected = '${troop.type}'`}
-            x-bind:class={`selected === '${troop.type}' ? 'bg-primary/10 font-bold' : ''`}
-            className="px-2 py-1 border border-border rounded hover:bg-secondary text-sm"
+            onClick={() => setSelected(troop.type)}
+            className={`px-2 py-1 border border-border rounded hover:bg-secondary text-sm ${
+              selected === troop.type ? "bg-primary/10 font-bold" : ""
+            }`}
           >
-            <span x-show={`selected === '${troop.type}'`}>Selected</span>
-            <span x-show={`selected !== '${troop.type}'`}>Select</span>
+            {selected === troop.type ? "Selected" : "Select"}
           </button>,
         ])}
       />
 
-      <div x-show="troopInfo">
+      {troopInfo && (
         <div className="p-3 border border-border rounded bg-secondary space-y-3">
           <div>
-            <p className="font-bold" x-text="troopInfo.name" />
-            <p className="text-sm text-muted-foreground" x-text="`Cost per unit: ${troopInfo.cost}`" />
+            <p className="font-bold">{troopInfo.name}</p>
+            <p className="text-sm text-muted-foreground">Cost per unit: {troopInfo.cost}</p>
           </div>
 
           <div>
@@ -91,16 +74,17 @@ export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
               type="number"
               min="1"
               max="1000"
-              x-model.number="quantity"
+              value={quantity}
+              onChange={(e) => setQuantity(Number.parseInt(e.target.value) || 1)}
               className="w-full p-2 border border-border rounded bg-background text-foreground"
             />
           </div>
 
-          <Button x-on:click="handleTrain()" x-bind:disabled="loading" className="w-full">
-            <span x-text="loading ? 'Training...' : `Train ${quantity} ${troopInfo.name}`" />
+          <Button onClick={handleTrain} disabled={loading} className="w-full">
+            {loading ? "Training..." : `Train ${quantity} ${troopInfo.name}`}
           </Button>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -5,19 +5,17 @@ import Link from "next/link"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
 
+type LeaderboardType = "players" | "tribes" | "villages"
+
 export default function LeaderboardPage() {
-  const [type, setType] = useState<"players" | "tribes" | "villages">("players")
   const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [type, setType] = useState<LeaderboardType>("players")
+  const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    fetchLeaderboard()
-  }, [type])
-
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = async (newType: LeaderboardType) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/leaderboard?type=${type}`)
+      const res = await fetch(`/api/leaderboard?type=${newType}`)
       const result = await res.json()
       if (result.success && result.data) {
         setData(result.data)
@@ -29,13 +27,14 @@ export default function LeaderboardPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    )
+  const switchType = async (newType: LeaderboardType) => {
+    setType(newType)
+    await fetchLeaderboard(newType)
   }
+
+  useEffect(() => {
+    fetchLeaderboard("players")
+  }, [])
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -53,62 +52,67 @@ export default function LeaderboardPage() {
         <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex gap-2">
             <Button
+              onClick={() => switchType("players")}
               variant={type === "players" ? "default" : "outline"}
-              onClick={() => setType("players")}
             >
               Players
             </Button>
             <Button
+              onClick={() => switchType("tribes")}
               variant={type === "tribes" ? "default" : "outline"}
-              onClick={() => setType("tribes")}
             >
               Tribes
             </Button>
             <Button
+              onClick={() => switchType("villages")}
               variant={type === "villages" ? "default" : "outline"}
-              onClick={() => setType("villages")}
             >
               Villages
             </Button>
           </div>
 
-          {type === "players" && (
-            <TextTable
-              headers={["Rank", "Player", "Points", "Tribe"]}
-              rows={data.map((player, idx) => [
-                (idx + 1).toString(),
-                player.playerName,
-                player.totalPoints?.toLocaleString() || "0",
-                player.tribe?.tag || "-",
-              ])}
-            />
-          )}
+          {loading && <div className="text-center py-4">Loading...</div>}
+          {!loading && (
+            <>
+              {type === "players" && (
+                <TextTable
+                  headers={["Rank", "Player", "Points", "Tribe"]}
+                  rows={data.map((player, idx) => [
+                    (idx + 1).toString(),
+                    player.playerName,
+                    player.totalPoints?.toLocaleString() || "0",
+                    player.tribe?.tag || "-",
+                  ])}
+                />
+              )}
 
-          {type === "tribes" && (
-            <TextTable
-              headers={["Rank", "Tribe", "Tag", "Points", "Members", "Leader"]}
-              rows={data.map((tribe, idx) => [
-                (idx + 1).toString(),
-                tribe.name,
-                tribe.tag,
-                tribe.totalPoints?.toLocaleString() || "0",
-                tribe.memberCount?.toString() || "0",
-                tribe.leader?.playerName || "-",
-              ])}
-            />
-          )}
+              {type === "tribes" && (
+                <TextTable
+                  headers={["Rank", "Tribe", "Tag", "Points", "Members", "Leader"]}
+                  rows={data.map((tribe, idx) => [
+                    (idx + 1).toString(),
+                    tribe.name,
+                    tribe.tag,
+                    tribe.totalPoints?.toLocaleString() || "0",
+                    tribe.memberCount?.toString() || "0",
+                    tribe.leader?.playerName || "-",
+                  ])}
+                />
+              )}
 
-          {type === "villages" && (
-            <TextTable
-              headers={["Rank", "Village", "Position", "Player", "Points"]}
-              rows={data.map((village, idx) => [
-                (idx + 1).toString(),
-                village.name,
-                `(${village.x}, ${village.y})`,
-                village.player?.playerName || "-",
-                village.points?.toLocaleString() || "0",
-              ])}
-            />
+              {type === "villages" && (
+                <TextTable
+                  headers={["Rank", "Village", "Position", "Player", "Points"]}
+                  rows={data.map((village, idx) => [
+                    (idx + 1).toString(),
+                    village.name,
+                    `(${village.x}, ${village.y})`,
+                    village.player?.playerName || "-",
+                    village.points?.toLocaleString() || "0",
+                  ])}
+                />
+              )}
+            </>
           )}
         </div>
       </main>

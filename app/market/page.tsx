@@ -18,14 +18,8 @@ interface MarketOrder {
 
 export default function MarketPage() {
   const [orders, setOrders] = useState<MarketOrder[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetchOrders()
-  }, [])
 
   const fetchOrders = async () => {
-    setLoading(true)
     try {
       const res = await fetch("/api/market/orders")
       const result = await res.json()
@@ -34,8 +28,6 @@ export default function MarketPage() {
       }
     } catch (error) {
       console.error("Failed to fetch orders:", error)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -48,26 +40,65 @@ export default function MarketPage() {
       })
       const result = await res.json()
       if (result.success) {
-        fetchOrders()
+        await fetchOrders()
+        return { success: true }
       } else {
-        alert(result.error || "Failed to accept order")
+        return { success: false, error: result.error || "Failed to accept order" }
       }
     } catch (error) {
       console.error("Failed to accept order:", error)
-      alert("Failed to accept order")
+      return { success: false, error: "Failed to accept order" }
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    )
-  }
+  useEffect(() => {
+    fetchOrders()
+    if (typeof window !== "undefined") {
+      (window as any).__marketAcceptHandler = handleAccept
+      (window as any).__marketFetchHandler = fetchOrders
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__marketAcceptHandler
+        delete (window as any).__marketFetchHandler
+      }
+    }
+  }, [])
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div
+      x-data={`{
+        orders: ${JSON.stringify(orders)},
+        loading: false,
+        error: null,
+        async init() {
+          if (window.__marketFetchHandler) {
+            await window.__marketFetchHandler();
+            this.orders = ${JSON.stringify(orders)};
+          }
+        },
+        async handleAccept(orderId) {
+          this.loading = true;
+          this.error = null;
+          try {
+            if (window.__marketAcceptHandler) {
+              const result = await window.__marketAcceptHandler(orderId);
+              if (result.success) {
+                if (window.__marketFetchHandler) {
+                  await window.__marketFetchHandler();
+                }
+              } else {
+                this.error = result.error;
+                setTimeout(() => this.error = null, 5000);
+              }
+            }
+          } finally {
+            this.loading = false;
+          }
+        }
+      }`}
+      className="min-h-screen bg-background text-foreground"
+    >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -82,24 +113,28 @@ export default function MarketPage() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          <TextTable
-            headers={["Type", "Offering", "Requesting", "Player", "Village", "Actions"]}
-            rows={orders.map((order) => [
-              order.type,
-              `${order.offeringAmount} ${order.offeringResource}`,
-              `${order.requestAmount} ${order.requestResource}`,
-              order.player.playerName,
-              `${order.village.name} (${order.village.x}, ${order.village.y})`,
-              <Button
-                key={order.id}
-                variant="outline"
-                size="sm"
-                onClick={() => handleAccept(order.id)}
-              >
-                Accept
-              </Button>,
-            ])}
-          />
+          <div x-show="error" className="bg-destructive/10 border border-destructive rounded p-3 text-sm text-destructive" x-text="error" />
+          <div x-show="loading" className="text-center py-4">Processing...</div>
+          <div x-show="!loading">
+            <TextTable
+              headers={["Type", "Offering", "Requesting", "Player", "Village", "Actions"]}
+              rows={orders.map((order) => [
+                order.type,
+                `${order.offeringAmount} ${order.offeringResource}`,
+                `${order.requestAmount} ${order.requestResource}`,
+                order.player.playerName,
+                `${order.village.name} (${order.village.x}, ${order.village.y})`,
+                <Button
+                  key={order.id}
+                  variant="outline"
+                  size="sm"
+                  x-on:click={`handleAccept('${order.id}')`}
+                >
+                  Accept
+                </Button>,
+              ])}
+            />
+          </div>
         </div>
       </main>
     </div>
