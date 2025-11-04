@@ -64,14 +64,14 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-background to-secondary flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 space-y-6">
+    <main className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <h1 className="text-3xl font-serif font-bold">Medieval Strategy</h1>
+          <h1 className="text-2xl font-bold">Medieval Strategy</h1>
           <p className="text-muted-foreground mt-2">Create your account</p>
         </div>
 
-        <form onSubmit={handleRegister} className="space-y-4">
+        <form onSubmit={handleRegister} className="space-y-4 border border-border rounded p-4 bg-card">
           {error && (
             <div className="p-3 bg-destructive/10 border border-destructive rounded text-sm text-destructive">
               {error}
@@ -79,8 +79,9 @@ export default function RegisterPage() {
           )}
 
           <div>
-            <label className="block text-sm font-bold mb-2">Email</label>
+            <label htmlFor="email" className="block text-sm font-bold mb-2">Email</label>
             <input
+              id="email"
               type="email"
               name="email"
               value={formData.email}
@@ -92,8 +93,9 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-bold mb-2">Username</label>
+            <label htmlFor="username" className="block text-sm font-bold mb-2">Username</label>
             <input
+              id="username"
               type="text"
               name="username"
               value={formData.username}
@@ -105,8 +107,9 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-bold mb-2">Password</label>
+            <label htmlFor="password" className="block text-sm font-bold mb-2">Password</label>
             <input
+              id="password"
               type="password"
               name="password"
               value={formData.password}
@@ -118,8 +121,9 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-bold mb-2">Confirm Password</label>
+            <label htmlFor="confirmPassword" className="block text-sm font-bold mb-2">Confirm Password</label>
             <input
+              id="confirmPassword"
               type="password"
               name="confirmPassword"
               value={formData.confirmPassword}
@@ -143,7 +147,7 @@ export default function RegisterPage() {
             </Link>
           </p>
         </div>
-      </Card>
+      </div>
     </main>
   )
 }

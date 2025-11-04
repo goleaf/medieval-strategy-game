@@ -336,60 +336,65 @@ export default function AdminDashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+    <main className="min-h-screen bg-background text-foreground p-4">
+      <div className="w-full max-w-4xl mx-auto space-y-4">
+        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
 
         <Tabs defaultValue="stats" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 gap-1">
             <TabsTrigger value="stats">Stats</TabsTrigger>
-            <TabsTrigger value="world">World Config</TabsTrigger>
-            <TabsTrigger value="units">Unit Balance</TabsTrigger>
+            <TabsTrigger value="world">World</TabsTrigger>
+            <TabsTrigger value="units">Units</TabsTrigger>
             <TabsTrigger value="players">Players</TabsTrigger>
-            <TabsTrigger value="map">Map Tools</TabsTrigger>
-            <TabsTrigger value="errors">Error Logs</TabsTrigger>
+            <TabsTrigger value="map">Map</TabsTrigger>
+            <TabsTrigger value="errors">Errors</TabsTrigger>
           </TabsList>
 
           <TabsContent value="stats" className="space-y-4">
             {stats && (
-              <div className="grid md:grid-cols-4 gap-4">
-                <Card className="p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">Online Users</p>
-                  <p className="text-3xl font-bold">{stats.onlineUsers}</p>
-                </Card>
-                <Card className="p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">Online Players</p>
-                  <p className="text-3xl font-bold">{stats.onlinePlayers}</p>
-                </Card>
-                <Card className="p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">Actions/Min</p>
-                  <p className="text-3xl font-bold">{stats.actionsPerMinute}</p>
-                  <p className="text-xs text-muted-foreground">Avg: {stats.avgActionsPerMinute}</p>
-                </Card>
-                <Card className="p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">Queued Jobs</p>
-                  <p className="text-3xl font-bold">{stats.queuedJobsDepth}</p>
-                </Card>
-                <Card className="p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">Total Players</p>
-                  <p className="text-3xl font-bold">{stats.totalPlayers}</p>
-                </Card>
-                <Card className="p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">Total Villages</p>
-                  <p className="text-3xl font-bold">{stats.totalVillages}</p>
-                </Card>
-                <Card className="p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">Active Attacks</p>
-                  <p className="text-3xl font-bold">{stats.activeAttacks}</p>
-                </Card>
-                <Card className="p-4 space-y-2">
-                  <p className="text-sm text-muted-foreground">Game Status</p>
-                  <p className={`text-2xl font-bold ${stats.gameRunning ? "text-green-500" : "text-red-500"}`}>
-                    {stats.gameRunning ? "Running" : "Paused"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">Speed: {stats.worldSpeed}x</p>
-                </Card>
-              </div>
+              <section>
+                <h2 className="text-lg font-bold mb-2">System Statistics</h2>
+                <table className="w-full border-collapse border border-border">
+                  <tbody>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Online Users</th>
+                      <td className="border border-border p-2 text-right font-mono font-bold">{stats.onlineUsers}</td>
+                    </tr>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Online Players</th>
+                      <td className="border border-border p-2 text-right font-mono font-bold">{stats.onlinePlayers}</td>
+                    </tr>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Actions/Min</th>
+                      <td className="border border-border p-2 text-right font-mono font-bold">
+                        {stats.actionsPerMinute} (avg: {stats.avgActionsPerMinute})
+                      </td>
+                    </tr>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Queued Jobs</th>
+                      <td className="border border-border p-2 text-right font-mono font-bold">{stats.queuedJobsDepth}</td>
+                    </tr>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Total Players</th>
+                      <td className="border border-border p-2 text-right font-mono font-bold">{stats.totalPlayers}</td>
+                    </tr>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Total Villages</th>
+                      <td className="border border-border p-2 text-right font-mono font-bold">{stats.totalVillages}</td>
+                    </tr>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Active Attacks</th>
+                      <td className="border border-border p-2 text-right font-mono font-bold">{stats.activeAttacks}</td>
+                    </tr>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Game Status</th>
+                      <td className={`border border-border p-2 text-right font-bold ${stats.gameRunning ? "text-green-600" : "text-red-600"}`}>
+                        {stats.gameRunning ? "Running" : "Paused"} ({stats.worldSpeed}x)
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
             )}
           </TabsContent>
 
@@ -491,44 +496,63 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="units" className="space-y-4">
-            <Card className="p-6 space-y-4">
-              <h2 className="font-bold text-lg">Unit Balancing Editor</h2>
+            <section>
+              <h2 className="text-lg font-bold mb-2">Unit Balancing</h2>
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {troopBalances.map((troop) => (
-                  <Card key={troop.type} className="p-4">
+                  <div key={troop.type} className="border border-border rounded p-3">
                     <h3 className="font-bold mb-2">{troop.type}</h3>
-                    <div className="grid md:grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="font-medium mb-1">Costs:</p>
-                        <p>Wood: {troop.cost.wood}</p>
-                        <p>Stone: {troop.cost.stone}</p>
-                        <p>Iron: {troop.cost.iron}</p>
-                        <p>Gold: {troop.cost.gold}</p>
-                        <p>Food: {troop.cost.food}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium mb-1">Stats:</p>
-                        <p>Attack: {troop.stats.attack}</p>
-                        <p>Defense: {troop.stats.defense}</p>
-                        <p>Speed: {troop.stats.speed}</p>
-                        <p>Health: {troop.stats.health}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Stat Sum:{" "}
-                          {troop.stats.attack +
-                            troop.stats.defense +
-                            troop.stats.speed +
-                            troop.stats.health / 10}
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
+                    <table className="w-full border-collapse border border-border text-sm">
+                      <thead>
+                        <tr>
+                          <th className="border border-border p-1 text-left bg-secondary">Costs</th>
+                          <th className="border border-border p-1 text-left bg-secondary">Amount</th>
+                          <th className="border border-border p-1 text-left bg-secondary">Stats</th>
+                          <th className="border border-border p-1 text-left bg-secondary">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="border border-border p-1">Wood</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.cost.wood}</td>
+                          <td className="border border-border p-1">Attack</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.stats.attack}</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-border p-1">Stone</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.cost.stone}</td>
+                          <td className="border border-border p-1">Defense</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.stats.defense}</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-border p-1">Iron</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.cost.iron}</td>
+                          <td className="border border-border p-1">Speed</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.stats.speed}</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-border p-1">Gold</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.cost.gold}</td>
+                          <td className="border border-border p-1">Health</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.stats.health}</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-border p-1">Food</td>
+                          <td className="border border-border p-1 text-right font-mono">{troop.cost.food}</td>
+                          <td className="border border-border p-1">Stat Sum</td>
+                          <td className="border border-border p-1 text-right font-mono">
+                            {troop.stats.attack + troop.stats.defense + troop.stats.speed + troop.stats.health / 10}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Note: Unit balancing is read-only in this view. To modify, update the troop-service.ts file or
-                implement a database-backed balance system.
+              <p className="text-xs text-muted-foreground mt-2">
+                Note: Unit balancing is read-only. To modify, update troop-service.ts or implement database-backed balance.
               </p>
-            </Card>
+            </section>
           </TabsContent>
 
           <TabsContent value="players" className="space-y-4">
