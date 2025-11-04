@@ -57,42 +57,53 @@ async function main() {
     })
 
     // Create player for demo user
-    const continents = await prisma.continent.findMany()
-    if (continents.length > 0) {
-      const randomContinent = continents[Math.floor(Math.random() * continents.length)]
-      
-      const player = await prisma.player.create({
+    let continents = await prisma.continent.findMany()
+    
+    // Create a continent if none exist
+    if (continents.length === 0) {
+      const continent = await prisma.continent.create({
         data: {
-          userId: demoUser.id,
-          playerName: "demo",
+          name: "Mainland",
+          x: 0,
+          y: 0,
+          size: 100,
         },
       })
-
-      // Initialize beginner protection
-      const { ProtectionService } = await import("../lib/game-services/protection-service.js")
-      await ProtectionService.initializeProtection(player.id)
-
-      // Create village for demo player
-      await prisma.village.create({
-        data: {
-          playerId: player.id,
-          continentId: randomContinent.id,
-          name: "Demo Village",
-          x: randomContinent.x + Math.random() * randomContinent.size * 10,
-          y: randomContinent.y + Math.random() * randomContinent.size * 10,
-          isCapital: true,
-          wood: 5000,
-          stone: 5000,
-          iron: 2500,
-          gold: 1000,
-          food: 10000,
-        },
-      })
-
-      console.log(`[v0] Created demo user: ${demoUser.email} with player`)
-    } else {
-      console.log(`[v0] Created demo user: ${demoUser.email} (no continents available for village)`)
+      continents = [continent]
+      console.log("[v0] Created default continent for demo user")
     }
+    
+    const randomContinent = continents[Math.floor(Math.random() * continents.length)]
+    
+    const player = await prisma.player.create({
+      data: {
+        userId: demoUser.id,
+        playerName: "demo",
+      },
+    })
+
+    // Initialize beginner protection
+    const { ProtectionService } = await import("../lib/game-services/protection-service.js")
+    await ProtectionService.initializeProtection(player.id)
+
+    // Create village for demo player
+    await prisma.village.create({
+      data: {
+        playerId: player.id,
+        continentId: randomContinent.id,
+        name: "Demo Village",
+        x: randomContinent.x + Math.random() * randomContinent.size * 10,
+        y: randomContinent.y + Math.random() * randomContinent.size * 10,
+        isCapital: true,
+        wood: 5000,
+        stone: 5000,
+        iron: 2500,
+        gold: 1000,
+        food: 10000,
+      },
+    })
+
+    console.log(`[v0] Created demo user: ${demoUser.email} with player`)
   }
 
   console.log("[v0] User creation completed successfully")

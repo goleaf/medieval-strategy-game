@@ -1,18 +1,34 @@
 "use client"
 
 import { useEffect } from "react"
-import Alpine from "alpinejs"
 
-// Make Alpine available globally
-if (typeof window !== "undefined") {
-  (window as any).Alpine = Alpine
+declare global {
+  interface Window {
+    Alpine?: any
+  }
 }
 
 export function AlpineProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    // Initialize Alpine.js after component mounts
-    if (typeof window !== "undefined" && !(window as any).Alpine) {
-      Alpine.start()
+    // Dynamically import Alpine.js only on the client side
+    if (typeof window !== "undefined" && !window.Alpine) {
+      import("alpinejs").then((AlpineModule) => {
+        const Alpine = AlpineModule.default
+
+        // Make Alpine available globally
+        window.Alpine = Alpine
+
+        // Start Alpine.js
+        Alpine.start()
+
+        // Dispatch custom event to notify that Alpine is ready
+        window.dispatchEvent(new CustomEvent("alpine:ready"))
+      }).catch((error) => {
+        console.error("Failed to load Alpine.js:", error)
+      })
+    } else if (window.Alpine && !window.Alpine.store) {
+      // If Alpine exists but hasn't started, start it
+      window.Alpine.start()
     }
   }, [])
 

@@ -11,7 +11,14 @@ export class VillageService {
     name: string,
     x: number,
     y: number,
+    isCapital?: boolean,
   ): Promise<Village> {
+    // Check if this is the player's first village
+    const existingVillages = await prisma.village.findMany({
+      where: { playerId },
+    })
+    const shouldBeCapital = isCapital !== undefined ? isCapital : existingVillages.length === 0
+
     const village = await prisma.village.create({
       data: {
         playerId,
@@ -19,7 +26,7 @@ export class VillageService {
         name,
         x,
         y,
-        isCapital: true, // First village is capital
+        isCapital: shouldBeCapital,
       },
     })
 
@@ -230,5 +237,151 @@ export class VillageService {
     )
 
     return buildingPoints + villages.length
+  }
+
+  /**
+   * Generate a random medieval village name
+   */
+  static generateRandomVillageName(): string {
+    const prefixes = [
+      "Oak",
+      "Stone",
+      "Iron",
+      "Golden",
+      "Silver",
+      "Raven",
+      "Wolf",
+      "Eagle",
+      "Dragon",
+      "Crown",
+      "Iron",
+      "Steel",
+      "Dark",
+      "Bright",
+      "North",
+      "South",
+      "East",
+      "West",
+      "Old",
+      "New",
+      "Grand",
+      "Fort",
+      "Castle",
+      "Bridge",
+      "River",
+      "Hill",
+      "Valley",
+      "Forest",
+      "Lake",
+      "Mount",
+    ]
+
+    const suffixes = [
+      "brook",
+      "dale",
+      "field",
+      "ford",
+      "gate",
+      "ham",
+      "haven",
+      "hill",
+      "hold",
+      "keep",
+      "land",
+      "mere",
+      "moor",
+      "port",
+      "ridge",
+      "shire",
+      "stead",
+      "stone",
+      "town",
+      "vale",
+      "wall",
+      "wick",
+      "wood",
+      "worth",
+      "bury",
+      "caster",
+      "chester",
+      "ford",
+      "minster",
+      "wick",
+    ]
+
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)]
+    const suffix = suffixes[Math.floor(Math.random() * suffixes.length)]
+    return `${prefix}${suffix.charAt(0).toUpperCase() + suffix.slice(1)}`
+  }
+
+  /**
+   * Find an available position on a continent
+   */
+  static async findAvailablePosition(continentId: string, maxAttempts: number = 50): Promise<{ x: number; y: number } | null> {
+    const continent = await prisma.continent.findUnique({
+      where: { id: continentId },
+    })
+
+    if (!continent) {
+      return null
+    }
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const x = continent.x + Math.floor(Math.random() * continent.size * 10)
+      const y = continent.y + Math.floor(Math.random() * continent.size * 10)
+
+      const existing = await prisma.village.findUnique({
+        where: { x_y: { x, y } },
+      })
+
+      if (!existing) {
+        return { x, y }
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Ensure a player has at least one village, create one if they don't
+   */
+  static async ensurePlayerHasVillage(playerId: string): Promise<Village | null> {
+    // Check if player already has villages
+    const existingVillages = await prisma.village.findMany({
+      where: { playerId },
+    })
+
+    if (existingVillages.length > 0) {
+      return existingVillages[0]
+    }
+
+    // Get all continents
+    const continents = await prisma.continent.findMany()
+    if (continents.length === 0) {
+      console.error("[VillageService] No continents available to create village")
+      return null
+    }
+
+    // Pick a random continent
+    const randomContinent = continents[Math.floor(Math.random() * continents.length)]
+
+    // Find an available position
+    const position = await this.findAvailablePosition(randomContinent.id)
+    if (!position) {
+      console.error("[VillageService] Could not find available position for village")
+      return null
+    }
+
+    // Generate random name
+    const villageName = this.generateRandomVillageName()
+
+    // Create the village
+    return await this.createVillage(
+      playerId,
+      randomContinent.id,
+      villageName,
+      position.x,
+      position.y,
+    )
   }
 }

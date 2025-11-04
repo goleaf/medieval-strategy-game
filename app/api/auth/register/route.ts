@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { hash } from "bcryptjs"
 import { type NextRequest, NextResponse } from "next/server"
+import { VillageService } from "@/lib/game-services/village-service"
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,9 +37,6 @@ export async function POST(req: NextRequest) {
     })
 
     // Create initial player
-    const continents = await prisma.continent.findMany()
-    const randomContinent = continents[Math.floor(Math.random() * continents.length)]
-
     const player = await prisma.player.create({
       data: {
         userId: user.id,
@@ -49,6 +47,9 @@ export async function POST(req: NextRequest) {
     // Initialize beginner protection
     const { ProtectionService } = await import("@/lib/game-services/protection-service")
     await ProtectionService.initializeProtection(player.id)
+
+    // Create initial village with random name
+    await VillageService.ensurePlayerHasVillage(player.id)
 
     return NextResponse.json(
       {

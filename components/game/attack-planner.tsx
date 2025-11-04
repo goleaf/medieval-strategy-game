@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { useState } from "react"
+import { useEffect } from "react"
 import type { AttackType } from "@prisma/client"
 import type { Troop } from "@prisma/client"
 import { TextTable } from "./text-table"
@@ -13,49 +13,62 @@ interface AttackPlannerProps {
 }
 
 export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlannerProps) {
-  const [mode, setMode] = useState<"inactive" | "coordinates" | "troops">("inactive")
-  const [targetX, setTargetX] = useState("")
-  const [targetY, setTargetY] = useState("")
-  const [attackType, setAttackType] = useState<AttackType>("RAID")
-  const [troopSelection, setTroopSelection] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    // Ensure Alpine.js is ready
+    if (typeof window !== "undefined" && window.Alpine) {
+      window.Alpine.initTree(document.querySelector('[x-data*="attackPlanner"]') || document.body)
+    }
+  }, [])
 
-  const handleTroopChange = (troopId: string, value: number) => {
-    setTroopSelection((prev) => {
-      const updated = { ...prev }
-      if (value <= 0) {
-        delete updated[troopId]
-      } else {
-        updated[troopId] = value
-      }
-      return updated
-    })
-  }
-
-  const handleLaunch = async () => {
+  const handleLaunch = async (targetX: string, targetY: string, troopSelection: Record<string, number>, attackType: AttackType) => {
     if (!targetX || !targetY || Object.keys(troopSelection).length === 0) return
 
-    setLoading(true)
     try {
       await onLaunchAttack(Number.parseInt(targetX), Number.parseInt(targetY), troopSelection, attackType)
-      setMode("inactive")
-      setTargetX("")
-      setTargetY("")
-      setTroopSelection({})
-    } finally {
-      setLoading(false)
+    } catch (error) {
+      console.error("Failed to launch attack:", error)
     }
   }
 
   return (
-    <div className="w-full space-y-4">
-      {mode === "inactive" && (
-        <Button onClick={() => setMode("coordinates")} className="w-full">
+    <div
+      x-data={`{
+        mode: 'inactive',
+        targetX: '',
+        targetY: '',
+        attackType: 'RAID',
+        troopSelection: {},
+        loading: false,
+        handleTroopChange(troopId, value) {
+          if (value <= 0) {
+            delete this.troopSelection[troopId];
+          } else {
+            this.troopSelection[troopId] = value;
+          }
+        },
+        async handleLaunch() {
+          if (!this.targetX || !this.targetY || Object.keys(this.troopSelection).length === 0) return;
+          this.loading = true;
+          try {
+            await handleLaunch(this.targetX, this.targetY, this.troopSelection, this.attackType);
+            this.mode = 'inactive';
+            this.targetX = '';
+            this.targetY = '';
+            this.troopSelection = {};
+          } finally {
+            this.loading = false;
+          }
+        }
+      }`}
+      className="w-full space-y-4"
+    >
+      <div x-show="mode === 'inactive'">
+        <Button x-on:click="mode = 'coordinates'" className="w-full">
           Plan Attack
         </Button>
-      )}
+      </div>
 
-      {mode === "coordinates" && (
+      <div x-show="mode === 'coordinates'">
         <div className="space-y-4 p-3 border border-border rounded bg-secondary">
           <div>
             <label htmlFor="target-x" className="text-sm font-bold block mb-2">
@@ -66,16 +79,14 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
                 id="target-x"
                 type="number"
                 placeholder="X"
-                value={targetX}
-                onChange={(e) => setTargetX(e.target.value)}
+                x-model="targetX"
                 className="flex-1 p-2 border border-border rounded bg-background"
               />
               <input
                 id="target-y"
                 type="number"
                 placeholder="Y"
-                value={targetY}
-                onChange={(e) => setTargetY(e.target.value)}
+                x-model="targetY"
                 className="flex-1 p-2 border border-border rounded bg-background"
               />
             </div>
@@ -87,8 +98,7 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
             </label>
             <select
               id="attack-type"
-              value={attackType}
-              onChange={(e) => setAttackType(e.target.value as AttackType)}
+              x-model="attackType"
               className="w-full p-2 border border-border rounded bg-background"
             >
               <option value="RAID">Raid (steal resources)</option>
@@ -98,21 +108,25 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={() => setMode("troops")} disabled={!targetX || !targetY} className="flex-1">
+            <Button
+              x-on:click="mode = 'troops'"
+              x-bind:disabled="!targetX || !targetY"
+              className="flex-1"
+            >
               Select Troops
             </Button>
-            <Button variant="outline" onClick={() => setMode("inactive")} className="flex-1">
+            <Button x-on:click="mode = 'inactive'" variant="outline" className="flex-1">
               Cancel
             </Button>
           </div>
         </div>
-      )}
+      </div>
 
-      {mode === "troops" && (
+      <div x-show="mode === 'troops'">
         <div className="space-y-4">
           <div className="p-3 border border-border rounded bg-secondary">
-            <p className="font-bold">Target: ({targetX}, {targetY})</p>
-            <p className="text-sm text-muted-foreground">Type: {attackType}</p>
+            <p className="font-bold" x-text="`Target: (${targetX}, ${targetY})`" />
+            <p className="text-sm text-muted-foreground" x-text="`Type: ${attackType}`" />
           </div>
 
           <TextTable
@@ -125,8 +139,9 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
                 type="number"
                 min="0"
                 max={troop.quantity}
-                value={troopSelection[troop.id] || 0}
-                onChange={(e) => handleTroopChange(troop.id, Number.parseInt(e.target.value) || 0)}
+                x-data={`{ value: 0 }`}
+                x-model="value"
+                x-on:input={`handleTroopChange('${troop.id}', parseInt($event.target.value) || 0)`}
                 className="w-full p-2 border border-border rounded bg-background text-foreground"
                 aria-label={`Send ${troop.type}`}
               />,
@@ -135,18 +150,18 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
 
           <div className="flex gap-2">
             <Button
-              onClick={handleLaunch}
-              disabled={loading || Object.keys(troopSelection).length === 0}
+              x-on:click="handleLaunch()"
+              x-bind:disabled="loading || Object.keys(troopSelection).length === 0"
               className="flex-1"
             >
-              {loading ? "Launching..." : "Launch Attack"}
+              <span x-text="loading ? 'Launching...' : 'Launch Attack'" />
             </Button>
-            <Button variant="outline" onClick={() => setMode("coordinates")} className="flex-1">
+            <Button x-on:click="mode = 'coordinates'" variant="outline" className="flex-1">
               Back
             </Button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

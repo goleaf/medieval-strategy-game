@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db"
 import { compare } from "bcryptjs"
 import { type NextRequest, NextResponse } from "next/server"
 import { generateToken } from "@/lib/auth"
+import { VillageService } from "@/lib/game-services/village-service"
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,6 +24,11 @@ export async function POST(req: NextRequest) {
 
     const token = generateToken(user.id)
     const player = await prisma.player.findFirst({ where: { userId: user.id } })
+
+    // Ensure player has a village
+    if (player) {
+      await VillageService.ensurePlayerHasVillage(player.id)
+    }
 
     return NextResponse.json(
       {
