@@ -44,14 +44,14 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-background to-secondary flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 space-y-6">
+    <main className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <h1 className="text-3xl font-serif font-bold">Medieval Strategy</h1>
+          <h1 className="text-2xl font-bold">Medieval Strategy</h1>
           <p className="text-muted-foreground mt-2">Login to your kingdom</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4 border border-border rounded p-4 bg-card">
           {error && (
             <div className="p-3 bg-destructive/10 border border-destructive rounded text-sm text-destructive">
               {error}
@@ -59,8 +59,9 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="block text-sm font-bold mb-2">Email</label>
+            <label htmlFor="email" className="block text-sm font-bold mb-2">Email</label>
             <input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -71,8 +72,9 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-bold mb-2">Password</label>
+            <label htmlFor="password" className="block text-sm font-bold mb-2">Password</label>
             <input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -95,7 +97,7 @@ export default function LoginPage() {
             </Link>
           </p>
         </div>
-      </Card>
+      </div>
     </main>
   )
 }

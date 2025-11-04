@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { TroopService } from "./troop-service"
 import { VillageService } from "./village-service"
+import { ProtectionService } from "./protection-service"
 import type { AttackStatus, AttackType } from "@prisma/client"
 
 interface CombatResult {
@@ -49,19 +50,23 @@ export class CombatService {
   }
 
   /**
-   * Resolve classic O/D combat with wall bonus and randomness
+   * Resolve classic O/D combat with wall bonus, night bonus, and randomness
    */
-  static resolveCombat(
+  static async resolveCombat(
     attackerOffense: number,
     defenderDefense: number,
     wallLevel: number,
     attackerTroops: Array<{ id: string; quantity: number; attack: number; type?: string }>,
     defenderTroops: Array<{ id: string; quantity: number; defense: number }>,
     hasSiege: boolean,
-  ): CombatResult {
+  ): Promise<CombatResult> {
     // Wall bonus: each level adds defense
     const wallBonus = wallLevel * 50
-    const totalDefenderDefense = defenderDefense + wallBonus
+    let totalDefenderDefense = defenderDefense + wallBonus
+
+    // Night bonus: apply defense multiplier during night
+    const nightBonus = await ProtectionService.getNightBonusMultiplier()
+    totalDefenderDefense = totalDefenderDefense * nightBonus
 
     // Small randomness: ±5%
     const randomFactor = 0.95 + Math.random() * 0.1
@@ -185,12 +190,45 @@ export class CombatService {
       include: {
         attackUnits: { include: { troop: true } },
         defenseUnits: { include: { troop: true } },
-        fromVillage: { include: { buildings: true } },
-        toVillage: { include: { buildings: true, troops: true } },
+        fromVillage: { include: { buildings: true, player: true } },
+        toVillage: { include: { buildings: true, troops: true, player: true } },
       },
     })
 
     if (!attack || !attack.toVillage) return
+
+    // Final protection check (in case protection expired after attack was launched)
+    if (attack.type !== "SCOUT") {
+      const isProtected = await ProtectionService.isVillageProtected(attack.toVillage.id)
+      if (isProtected) {
+        // Cancel attack and refund troops
+        await prisma.attack.update({
+          where: { id: attackId },
+          data: { status: "CANCELLED" as AttackStatus },
+        })
+
+        // Return troops to attacker
+        for (const unit of attack.attackUnits) {
+          await prisma.troop.update({
+            where: { id: unit.troop.id },
+            data: { quantity: { increment: unit.quantity } },
+          })
+        }
+
+        // Send message to attacker
+        await prisma.message.create({
+          data: {
+            senderId: attack.fromVillage.playerId,
+            villageId: attack.fromVillageId,
+            type: "SYSTEM",
+            subject: "Attack Cancelled - Protection Active",
+            content: `Your attack on ${attack.toVillage.name} was cancelled because the village is still under beginner protection.`,
+          },
+        })
+
+        return
+      }
+    }
 
     // Handle scouting separately
     if (attack.type === "SCOUT") {
@@ -218,7 +256,7 @@ export class CombatService {
     )
 
     // Resolve combat
-    const result = this.resolveCombat(
+    const result = await this.resolveCombat(
       attackerOffense,
       defenderDefense,
       wallLevel,

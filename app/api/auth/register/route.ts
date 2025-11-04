@@ -46,6 +46,10 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // Initialize beginner protection
+    const { ProtectionService } = await import("@/lib/game-services/protection-service")
+    await ProtectionService.initializeProtection(player.id)
+
     return NextResponse.json(
       {
         user: { id: user.id, email: user.email, username: user.username },

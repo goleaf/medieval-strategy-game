@@ -1,9 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Navbar } from "@/components/game/navbar"
 
 interface MarketOrder {
   id: string
@@ -18,6 +17,8 @@ interface MarketOrder {
 export default function MarketPage() {
   const [orders, setOrders] = useState<MarketOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<"sell" | "buy">("sell")
+  const [villages] = useState<any[]>([])
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -36,61 +37,95 @@ export default function MarketPage() {
 
   const sellOrders = orders.filter((o) => o.type === "SELL")
   const buyOrders = orders.filter((o) => o.type === "BUY")
+  const displayOrders = activeTab === "sell" ? sellOrders : buyOrders
 
   return (
-    <main className="min-h-screen bg-background text-foreground p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold">Global Marketplace</h1>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      <Navbar
+        villages={villages}
+        currentVillageId={null}
+        onVillageChange={() => {}}
+        notificationCount={0}
+      />
+      
+      <main className="flex-1 w-full p-4">
+        <div className="w-full max-w-4xl mx-auto space-y-4">
+          <h1 className="text-2xl font-bold">Global Marketplace</h1>
 
-        {loading ? (
-          <Card className="p-6 text-center">Loading marketplace...</Card>
-        ) : (
-          <Tabs defaultValue="sell" className="space-y-4">
-            <TabsList className="grid w-full max-w-md grid-cols-2">
-              <TabsTrigger value="sell">Sell Orders ({sellOrders.length})</TabsTrigger>
-              <TabsTrigger value="buy">Buy Orders ({buyOrders.length})</TabsTrigger>
-            </TabsList>
+          {/* Tab Switcher */}
+          <section>
+            <div className="flex gap-2 border-b border-border">
+              <button
+                onClick={() => setActiveTab("sell")}
+                className={`px-4 py-2 border-b-2 transition ${
+                  activeTab === "sell"
+                    ? "border-primary font-bold"
+                    : "border-transparent hover:border-border"
+                }`}
+              >
+                Sell Orders ({sellOrders.length})
+              </button>
+              <button
+                onClick={() => setActiveTab("buy")}
+                className={`px-4 py-2 border-b-2 transition ${
+                  activeTab === "buy"
+                    ? "border-primary font-bold"
+                    : "border-transparent hover:border-border"
+                }`}
+              >
+                Buy Orders ({buyOrders.length})
+              </button>
+            </div>
+          </section>
 
-            <TabsContent value="sell">
-              <div className="space-y-3">
-                {sellOrders.map((order) => (
-                  <Card key={order.id} className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <p className="font-bold">{order.player.playerName}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Selling {order.offeringAmount} {order.offeringResource} for {order.requestAmount}{" "}
-                          {order.requestResource}
-                        </p>
-                      </div>
-                      <Button size="sm">Accept</Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="buy">
-              <div className="space-y-3">
-                {buyOrders.map((order) => (
-                  <Card key={order.id} className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <p className="font-bold">{order.player.playerName}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Buying {order.offeringAmount} {order.offeringResource} for {order.requestAmount}{" "}
-                          {order.requestResource}
-                        </p>
-                      </div>
-                      <Button size="sm">Accept</Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-        )}
-      </div>
-    </main>
+          {/* Orders Table */}
+          {loading ? (
+            <section>
+              <p>Loading marketplace...</p>
+            </section>
+          ) : (
+            <section>
+              <h2 className="text-lg font-bold mb-2">
+                {activeTab === "sell" ? "Sell Orders" : "Buy Orders"}
+              </h2>
+              <table className="w-full border-collapse border border-border">
+                <thead>
+                  <tr>
+                    <th className="border border-border p-2 text-left bg-secondary">Player</th>
+                    <th className="border border-border p-2 text-left bg-secondary">Offering</th>
+                    <th className="border border-border p-2 text-left bg-secondary">Requesting</th>
+                    <th className="border border-border p-2 text-left bg-secondary">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="border border-border p-4 text-center text-muted-foreground">
+                        No {activeTab === "sell" ? "sell" : "buy"} orders available
+                      </td>
+                    </tr>
+                  ) : (
+                    displayOrders.map((order) => (
+                      <tr key={order.id}>
+                        <td className="border border-border p-2">{order.player.playerName}</td>
+                        <td className="border border-border p-2">
+                          {order.offeringAmount.toLocaleString()} {order.offeringResource}
+                        </td>
+                        <td className="border border-border p-2">
+                          {order.requestAmount.toLocaleString()} {order.requestResource}
+                        </td>
+                        <td className="border border-border p-2">
+                          <Button size="sm" className="w-full">Accept</Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </section>
+          )}
+        </div>
+      </main>
+    </div>
   )
 }

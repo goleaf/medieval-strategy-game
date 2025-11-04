@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Navbar } from "@/components/game/navbar"
 
 interface Tribe {
   id: string
@@ -17,6 +17,7 @@ export default function TribesPage() {
   const [tribes, setTribes] = useState<Tribe[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTribe, setSelectedTribe] = useState<Tribe | null>(null)
+  const [villages] = useState<any[]>([])
 
   useEffect(() => {
     const fetchTribes = async () => {
@@ -32,60 +33,112 @@ export default function TribesPage() {
   }, [])
 
   return (
-    <main className="min-h-screen bg-background text-foreground p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold">Tribes & Alliances</h1>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      <Navbar
+        villages={villages}
+        currentVillageId={null}
+        onVillageChange={() => {}}
+        notificationCount={0}
+      />
+      
+      <main className="flex-1 w-full p-4">
+        <div className="w-full max-w-4xl mx-auto space-y-4">
+          <h1 className="text-2xl font-bold">Tribes & Alliances</h1>
 
-        {loading ? (
-          <Card className="p-6 text-center">Loading tribes...</Card>
-        ) : (
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-4">
-              {tribes.map((tribe) => (
-                <Card
-                  key={tribe.id}
-                  onClick={() => setSelectedTribe(tribe)}
-                  className={`p-6 cursor-pointer transition border-2 ${
-                    selectedTribe?.id === tribe.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-xl font-bold">{tribe.name}</h3>
-                      <p className="text-sm text-muted-foreground">Tag: {tribe.tag}</p>
-                      <p className="text-sm mt-2">Leader: {tribe.leader.playerName}</p>
-                    </div>
-                    <div className="text-right space-y-2">
-                      <p className="font-bold">{tribe.memberCount} members</p>
-                      <p className="text-xs text-muted-foreground">{tribe.totalPoints.toLocaleString()} points</p>
-                    </div>
+          {loading ? (
+            <section>
+              <p>Loading tribes...</p>
+            </section>
+          ) : (
+            <>
+              <section>
+                <h2 className="text-lg font-bold mb-2">All Tribes</h2>
+                <table className="w-full border-collapse border border-border">
+                  <thead>
+                    <tr>
+                      <th className="border border-border p-2 text-left bg-secondary">Name</th>
+                      <th className="border border-border p-2 text-left bg-secondary">Tag</th>
+                      <th className="border border-border p-2 text-right bg-secondary">Members</th>
+                      <th className="border border-border p-2 text-right bg-secondary">Points</th>
+                      <th className="border border-border p-2 text-left bg-secondary">Leader</th>
+                      <th className="border border-border p-2 text-left bg-secondary">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tribes.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="border border-border p-4 text-center text-muted-foreground">
+                          No tribes found
+                        </td>
+                      </tr>
+                    ) : (
+                      tribes.map((tribe) => (
+                        <tr
+                          key={tribe.id}
+                          className={selectedTribe?.id === tribe.id ? "bg-primary/10" : ""}
+                        >
+                          <td className="border border-border p-2 font-bold">{tribe.name}</td>
+                          <td className="border border-border p-2 font-mono text-sm">{tribe.tag}</td>
+                          <td className="border border-border p-2 text-right">{tribe.memberCount}</td>
+                          <td className="border border-border p-2 text-right font-mono">
+                            {tribe.totalPoints.toLocaleString()}
+                          </td>
+                          <td className="border border-border p-2">{tribe.leader.playerName}</td>
+                          <td className="border border-border p-2">
+                            <button
+                              onClick={() =>
+                                setSelectedTribe(selectedTribe?.id === tribe.id ? null : tribe)
+                              }
+                              className="px-2 py-1 border border-border rounded hover:bg-secondary"
+                            >
+                              {selectedTribe?.id === tribe.id ? "Hide" : "Select"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </section>
+
+              {selectedTribe && (
+                <section>
+                  <h2 className="text-lg font-bold mb-2">Tribe Details: {selectedTribe.name}</h2>
+                  <table className="w-full border-collapse border border-border">
+                    <tbody>
+                      <tr>
+                        <th className="border border-border p-2 text-left bg-secondary">Name</th>
+                        <td className="border border-border p-2">{selectedTribe.name}</td>
+                      </tr>
+                      <tr>
+                        <th className="border border-border p-2 text-left bg-secondary">Tag</th>
+                        <td className="border border-border p-2 font-mono">{selectedTribe.tag}</td>
+                      </tr>
+                      <tr>
+                        <th className="border border-border p-2 text-left bg-secondary">Members</th>
+                        <td className="border border-border p-2">{selectedTribe.memberCount}</td>
+                      </tr>
+                      <tr>
+                        <th className="border border-border p-2 text-left bg-secondary">Points</th>
+                        <td className="border border-border p-2 font-mono">
+                          {selectedTribe.totalPoints.toLocaleString()}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th className="border border-border p-2 text-left bg-secondary">Leader</th>
+                        <td className="border border-border p-2">{selectedTribe.leader.playerName}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div className="mt-2">
+                    <Button className="w-full">Request to Join</Button>
                   </div>
-                </Card>
-              ))}
-            </div>
-
-            {selectedTribe && (
-              <Card className="p-6 h-fit space-y-4">
-                <h3 className="font-bold text-lg">{selectedTribe.name}</h3>
-                <div className="space-y-2 text-sm">
-                  <p>
-                    <span className="font-bold">Members:</span> {selectedTribe.memberCount}
-                  </p>
-                  <p>
-                    <span className="font-bold">Points:</span> {selectedTribe.totalPoints.toLocaleString()}
-                  </p>
-                  <p>
-                    <span className="font-bold">Leader:</span> {selectedTribe.leader.playerName}
-                  </p>
-                </div>
-                <Button className="w-full">Request to Join</Button>
-              </Card>
-            )}
-          </div>
-        )}
-      </div>
-    </main>
+                </section>
+              )}
+            </>
+          )}
+        </div>
+      </main>
+    </div>
   )
 }

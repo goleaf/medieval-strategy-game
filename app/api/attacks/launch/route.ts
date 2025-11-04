@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { MovementService } from "@/lib/game-services/movement-service"
+import { ProtectionService } from "@/lib/game-services/protection-service"
 import { type NextRequest, NextResponse } from "next/server"
 import type { AttackType } from "@prisma/client"
 
@@ -13,11 +14,35 @@ export async function POST(req: NextRequest) {
 
     const fromVillage = await prisma.village.findUnique({
       where: { id: fromVillageId },
-      include: { troops: true },
+      include: { troops: true, player: true },
     })
 
     if (!fromVillage) {
       return NextResponse.json({ error: "Village not found" }, { status: 404 })
+    }
+
+    // Find target village
+    const targetVillage = await prisma.village.findUnique({
+      where: { x_y: { x: toX, y: toY } },
+      include: { player: true },
+    })
+
+    if (targetVillage) {
+      // Check beginner protection (except for scouting)
+      if (attackType !== "SCOUT") {
+        const isProtected = await ProtectionService.isVillageProtected(targetVillage.id)
+        if (isProtected) {
+          return NextResponse.json(
+            { error: "Target village is protected by beginner protection" },
+            { status: 403 },
+          )
+        }
+      }
+
+      // Check if attacking own village
+      if (targetVillage.playerId === fromVillage.playerId) {
+        return NextResponse.json({ error: "Cannot attack your own village" }, { status: 400 })
+      }
     }
 
     // Validate troop selection
@@ -55,7 +80,7 @@ export async function POST(req: NextRequest) {
     const attack = await prisma.attack.create({
       data: {
         fromVillageId,
-        toVillageId: undefined,
+        toVillageId: targetVillage?.id || null,
         movementId: movement.id,
         type: attackType as AttackType,
         arrivalAt,

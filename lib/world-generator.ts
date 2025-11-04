@@ -19,6 +19,12 @@ export async function initializeWorld() {
       isRunning: true,
       resourcePerTick: 10,
       productionMultiplier: 1.0,
+      tickIntervalMinutes: 5,
+      constructionQueueLimit: 3,
+      unitSpeed: 1.0,
+      nightBonusMultiplier: 1.2,
+      beginnerProtectionHours: 72,
+      beginnerProtectionEnabled: true,
     },
   })
 

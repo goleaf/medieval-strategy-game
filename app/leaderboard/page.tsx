@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card } from "@/components/ui/card"
+import { Navbar } from "@/components/game/navbar"
 
 interface LeaderboardEntry {
   id: string
@@ -14,6 +14,7 @@ interface LeaderboardEntry {
 export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [villages] = useState<any[]>([])
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -27,45 +28,64 @@ export default function LeaderboardPage() {
     }
 
     fetchLeaderboard()
-    const interval = setInterval(fetchLeaderboard, 30000) // Refresh every 30 seconds
+    const interval = setInterval(fetchLeaderboard, 30000)
 
     return () => clearInterval(interval)
   }, [])
 
   return (
-    <main className="min-h-screen bg-background text-foreground p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold">Global Leaderboard</h1>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      <Navbar
+        villages={villages}
+        currentVillageId={null}
+        onVillageChange={() => {}}
+        notificationCount={0}
+      />
+      
+      <main className="flex-1 w-full p-4">
+        <div className="w-full max-w-4xl mx-auto space-y-4">
+          <h1 className="text-2xl font-bold">Global Leaderboard</h1>
 
-        {loading ? (
-          <Card className="p-6 text-center">Loading...</Card>
-        ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-secondary border-b border-border">
+          {loading ? (
+            <section>
+              <p>Loading...</p>
+            </section>
+          ) : (
+            <section>
+              <table className="w-full border-collapse border border-border">
+                <thead>
                   <tr>
-                    <th className="p-4 text-left font-bold">#</th>
-                    <th className="p-4 text-left font-bold">Player</th>
-                    <th className="p-4 text-left font-bold">Tribe</th>
-                    <th className="p-4 text-right font-bold">Points</th>
+                    <th className="border border-border p-2 text-left bg-secondary">Rank</th>
+                    <th className="border border-border p-2 text-left bg-secondary">Player</th>
+                    <th className="border border-border p-2 text-left bg-secondary">Tribe</th>
+                    <th className="border border-border p-2 text-right bg-secondary">Points</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
-                  {entries.map((entry, idx) => (
-                    <tr key={entry.id} className="hover:bg-secondary/50">
-                      <td className="p-4 font-bold">{entry.rank}</td>
-                      <td className="p-4">{entry.playerName}</td>
-                      <td className="p-4 font-mono text-xs">{entry.tribe?.tag || "-"}</td>
-                      <td className="p-4 text-right font-mono font-bold">{entry.totalPoints.toLocaleString()}</td>
+                <tbody>
+                  {entries.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="border border-border p-4 text-center text-muted-foreground">
+                        No entries yet
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    entries.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="border border-border p-2 font-bold">{entry.rank}</td>
+                        <td className="border border-border p-2">{entry.playerName}</td>
+                        <td className="border border-border p-2 font-mono text-sm">{entry.tribe?.tag || "-"}</td>
+                        <td className="border border-border p-2 text-right font-mono font-bold">
+                          {entry.totalPoints.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
-            </div>
-          </Card>
-        )}
-      </div>
-    </main>
+            </section>
+          )}
+        </div>
+      </main>
+    </div>
   )
 }

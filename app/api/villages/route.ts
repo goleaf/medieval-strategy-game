@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { VillageService } from "@/lib/game-services/village-service"
+import { ProtectionService } from "@/lib/game-services/protection-service"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(req: NextRequest) {
@@ -16,10 +17,28 @@ export async function GET(req: NextRequest) {
         buildings: true,
         troops: true,
         continent: true,
+        player: {
+          select: {
+            beginnerProtectionUntil: true,
+          },
+        },
       },
     })
 
-    return NextResponse.json(villages, { status: 200 })
+    // Add protection status to each village
+    const villagesWithProtection = await Promise.all(
+      villages.map(async (village) => {
+        const isProtected = await ProtectionService.isVillageProtected(village.id)
+        const protectionHoursRemaining = await ProtectionService.getProtectionTimeRemaining(village.playerId)
+        return {
+          ...village,
+          isProtected,
+          protectionHoursRemaining,
+        }
+      }),
+    )
+
+    return NextResponse.json(villagesWithProtection, { status: 200 })
   } catch (error) {
     console.error("[v0] Get villages error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

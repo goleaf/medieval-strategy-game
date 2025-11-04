@@ -11,6 +11,12 @@ async function main() {
       maxY: 200,
       speed: 1,
       isRunning: true,
+      tickIntervalMinutes: 5,
+      constructionQueueLimit: 3,
+      unitSpeed: 1.0,
+      nightBonusMultiplier: 1.2,
+      beginnerProtectionHours: 72,
+      beginnerProtectionEnabled: true,
     },
   })
 
@@ -52,6 +58,10 @@ async function main() {
         playerName: `player${i}`,
       },
     })
+
+    // Initialize beginner protection
+    const { ProtectionService } = await import("../lib/game-services/protection-service")
+    await ProtectionService.initializeProtection(player.id)
 
     // Create village for player
     const village = await prisma.village.create({
