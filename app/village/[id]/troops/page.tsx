@@ -6,12 +6,17 @@ import Link from "next/link"
 import { TroopTrainer } from "@/components/game/troop-trainer"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
-import type { Village, Troop } from "@prisma/client"
+// Types inferred from API responses
+type VillageWithTroops = {
+  id: string
+  name: string
+  troops: Array<{ id: string; type: string; quantity: number; attack: number; defense: number; speed: number }>
+}
 
 export default function TroopsPage() {
   const params = useParams()
   const villageId = params.id as string
-  const [village, setVillage] = useState<(Village & { troops: Troop[] }) | null>(null)
+  const [village, setVillage] = useState<VillageWithTroops | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

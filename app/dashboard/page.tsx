@@ -6,10 +6,44 @@ import { VillageOverview } from "@/components/game/village-overview"
 import { ResourceDisplay } from "@/components/game/resource-display"
 import { BuildingQueue } from "@/components/game/building-queue"
 import { Button } from "@/components/ui/button"
-import type { Village, Building, Troop } from "@prisma/client"
+// Types inferred from API responses
+type VillageWithRelations = {
+  id: string
+  name: string
+  x: number
+  y: number
+  wood: number
+  stone: number
+  iron: number
+  gold: number
+  food: number
+  woodProduction: number
+  stoneProduction: number
+  ironProduction: number
+  goldProduction: number
+  foodProduction: number
+  population: number
+  loyalty: number
+  buildings: Array<{
+    id: string
+    type: string
+    level: number
+    isBuilding: boolean
+    completionAt: string | null
+    queuePosition: number | null
+  }>
+  troops: Array<{
+    id: string
+    type: string
+    quantity: number
+    attack: number
+    defense: number
+    speed: number
+  }>
+}
 
 export default function Dashboard() {
-  const [villages, setVillages] = useState<(Village & { buildings: Building[]; troops: Troop[] })[]>([])
+  const [villages, setVillages] = useState<VillageWithRelations[]>([])
   const [selectedVillage, setSelectedVillage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 

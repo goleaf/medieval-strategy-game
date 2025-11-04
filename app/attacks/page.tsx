@@ -6,7 +6,12 @@ import { AttackPlanner } from "@/components/game/attack-planner"
 import { TextTable } from "@/components/game/text-table"
 import { CountdownTimer } from "@/components/game/countdown-timer"
 import { Button } from "@/components/ui/button"
-import type { Village, Troop } from "@prisma/client"
+// Types inferred from API responses
+type VillageWithTroops = {
+  id: string
+  name: string
+  troops: Array<{ id: string; type: string; quantity: number }>
+}
 
 interface Attack {
   id: string
@@ -18,7 +23,7 @@ interface Attack {
 }
 
 export default function AttacksPage() {
-  const [villages, setVillages] = useState<(Village & { troops: Troop[] })[]>([])
+  const [villages, setVillages] = useState<VillageWithTroops[]>([])
   const [attacks, setAttacks] = useState<Attack[]>([])
   const [selectedVillage, setSelectedVillage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)

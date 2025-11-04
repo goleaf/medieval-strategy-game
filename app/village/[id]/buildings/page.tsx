@@ -7,12 +7,17 @@ import { BuildingQueue } from "@/components/game/building-queue"
 import { TextTable } from "@/components/game/text-table"
 import { CountdownTimer } from "@/components/game/countdown-timer"
 import { Button } from "@/components/ui/button"
-import type { Village, Building } from "@prisma/client"
+// Types inferred from API responses
+type VillageWithBuildings = {
+  id: string
+  name: string
+  buildings: Array<{ id: string; type: string; level: number; isBuilding: boolean; completionAt: string | null; queuePosition: number | null }>
+}
 
 export default function BuildingsPage() {
   const params = useParams()
   const villageId = params.id as string
-  const [village, setVillage] = useState<(Village & { buildings: Building[] }) | null>(null)
+  const [village, setVillage] = useState<VillageWithBuildings | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
