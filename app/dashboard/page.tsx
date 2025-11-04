@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { VillageOverview } from "@/components/game/village-overview"
 import { ResourceDisplay } from "@/components/game/resource-display"
@@ -45,63 +45,42 @@ type VillageWithRelations = {
 export default function Dashboard() {
   const [villages, setVillages] = useState<VillageWithRelations[]>([])
   const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
-  const fetchVillages = async () => {
+  const fetchVillages = useCallback(async () => {
     try {
+      setLoading(true)
       const res = await fetch("/api/villages?playerId=temp-player-id")
       const data = await res.json()
       if (data.success && data.data) {
         setVillages(data.data)
-        if (data.data.length > 0 && !selectedVillageId) {
-          setSelectedVillageId(data.data[0].id)
-        }
+        setSelectedVillageId((prev) => {
+          if (!prev && data.data.length > 0) {
+            return data.data[0].id
+          }
+          return prev
+        })
       } else {
         setVillages([])
       }
     } catch (error) {
       console.error("Failed to fetch villages:", error)
       setVillages([])
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchVillages()
     const interval = setInterval(fetchVillages, 30000) // Refresh every 30 seconds
-    if (typeof window !== "undefined") {
-      (window as any).__dashboardFetchHandler = fetchVillages
-      (window as any).__dashboardSetSelectedVillage = setSelectedVillageId
-    }
     return () => {
       clearInterval(interval)
-      if (typeof window !== "undefined") {
-        delete (window as any).__dashboardFetchHandler
-        delete (window as any).__dashboardSetSelectedVillage
-      }
     }
-  }, [selectedVillageId])
+  }, [fetchVillages])
 
   return (
-    <div
-      x-data={`{
-        selectedVillageId: ${villages.length > 0 ? `'${villages[0].id}'` : 'null'},
-        loading: false,
-        handleChange() {
-          // Trigger React re-render by updating state via global handler
-          if (window.__dashboardSetSelectedVillage) {
-            window.__dashboardSetSelectedVillage(this.selectedVillageId);
-          }
-        },
-        async refresh() {
-          this.loading = true;
-          if (window.__dashboardFetchHandler) {
-            await window.__dashboardFetchHandler();
-          }
-          this.loading = false;
-        }
-      }`}
-      x-init="refresh()"
-      className="min-h-screen bg-background text-foreground"
-    >
+    <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">🏰 Medieval Strategy</h1>
@@ -130,28 +109,33 @@ export default function Dashboard() {
 
       <main className="w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          <div x-show="loading" className="text-center py-8">Loading...</div>
-          <div x-show="!loading && villages.length === 0" className="text-center py-8">
-            <p className="mb-4">No villages yet. Create your first village!</p>
-            <Button>Create Village</Button>
-          </div>
-          <div x-show="!loading && villages.length > 0">
-            {villages.length > 1 && (
-              <div className="p-3 border border-border rounded bg-secondary">
-                <label className="text-sm font-bold block mb-2">Select Village</label>
-                <select
-                  x-model="selectedVillageId"
-                  x-on:change="handleChange()"
-                  className="w-full p-2 border border-border rounded bg-background"
-                >
-                  {villages.map((village) => (
-                    <option key={village.id} value={village.id}>
-                      {village.name} ({village.x}, {village.y})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+          {loading && (
+            <div className="text-center py-8">Loading...</div>
+          )}
+          {!loading && villages.length === 0 && (
+            <div className="text-center py-8">
+              <p className="mb-4">No villages yet. Create your first village!</p>
+              <Button>Create Village</Button>
+            </div>
+          )}
+          {!loading && villages.length > 0 && (
+            <>
+              {villages.length > 1 && (
+                <div className="p-3 border border-border rounded bg-secondary">
+                  <label className="text-sm font-bold block mb-2">Select Village</label>
+                  <select
+                    value={selectedVillageId || ""}
+                    onChange={(e) => setSelectedVillageId(e.target.value)}
+                    className="w-full p-2 border border-border rounded bg-background"
+                  >
+                    {villages.map((village) => (
+                      <option key={village.id} value={village.id}>
+                        {village.name} ({village.x}, {village.y})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             {(() => {
               const currentVillage = villages.find(v => v.id === selectedVillageId)
               return currentVillage ? (
@@ -192,9 +176,7 @@ export default function Dashboard() {
                           })
                           const data = await res.json()
                           if (data.success) {
-                            if (typeof window !== "undefined" && (window as any).__dashboardFetchHandler) {
-                              await (window as any).__dashboardFetchHandler()
-                            }
+                            await fetchVillages()
                           } else {
                             alert(data.error || "Failed to cancel building")
                           }
@@ -217,8 +199,8 @@ export default function Dashboard() {
                             body: JSON.stringify({ buildingId }),
                           })
                           const data = await res.json()
-                          if (data.success && typeof window !== "undefined" && (window as any).__dashboardFetchHandler) {
-                            await (window as any).__dashboardFetchHandler()
+                          if (data.success) {
+                            await fetchVillages()
                           }
                         } catch (error) {
                           console.error("Failed to upgrade building:", error)
@@ -247,7 +229,8 @@ export default function Dashboard() {
                 </div>
               ) : null
             })()}
-          </div>
+            </>
+          )}
         </div>
       </main>
     </div>

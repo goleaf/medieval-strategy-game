@@ -14,26 +14,18 @@ interface Notification {
 }
 
 export function NotificationBell() {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
-
-  useEffect(() => {
-    fetchNotifications()
-    const interval = setInterval(fetchNotifications, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
   const fetchNotifications = async () => {
     try {
       const playerId = "temp-player-id"
       const res = await fetch(`/api/notifications?playerId=${playerId}`)
       const data = await res.json()
       if (data.success && data.data) {
-        setNotifications(data.data)
-        setUnreadCount(data.data.filter((n: Notification) => !n.read).length)
+        return data.data
       }
+      return []
     } catch (error) {
       console.error("Failed to fetch notifications:", error)
+      return []
     }
   }
 
@@ -44,14 +36,28 @@ export function NotificationBell() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ read: true }),
       })
-      fetchNotifications()
       if (link) {
         window.location.href = link
       }
+      return true
     } catch (error) {
       console.error("Failed to mark notification as read:", error)
+      return false
     }
   }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__notificationBellFetchHandler = fetchNotifications
+      ;(window as any).__notificationBellMarkReadHandler = markAsRead
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__notificationBellFetchHandler
+        delete (window as any).__notificationBellMarkReadHandler
+      }
+    }
+  }, [])
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -74,7 +80,39 @@ export function NotificationBell() {
 
   return (
     <div
-      x-data="{ showDropdown: false }"
+      x-data={`{
+        showDropdown: false,
+        notifications: [],
+        getIcon(type) {
+          const icons = {
+            BATTLE: '⚔️',
+            SCOUT: '👁️',
+            CONSTRUCTION: '🏗️',
+            TRAINING: '⚒️',
+            MARKET: '💰',
+            SYSTEM: '🔔'
+          };
+          return icons[type] || '📬';
+        },
+        get unreadCount() {
+          return this.notifications.filter(n => !n.read).length;
+        },
+        async init() {
+          await this.refresh();
+          setInterval(() => this.refresh(), 30000);
+        },
+        async refresh() {
+          if (window.__notificationBellFetchHandler) {
+            this.notifications = await window.__notificationBellFetchHandler();
+          }
+        },
+        async markAsRead(id, link) {
+          if (window.__notificationBellMarkReadHandler) {
+            await window.__notificationBellMarkReadHandler(id, link);
+            await this.refresh();
+          }
+        }
+      }`}
       x-on:click.outside="showDropdown = false"
       className="relative"
     >
@@ -84,11 +122,10 @@ export function NotificationBell() {
         aria-label="Notifications"
       >
         🔔
-        {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 bg-destructive text-destructive-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
-            {unreadCount > 9 ? "9+" : unreadCount}
-          </span>
-        )}
+        <span x-show="unreadCount > 0" className="absolute top-0 right-0 bg-destructive text-destructive-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
+          <span x-show="unreadCount <= 9" x-text="unreadCount" />
+          <span x-show="unreadCount > 9">9+</span>
+        </span>
       </button>
 
       <div
@@ -110,37 +147,26 @@ export function NotificationBell() {
             Close
           </button>
         </div>
-        {notifications.length === 0 ? (
-          <div className="p-4 text-center text-muted-foreground text-sm">
-            No notifications
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                onClick={() => markAsRead(notification.id, notification.link)}
-                className={`p-3 hover:bg-secondary cursor-pointer ${!notification.read ? "bg-primary/5" : ""}`}
-              >
-                <div className="flex items-start gap-2">
-                  <span className="text-lg">{getIcon(notification.type)}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm">{notification.title}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {notification.message}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {new Date(notification.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-                  {!notification.read && (
-                    <span className="w-2 h-2 bg-primary rounded-full flex-shrink-0 mt-1" />
-                  )}
-                </div>
+        <div x-show="notifications.length === 0" className="p-4 text-center text-muted-foreground text-sm">
+          No notifications
+        </div>
+        <template x-for="notification in notifications" x-key="notification.id">
+          <div
+            x-on:click="markAsRead(notification.id, notification.link)"
+            x-bind:class="notification.read ? '' : 'bg-primary/5'"
+            className="p-3 hover:bg-secondary cursor-pointer"
+          >
+            <div className="flex items-start gap-2">
+              <span className="text-lg" x-text="getIcon(notification.type)" />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm" x-text="notification.title" />
+                <div className="text-xs text-muted-foreground mt-1" x-text="notification.message" />
+                <div className="text-xs text-muted-foreground mt-1" x-text="new Date(notification.createdAt).toLocaleString()" />
               </div>
-            ))}
+              <span x-show="!notification.read" className="w-2 h-2 bg-primary rounded-full flex-shrink-0 mt-1" />
+            </div>
           </div>
-        )}
+        </template>
       </div>
     </div>
   )

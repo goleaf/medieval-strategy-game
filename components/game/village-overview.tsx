@@ -25,10 +25,6 @@ export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
     }
   }
 
-  const selectedBuilding = selectedBuildingId
-    ? village.buildings.find(b => b.id === selectedBuildingId)
-    : null
-
   return (
     <div className="w-full space-y-4">
       {/* Village Info */}
@@ -84,18 +80,24 @@ export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
           ])}
         />
         
-        {selectedBuilding && (
-          <div className="mt-2 p-3 border border-border rounded bg-secondary">
+        {village.buildings.map((building) => (
+          <div
+            key={building.id}
+            x-show={`selectedBuildingId === '${building.id}'`}
+            className="mt-2 p-3 border border-border rounded bg-secondary"
+          >
             <div>
-              <h4 className="font-bold mb-2">{selectedBuilding.type} (Level {selectedBuilding.level})</h4>
-              {selectedBuilding.isBuilding && selectedBuilding.completionAt && (
-                <p className="mb-2">
-                  Completion: <CountdownTimer targetDate={selectedBuilding.completionAt} />
-                </p>
+              <h4 className="font-bold mb-2">{building.type} (Level {building.level})</h4>
+              {building.isBuilding && building.completionAt && (
+                <div className="mb-2">
+                  <p>
+                    Completion: <CountdownTimer targetDate={building.completionAt} />
+                  </p>
+                </div>
               )}
-              {(!selectedBuilding.isBuilding || !selectedBuilding.completionAt) && (
+              {(!building.isBuilding || !building.completionAt) && (
                 <Button
-                  onClick={() => handleUpgrade(selectedBuilding.id)}
+                  x-on:click={`handleUpgrade('${building.id}')`}
                   className="w-full"
                 >
                   Upgrade
@@ -103,7 +105,7 @@ export function VillageOverview({ village, onUpgrade }: VillageOverviewProps) {
               )}
             </div>
           </div>
-        )}
+        ))}
       </section>
 
       {/* Troops Table */}
