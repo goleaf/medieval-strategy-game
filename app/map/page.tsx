@@ -85,7 +85,7 @@ export default function MapPage() {
   }, {} as Record<string, Village[]>)
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="min-h-screen bg-slate-900 text-white flex flex-col">
       {/* Header */}
       <header className="border-b border-slate-700 p-4 bg-slate-800">
         <div className="flex items-center justify-between">
@@ -99,7 +99,7 @@ export default function MapPage() {
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-80px)]">
+      <div className="flex flex-1">
         {/* Main Map Content */}
         <div className="flex-1 p-6 overflow-y-auto">
           {loading && (
@@ -203,7 +203,7 @@ export default function MapPage() {
             <Card className="bg-slate-800 border-slate-700">
               <div className="p-8 text-center">
                 <div className="text-slate-400">No villages found matching your search criteria.</div>
-              </Card>
+              </div>
             </Card>
           )}
         </div>

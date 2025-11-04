@@ -149,16 +149,26 @@ async function createUsersAndPlayers() {
 
   const users = []
   const players = []
+  const usedUsernames = new Set<string>()
   const usedPlayerNames = new Set<string>()
 
   for (let i = 0; i < NUM_USERS; i++) {
     const email = `player${i + 1}@medievalgame.local`
-    const username = faker.internet.username()
+
+    // Ensure unique username
+    let username = faker.internet.username()
+    let counter = 1
+    while (usedUsernames.has(username)) {
+      username = `${faker.internet.username()}${counter}`
+      counter++
+    }
+    usedUsernames.add(username)
+
     const displayName = faker.person.fullName()
 
     // Ensure unique player name
     let playerName = faker.helpers.slugify(displayName.toLowerCase())
-    let counter = 1
+    counter = 1
     while (usedPlayerNames.has(playerName)) {
       playerName = `${faker.helpers.slugify(displayName.toLowerCase())}${counter}`
       counter++

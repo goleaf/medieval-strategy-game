@@ -37,7 +37,7 @@ export default function LeaderboardPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
@@ -48,7 +48,7 @@ export default function LeaderboardPage() {
         </div>
       </header>
 
-      <main className="w-full p-4">
+      <main className="flex-1 w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex gap-2">
             <Button

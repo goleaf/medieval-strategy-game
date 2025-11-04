@@ -21,6 +21,9 @@ export default function AdminDashboard() {
   const [mapVisualization, setMapVisualization] = useState<any>(null)
   const [notifications, setNotifications] = useState<any>(null)
   const [analytics, setAnalytics] = useState<any>(null)
+  const [maintenance, setMaintenance] = useState<any>(null)
+  const [messaging, setMessaging] = useState<any>(null)
+  const [search, setSearch] = useState<any>(null)
   const [errorLogs, setErrorLogs] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState("stats")
   const [loading, setLoading] = useState(false)
@@ -46,6 +49,21 @@ export default function AdminDashboard() {
   })
   const [showPlayerActionDialog, setShowPlayerActionDialog] = useState(false)
   const [currentPlayerAction, setCurrentPlayerAction] = useState('')
+  const [messageForm, setMessageForm] = useState({
+    playerId: '',
+    subject: '',
+    message: ''
+  })
+  const [searchForm, setSearchForm] = useState({
+    q: '',
+    playerName: '',
+    email: '',
+    minPoints: '',
+    maxPoints: '',
+    hasUserAccount: '',
+    isBanned: '',
+    isDeleted: ''
+  })
 
   const fetchData = async (tab: string) => {
     try {
@@ -114,6 +132,29 @@ export default function AdminDashboard() {
         if (data.success && data.data) {
           setAnalytics(data.data)
         }
+      } else if (tab === "maintenance") {
+        const res = await fetch('/api/admin/maintenance', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setMaintenance(data.data)
+        }
+      } else if (tab === "messaging") {
+        const res = await fetch('/api/admin/messaging', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setMessaging(data.data)
+        }
+      } else if (tab === "search") {
+        // Search is handled differently - it requires search parameters
+        setSearch({ players: [], pagination: { total: 0, page: 1, pages: 1 } })
       } else if (tab === "errors") {
         // Error logs are included in stats API
         if (stats?.errorLogs) {
@@ -439,6 +480,129 @@ export default function AdminDashboard() {
     switchTab("stats")
   }, [])
 
+  // Handler functions for new features
+  const handleMaintenanceAction = async (action: string) => {
+    try {
+      if (action === 'toggle') {
+        const isActive = maintenance?.maintenance?.isActive
+        const message = isActive ? null : prompt('Enter maintenance message:')
+        if (!isActive && !message) return
+
+        const response = await fetch('/api/admin/maintenance', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            action: isActive ? 'disable' : 'enable',
+            message: message || undefined
+          })
+        })
+
+        if (response.ok) {
+          // Refresh maintenance data
+          fetchData('maintenance')
+        }
+      } else if (action === 'cleanup') {
+        if (!confirm('Are you sure you want to run cleanup operations? This will remove old data.')) return
+
+        const response = await fetch('/api/admin/maintenance', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ action: 'cleanup' })
+        })
+
+        if (response.ok) {
+          alert('Cleanup completed successfully!')
+          fetchData('maintenance')
+        }
+      }
+    } catch (error) {
+      console.error('Maintenance action error:', error)
+      alert('Failed to perform maintenance action')
+    }
+  }
+
+  const handleSendMessage = async () => {
+    if (!messageForm.playerId || !messageForm.subject || !messageForm.message) {
+      alert('Please fill in all fields')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/messaging', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(messageForm)
+      })
+
+      if (response.ok) {
+        alert('Message sent successfully!')
+        setMessageForm({ playerId: '', subject: '', message: '' })
+        fetchData('messaging')
+      } else {
+        const error = await response.json()
+        alert('Failed to send message: ' + error.error)
+      }
+    } catch (error) {
+      console.error('Send message error:', error)
+      alert('Failed to send message')
+    }
+  }
+
+  const handleSearch = async () => {
+    try {
+      const params = new URLSearchParams()
+      Object.entries(searchForm).forEach(([key, value]) => {
+        if (value) params.append(key, value)
+      })
+
+      const response = await fetch(`/api/admin/search?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSearch(data.data)
+      }
+    } catch (error) {
+      console.error('Search error:', error)
+      alert('Search failed')
+    }
+  }
+
+  const handleSearchPage = async (page: number) => {
+    try {
+      const params = new URLSearchParams()
+      Object.entries(searchForm).forEach(([key, value]) => {
+        if (value) params.append(key, value)
+      })
+      params.set('page', page.toString())
+
+      const response = await fetch(`/api/admin/search?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSearch(data.data)
+      }
+    } catch (error) {
+      console.error('Search page error:', error)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
@@ -517,6 +681,24 @@ export default function AdminDashboard() {
               variant={activeTab === 'analytics' ? 'default' : 'ghost'}
             >
               Analytics
+            </Button>
+            <Button
+              onClick={() => switchTab('maintenance')}
+              variant={activeTab === 'maintenance' ? 'default' : 'ghost'}
+            >
+              Maintenance
+            </Button>
+            <Button
+              onClick={() => switchTab('messaging')}
+              variant={activeTab === 'messaging' ? 'default' : 'ghost'}
+            >
+              Messaging
+            </Button>
+            <Button
+              onClick={() => switchTab('search')}
+              variant={activeTab === 'search' ? 'default' : 'ghost'}
+            >
+              Advanced Search
             </Button>
             <Button
               onClick={() => switchTab('errors')}
@@ -1751,6 +1933,426 @@ export default function AdminDashboard() {
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       Loading analytics data...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'maintenance' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-lg font-bold">System Maintenance</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Server maintenance, cleanup operations, and system health monitoring
+                    </p>
+                  </div>
+
+                  {maintenance ? (
+                    <div className="space-y-6">
+                      {/* Server Health */}
+                      <div className="bg-card border border-border rounded-lg p-4">
+                        <h3 className="font-semibold mb-3">Server Health</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-blue-600">{maintenance.server.uptime}s</div>
+                            <div className="text-muted-foreground">Uptime</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-green-600">{maintenance.server.memoryUsed}MB</div>
+                            <div className="text-muted-foreground">Memory Used</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-gray-600">{maintenance.server.memoryTotal}MB</div>
+                            <div className="text-muted-foreground">Memory Total</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-purple-600">{maintenance.server.nodeVersion}</div>
+                            <div className="text-muted-foreground">Node Version</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Maintenance Mode */}
+                      <div className="bg-card border border-border rounded-lg p-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <h3 className="font-semibold">Maintenance Mode</h3>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant={maintenance.maintenance?.isActive ? "destructive" : "outline"}
+                              onClick={() => handleMaintenanceAction('toggle')}
+                            >
+                              {maintenance.maintenance?.isActive ? 'Disable' : 'Enable'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleMaintenanceAction('cleanup')}
+                            >
+                              Run Cleanup
+                            </Button>
+                          </div>
+                        </div>
+
+                        {maintenance.maintenance?.isActive ? (
+                          <div className="bg-red-50 border border-red-200 rounded p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                              <span className="font-medium text-red-800">Maintenance Mode Active</span>
+                            </div>
+                            <p className="text-red-700 mb-2">{maintenance.maintenance.message}</p>
+                            {maintenance.maintenance.estimatedEndTime && (
+                              <p className="text-sm text-red-600">
+                                Estimated end: {new Date(maintenance.maintenance.estimatedEndTime).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-muted-foreground">
+                            Maintenance mode is currently disabled. Server is operating normally.
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Recent Cleanups */}
+                      <div className="space-y-4">
+                        <h3 className="font-semibold">Recent Cleanup Operations</h3>
+                        <div className="bg-card border border-border rounded-lg overflow-hidden">
+                          <div className="max-h-64 overflow-y-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="px-4 py-2 text-left">Action</th>
+                                  <th className="px-4 py-2 text-left">Details</th>
+                                  <th className="px-4 py-2 text-left">Admin</th>
+                                  <th className="px-4 py-2 text-left">Timestamp</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {maintenance.cleanups.map((cleanup: any) => (
+                                  <tr key={cleanup.id} className="border-t border-border">
+                                    <td className="px-4 py-2 font-medium">{cleanup.action.replace(/_/g, ' ')}</td>
+                                    <td className="px-4 py-2">{cleanup.details}</td>
+                                    <td className="px-4 py-2">{cleanup.admin}</td>
+                                    <td className="px-4 py-2">{new Date(cleanup.timestamp).toLocaleString()}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {maintenance.cleanups.length === 0 && (
+                            <div className="text-center py-8 text-muted-foreground">
+                              No cleanup operations found
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Loading maintenance data...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'messaging' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-lg font-bold">Admin Messaging</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Send messages to players and manage admin communications
+                    </p>
+                  </div>
+
+                  {messaging ? (
+                    <div className="space-y-6">
+                      {/* Send Message Form */}
+                      <div className="bg-card border border-border rounded-lg p-4">
+                        <h3 className="font-semibold mb-3">Send Message</h3>
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="playerId">Player ID</Label>
+                              <Input
+                                id="playerId"
+                                placeholder="Enter player ID"
+                                value={messageForm.playerId}
+                                onChange={(e) => setMessageForm({...messageForm, playerId: e.target.value})}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="subject">Subject</Label>
+                              <Input
+                                id="subject"
+                                placeholder="Message subject"
+                                value={messageForm.subject}
+                                onChange={(e) => setMessageForm({...messageForm, subject: e.target.value})}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label htmlFor="message">Message</Label>
+                            <textarea
+                              id="message"
+                              className="w-full min-h-24 p-2 border border-border rounded-md"
+                              placeholder="Enter your message..."
+                              value={messageForm.message}
+                              onChange={(e) => setMessageForm({...messageForm, message: e.target.value})}
+                            />
+                          </div>
+                          <Button onClick={handleSendMessage}>
+                            Send Message
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Message History */}
+                      <div className="space-y-4">
+                        <h3 className="font-semibold">Message History</h3>
+                        <div className="bg-card border border-border rounded-lg overflow-hidden">
+                          <div className="max-h-96 overflow-y-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="px-4 py-2 text-left">To</th>
+                                  <th className="px-4 py-2 text-left">Subject</th>
+                                  <th className="px-4 py-2 text-left">Status</th>
+                                  <th className="px-4 py-2 text-left">Sent</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {messaging.messages.map((msg: any) => (
+                                  <tr key={msg.id} className="border-t border-border">
+                                    <td className="px-4 py-2">
+                                      <div>
+                                        <div className="font-medium">{msg.toPlayer.name}</div>
+                                        {msg.toPlayer.isDeleted && <span className="text-xs text-red-600">Deleted</span>}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2">{msg.subject}</td>
+                                    <td className="px-4 py-2">
+                                      <span className={`px-2 py-1 rounded text-xs ${
+                                        msg.isRead ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                      }`}>
+                                        {msg.isRead ? 'Read' : 'Unread'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2">{new Date(msg.createdAt).toLocaleString()}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {messaging.messages.length === 0 && (
+                            <div className="text-center py-8 text-muted-foreground">
+                              No messages sent yet
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Loading messaging data...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'search' && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-lg font-bold">Advanced Player Search</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Powerful search and filtering tools for finding specific players
+                    </p>
+                  </div>
+
+                  {/* Search Form */}
+                  <div className="bg-card border border-border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3">Search Filters</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor="searchQuery">General Search</Label>
+                        <Input
+                          id="searchQuery"
+                          placeholder="Player name, email, or display name"
+                          value={searchForm.q}
+                          onChange={(e) => setSearchForm({...searchForm, q: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="playerName">Player Name</Label>
+                        <Input
+                          id="playerName"
+                          placeholder="Exact player name"
+                          value={searchForm.playerName}
+                          onChange={(e) => setSearchForm({...searchForm, playerName: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="email">Email</Label>
+                        <Input
+                          id="email"
+                          placeholder="Player email"
+                          value={searchForm.email}
+                          onChange={(e) => setSearchForm({...searchForm, email: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="minPoints">Min Points</Label>
+                        <Input
+                          id="minPoints"
+                          type="number"
+                          placeholder="0"
+                          value={searchForm.minPoints}
+                          onChange={(e) => setSearchForm({...searchForm, minPoints: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="maxPoints">Max Points</Label>
+                        <Input
+                          id="maxPoints"
+                          type="number"
+                          placeholder="999999"
+                          value={searchForm.maxPoints}
+                          onChange={(e) => setSearchForm({...searchForm, maxPoints: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="hasUserAccount">Account Type</Label>
+                        <select
+                          className="w-full p-2 border border-border rounded-md"
+                          value={searchForm.hasUserAccount}
+                          onChange={(e) => setSearchForm({...searchForm, hasUserAccount: e.target.value})}
+                        >
+                          <option value="">All</option>
+                          <option value="true">Has Account</option>
+                          <option value="false">No Account</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label htmlFor="isBanned">Ban Status</Label>
+                        <select
+                          className="w-full p-2 border border-border rounded-md"
+                          value={searchForm.isBanned}
+                          onChange={(e) => setSearchForm({...searchForm, isBanned: e.target.value})}
+                        >
+                          <option value="">All</option>
+                          <option value="true">Banned</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label htmlFor="isDeleted">Deletion Status</Label>
+                        <select
+                          className="w-full p-2 border border-border rounded-md"
+                          value={searchForm.isDeleted}
+                          onChange={(e) => setSearchForm({...searchForm, isDeleted: e.target.value})}
+                        >
+                          <option value="">All</option>
+                          <option value="false">Active</option>
+                          <option value="true">Deleted</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                      <Button onClick={handleSearch}>
+                        Search
+                      </Button>
+                      <Button variant="outline" onClick={() => setSearchForm({
+                        q: '', playerName: '', email: '', minPoints: '', maxPoints: '',
+                        hasUserAccount: '', isBanned: '', isDeleted: ''
+                      })}>
+                        Clear Filters
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Search Results */}
+                  {search && (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-semibold">Search Results ({search.pagination.total} players)</h3>
+                        {search.pagination.pages > 1 && (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!search.pagination.hasPrev}
+                              onClick={() => handleSearchPage(search.pagination.page - 1)}
+                            >
+                              Previous
+                            </Button>
+                            <span className="text-sm text-muted-foreground">
+                              Page {search.pagination.page} of {search.pagination.pages}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!search.pagination.hasNext}
+                              onClick={() => handleSearchPage(search.pagination.page + 1)}
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="bg-card border border-border rounded-lg overflow-hidden">
+                        <div className="max-h-96 overflow-y-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted">
+                              <tr>
+                                <th className="px-4 py-2 text-left">Player</th>
+                                <th className="px-4 py-2 text-left">Points</th>
+                                <th className="px-4 py-2 text-left">Villages</th>
+                                <th className="px-4 py-2 text-left">Status</th>
+                                <th className="px-4 py-2 text-left">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {search.players.map((player: any) => (
+                                <tr key={player.id} className="border-t border-border">
+                                  <td className="px-4 py-2">
+                                    <div>
+                                      <div className="font-medium">{player.playerName}</div>
+                                      {player.user && (
+                                        <div className="text-xs text-muted-foreground">{player.user.email}</div>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2 font-semibold">{player.totalPoints.toLocaleString()}</td>
+                                  <td className="px-4 py-2">{player.villageCount}</td>
+                                  <td className="px-4 py-2">
+                                    <div className="flex gap-1">
+                                      {player.isDeleted && (
+                                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded">Deleted</span>
+                                      )}
+                                      {player.banReason && (
+                                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded">Banned</span>
+                                      )}
+                                      {player.hasUserAccount && (
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Account</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2">
+                                    <Button size="sm" variant="outline" onClick={() => handlePlayerAction('view', player)}>
+                                      View
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {search.players.length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            No players found matching your search criteria
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

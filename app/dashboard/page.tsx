@@ -122,7 +122,7 @@ export default function Dashboard() {
 
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">🏰 Medieval Strategy</h1>
@@ -162,7 +162,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="w-full p-4">
+      <main className="flex-1 w-full p-4">
         <div className="max-w-4xl mx-auto space-y-4">
           {loading && (
             <div className="text-center py-8">Loading...</div>

@@ -11,6 +11,121 @@ datasource db {
 }
 
 // ============================================================================
+// GAME WORLDS & CONFIGURATIONS
+// ============================================================================
+
+model GameWorld {
+  id              String    @id @default(cuid())
+
+  // World Identity
+  worldName       String
+  worldCode       String    @unique // e.g., "en1", "us2"
+  description     String?
+
+  // World Type & Settings
+  version         GameVersion
+  region          GameRegion
+  speed           Int       @default(1) // 1, 2, 3, 5, 10
+
+  // Timing Configuration (speed-scaled)
+  registrationClosesAfterDays    Int @default(70)
+  artefactsIntroducedAfterDays   Int @default(90)
+  constructionPlansAfterDays     Int @default(180)
+  natarWonderFinishesAfterDays   Int @default(250)
+  annualSpecialDurationDays      Int @default(180)
+
+  // Culture Points Configuration (speed-scaled)
+  startingCulturePoints         Int @default(500)
+  townhallCelebrationTimeDivisor Int @default(1) // Normal=1, x3=3, x5=5
+  townhallSmallCelebrationLimit Int @default(500)
+  townhallLargeCelebrationLimit Int @default(2000)
+  requirementForSecondVillage   Int @default(2000)
+  artworkCpProductionDivisor    Float @default(1.0) // x3=3, x5=5, x10=10
+  artworkLimit                  Int @default(2000)
+  artworkUsageCooldownHours     Int @default(24)
+
+  // Item Availability (speed-scaled)
+  itemTier2AfterDays           Int @default(70)
+  itemTier3AfterDays           Int @default(140)
+  auctionDurationHours         Float @default(24.0) // x2=12, x3=8, x5=4, x10=2
+  smeltingTimeHours            Int @default(24)
+
+  // Reign of Fire specific settings
+  heroAdventuresPerDay         Int @default(6) // Doubled from 3
+  adventuresForAuctionHouse    Int @default(20) // Increased from 10
+  heroExperienceMultiplier     Float @default(0.5) // Halved difficulty
+  heroLootFrequencyMultiplier  Float @default(1.5) // Increased loot
+
+  // General Mechanics (speed-scaled)
+  beginnerProtectionDays       Int @default(5)
+  travianPlusDurationDays      Int @default(7)
+  resourceBonusDurationDays    Int @default(7)
+  availableVacationDays        Int @default(15)
+  upgradingToCityCooldownHours Int @default(24)
+  natarAttackDelayHours        Int @default(24)
+
+  // Reign of Fire construction speed (25% faster for specific buildings)
+  reignOfFireConstructionSpeed Float @default(0.75) // Multiplier for faster construction
+
+  // Tribe Configuration
+  availableTribes   GameWorldTribe[]
+
+  // Game State
+  isActive          Boolean   @default(true)
+  isRegistrationOpen Boolean @default(true)
+  startedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  players           Player[]
+  worldConfig       WorldConfig?
+
+  @@index([version])
+  @@index([region])
+  @@index([speed])
+  @@index([isActive])
+  @@index([isRegistrationOpen])
+}
+
+enum GameVersion {
+  REGULAR
+  ANNUAL_SPECIAL
+  REIGN_OF_FIRE
+  NEW_YEAR_SPECIAL
+  TOURNAMENT
+  COMMUNITY_WEEK
+  LOCAL_GAMEWORLD
+}
+
+enum GameRegion {
+  INTERNATIONAL
+  AMERICA
+  ARABICS
+  ASIA
+  EUROPE
+}
+
+enum GameTribe {
+  ROMANS
+  TEUTONS
+  GAULS
+  HUNS
+  EGYPTIANS
+  SPARTANS
+}
+
+model GameWorldTribe {
+  id            String    @id @default(cuid())
+  gameWorldId   String
+  gameWorld     GameWorld @relation(fields: [gameWorldId], references: [id], onDelete: Cascade)
+  tribe         GameTribe
+
+  @@unique([gameWorldId, tribe])
+  @@index([gameWorldId])
+}
+
+// ============================================================================
 // USERS & AUTHENTICATION
 // ============================================================================
 
@@ -43,6 +158,9 @@ model Player {
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  gameWorldId     String?
+  gameWorld       GameWorld? @relation(fields: [gameWorldId], references: [id])
+
   playerName      String    @unique
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -63,14 +181,19 @@ model Player {
 
   // Relations
   villages        Village[]
+  hero            Hero?
   tribeId         String?
   tribe           Tribe?    @relation("TribeMembers", fields: [tribeId], references: [id])
   leadingTribe    Tribe?    @relation("TribeLeader")
   tribeInvites    TribeInvite[]
   messages        Message[]
   marketOrders    MarketOrder[]
+  receivedMessages AdminMessage[]
+  materials       Material[]
+  craftingActions CraftingAction[]
 
   @@index([userId])
+  @@index([gameWorldId])
   @@index([playerName])
   @@index([totalPoints])
   @@index([rank])
@@ -86,30 +209,34 @@ model Player {
 
 model WorldConfig {
   id              String    @id @default(cuid())
-  
+
+  gameWorldId     String?   @unique
+  gameWorld       GameWorld? @relation(fields: [gameWorldId], references: [id], onDelete: Cascade)
+
   // World Settings
-  worldName       String    @default("Medieval World")
   maxX            Int       @default(100)
   maxY            Int       @default(100)
-  speed           Int       @default(1)
   unitSpeed       Float     @default(1.0) // Base unit speed multiplier
-  
+
   // Game State
   isRunning       Boolean   @default(true)
   startedAt       DateTime  @default(now())
-  
+
   // Game Balance
   resourcePerTick Int       @default(10)
   productionMultiplier Float @default(1.0)
   tickIntervalMinutes Int   @default(5) // Game tick interval in minutes
   constructionQueueLimit Int @default(3) // Max buildings in queue per village
-  
+
   // Night Bonus & Protection
   nightBonusMultiplier Float @default(1.2) // Defense bonus during night (20% increase)
   beginnerProtectionHours Int @default(72) // Hours of protection for new players
   beginnerProtectionEnabled Boolean @default(true) // Enable/disable beginner protection
-  
-  @@unique([id])
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([gameWorldId])
 }
 
 model Continent {
@@ -749,6 +876,8 @@ model Admin {
   // Relations
   auditLogs       AuditLog[]
   notifications   AdminNotification[]
+  maintenance     Maintenance[]
+  sentMessages    AdminMessage[] @relation("FromAdmin")
 
   @@index([userId])
   @@index([role])                          // For role-based admin queries
@@ -832,6 +961,52 @@ enum NotificationSeverity {
 }
 
 // ============================================================================
+// MAINTENANCE MODE
+// ============================================================================
+
+model Maintenance {
+  id              String    @id @default(cuid())
+
+  adminId         String
+  admin           Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  isActive        Boolean   @default(false)
+  message         String
+  estimatedEndTime DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// ADMIN MESSAGES
+// ============================================================================
+
+model AdminMessage {
+  id              String    @id @default(cuid())
+
+  fromAdminId     String
+  fromAdmin       Admin     @relation("FromAdmin", fields: [fromAdminId], references: [id], onDelete: Cascade)
+
+  toPlayerId      String
+  toPlayer        Player    @relation(fields: [toPlayerId], references: [id], onDelete: Cascade)
+
+  subject         String
+  message         String
+  isRead          Boolean   @default(false)
+
+  createdAt       DateTime  @default(now())
+
+  @@index([fromAdminId])
+  @@index([toPlayerId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ============================================================================
 // LEADERBOARD CACHE
 // ============================================================================
 
@@ -880,4 +1055,277 @@ model TroopBalance {
   updatedAt       DateTime  @updatedAt
 
   @@index([troopType])
+}
+
+// ============================================================================
+// HEROES & EQUIPMENT
+// ============================================================================
+
+enum ItemRarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+}
+
+enum ItemCategory {
+  ARMOR
+  HELMET
+  BOOTS
+  WEAPON
+  SHIELD
+  HORSE
+}
+
+model ItemTemplate {
+  id              String    @id @default(cuid())
+
+  // Item Identity
+  name            String
+  category        ItemCategory
+  slot            EquipmentSlot
+
+  // Item Properties
+  qualityTier     Int       // 1-3, where 3 is best
+  rarity          ItemRarity
+
+  // Effects (JSON structure for flexible bonuses)
+  // Example: { "fightingStrength": 1000, "hpRegeneration": 20, "damageReduction": 5 }
+  effects         String    // JSON encoded effects
+
+  // Metadata
+  description     String?
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  items           HeroItem[] @relation("TemplateItems")
+
+  @@unique([name, rarity, qualityTier])
+  @@index([category])
+  @@index([slot])
+  @@index([rarity])
+  @@index([qualityTier])
+}
+
+enum EquipmentSlot {
+  HELMET
+  ARMOR
+  BOOTS
+  WEAPON
+  SHIELD
+  HORSE
+}
+
+model Hero {
+  id              String    @id @default(cuid())
+  playerId        String
+  player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  name            String    @default("Hero")
+  level           Int       @default(1)
+  experience      Int       @default(0)
+
+  // Hero Stats
+  health          Int       @default(100)
+  attack          Int       @default(10)
+  defense         Int       @default(5)
+  speed           Int       @default(5)
+
+  // Adventure tracking
+  adventuresCompleted Int @default(0)
+  lastAdventureAt     DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  equipment       HeroEquipment[]
+  inventory       HeroItem[]
+
+  @@index([playerId])
+  @@index([level])
+  @@unique([playerId]) // One hero per player
+}
+
+model HeroItem {
+  id              String    @id @default(cuid())
+  heroId          String
+  hero            Hero      @relation(fields: [heroId], references: [id], onDelete: Cascade)
+
+  templateId      String?
+  template        ItemTemplate? @relation("TemplateItems", fields: [templateId], references: [id])
+
+  // Item Properties
+  name            String
+  slot            EquipmentSlot
+  rarity          ItemRarity
+
+  // Quality tiers (1-3, where 3 is best)
+  quality         Int       @default(1)
+
+  // Stats bonuses
+  attackBonus     Int       @default(0)
+  defenseBonus    Int       @default(0)
+  healthBonus     Int       @default(0)
+  speedBonus      Int       @default(0)
+
+  // Source tracking
+  source          ItemSource @default(CRAFTED)
+
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  equipment       HeroEquipment[]
+  craftingActions CraftingAction[] // Items being crafted
+  resultOfActions CraftingAction[] @relation("CraftingResult") // Items created by crafting
+
+  @@index([heroId])
+  @@index([templateId])
+  @@index([slot])
+  @@index([rarity])
+  @@index([source])
+}
+
+enum ItemSource {
+  ADVENTURE
+  CRAFTED
+  PURCHASED
+  REWARDED
+}
+
+model HeroEquipment {
+  id              String    @id @default(cuid())
+  heroId          String
+  hero            Hero      @relation(fields: [heroId], references: [id], onDelete: Cascade)
+
+  slot            EquipmentSlot @unique
+  itemId          String
+  item            HeroItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  equippedAt      DateTime  @default(now())
+
+  @@unique([heroId, slot])
+  @@index([heroId])
+  @@index([itemId])
+}
+
+model Material {
+  id              String    @id @default(cuid())
+  playerId        String
+  player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  rarity          ItemRarity
+  quantity        Int       @default(0)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([playerId, rarity])
+  @@index([playerId])
+  @@index([rarity])
+}
+
+// ============================================================================
+// CRAFTING SYSTEM
+// ============================================================================
+
+model CraftingAction {
+  id              String    @id @default(cuid())
+  playerId        String
+  player          Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  actionType      CraftingActionType
+
+  // For refine/smelt actions
+  itemId          String?   // Item being refined/smelted
+  item            HeroItem? @relation(fields: [itemId], references: [id])
+
+  // For forge actions
+  materialRarity  ItemRarity?
+  materialCount   Int?      @default(0)
+
+  // Timing
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  durationHours   Int       // Based on server speed
+
+  // Results (populated after completion)
+  resultItemId    String?   // For successful forge/refine
+  resultItem      HeroItem? @relation("CraftingResult", fields: [resultItemId], references: [id])
+  materialGained  Int?      @default(0) // For smelt actions
+
+  status          CraftingStatus @default(IN_PROGRESS)
+
+  @@index([playerId])
+  @@index([actionType])
+  @@index([status])
+  @@index([completedAt])
+  @@index([status, completedAt])
+}
+
+enum CraftingActionType {
+  REFINE
+  SMELT
+  FORGE
+}
+
+enum CraftingStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================================================
+// FOOTER MANAGEMENT
+// ============================================================================
+
+model FooterSection {
+  id              String    @id @default(cuid())
+
+  name            String    // Section name (e.g., "Game", "Information")
+  title           String    // Display title
+  order           Int       @default(0) // Display order
+  isActive        Boolean   @default(true)
+
+  menuItems       FooterMenuItem[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([order])
+  @@index([isActive])
+}
+
+model FooterMenuItem {
+  id              String    @id @default(cuid())
+
+  sectionId       String
+  section         FooterSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  label           String    // Display text
+  href            String    // Link URL
+  iconName        String?   // Icon name from Lucide React
+  order           Int       @default(0) // Display order within section
+  isActive        Boolean   @default(true)
+  isExternal      Boolean   @default(false) // External link flag
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([sectionId])
+  @@index([order])
+  @@index([isActive])
+}
+
+model FooterContent {
+  id              String    @id @default(cuid())
+
+  key             String    @unique // Content identifier (e.g., "game_description", "copyright")
+  content         String    // The actual content text
+  isActive        Boolean   @default(true)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([key])
+  @@index([isActive])
 }

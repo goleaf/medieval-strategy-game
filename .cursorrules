@@ -113,6 +113,9 @@ await prisma.$transaction(async (tx) => {
 - TroopBalance model for persistent unit configuration
 - WebSocket server for real-time admin statistics
 - Analytics API for comprehensive player insights
+- Maintenance model for system maintenance tracking
+- AdminMessage model for admin-player communication
+- Advanced search API with multi-criteria filtering
 
 ## Documentation Requirements
 

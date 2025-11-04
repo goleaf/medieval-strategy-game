@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { startScheduler } from "@/lib/jobs/scheduler"
 import { AlpineProvider } from "@/components/alpine-provider"
+import { Footer } from "@/components/footer"
 
 import { Libre_Baskerville as V0_Font_Libre_Baskerville, IBM_Plex_Mono as V0_Font_IBM_Plex_Mono, Lora as V0_Font_Lora } from 'next/font/google'
 
@@ -30,9 +31,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`font-sans antialiased`}>
+      <body className={`font-sans antialiased min-h-screen flex flex-col`}>
         <AlpineProvider>
-          {children}
+          <div className="flex-1 flex flex-col">
+            {children}
+          </div>
+          <Footer />
         </AlpineProvider>
         <Analytics />
       </body>
