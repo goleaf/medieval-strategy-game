@@ -250,8 +250,20 @@ export class TroopService {
 
     // Calculate training time: sum(quantity * unit.build_time) / buildings bonus
     const buildingBonus = await this.getTrainingBonus(villageId, troopType)
-    const totalBuildTime = quantity * stats.buildTime
+    let totalBuildTime = quantity * stats.buildTime
     const adjustedBuildTime = Math.ceil(totalBuildTime / buildingBonus)
+
+    // Apply speed scaling from game world
+    const villageWithPlayer = await prisma.village.findUnique({
+      where: { id: villageId },
+      include: { player: { include: { gameWorld: true } } }
+    })
+
+    let finalBuildTime = adjustedBuildTime
+    if (villageWithPlayer?.player?.gameWorld?.speed && villageWithPlayer.player.gameWorld.speed > 1) {
+      // Speed scaling: higher speed = faster training (time divided by speed factor)
+      finalBuildTime = Math.ceil(adjustedBuildTime / villageWithPlayer.player.gameWorld.speed)
+    }
 
     // Find next completion time (check existing productions)
     const existingProductions = await prisma.troopProduction.findMany({
@@ -264,7 +276,7 @@ export class TroopService {
     if (existingProductions.length > 0) {
       completionAt = existingProductions[0].completionAt
     }
-    completionAt = new Date(completionAt.getTime() + adjustedBuildTime * 1000)
+    completionAt = new Date(completionAt.getTime() + finalBuildTime * 1000)
 
     // Create troop production entry
     await prisma.troopProduction.create({

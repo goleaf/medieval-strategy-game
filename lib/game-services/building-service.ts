@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db"
+import { VillageDestructionService } from "./village-destruction-service"
+import { updateTaskProgress } from "./task-service"
 import type { BuildingType, DemolitionMode } from "@prisma/client"
 
 const BUILDING_COSTS: Record<BuildingType, Record<string, number>> = {
@@ -177,8 +179,21 @@ export class BuildingService {
       throw new Error("Insufficient resources")
     }
 
-    // Calculate completion time
-    const completionTime = BUILDING_UPGRADE_TIME[building.type as BuildingType] * (1 + building.level * 0.1)
+    // Calculate completion time with speed scaling
+    let baseCompletionTime = BUILDING_UPGRADE_TIME[building.type as BuildingType] * (1 + building.level * 0.1)
+
+    // Apply speed scaling from game world
+    const player = await prisma.player.findUnique({
+      where: { id: village.playerId },
+      include: { gameWorld: true }
+    })
+
+    if (player?.gameWorld?.speed && player.gameWorld.speed > 1) {
+      // Speed scaling: higher speed = faster construction (time divided by speed factor)
+      baseCompletionTime = baseCompletionTime / player.gameWorld.speed
+    }
+
+    const completionTime = baseCompletionTime
     
     // Calculate when this building will complete based on queue
     let completionAt = new Date()

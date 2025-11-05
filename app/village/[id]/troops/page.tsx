@@ -18,9 +18,24 @@ export default function TroopsPage() {
   const params = useParams()
   const villageId = params.id as string
   const [village, setVillage] = useState<VillageWithTroops | null>(null)
+  const [playerTribe, setPlayerTribe] = useState<string>("TEUTONS")
 
   const fetchVillage = async () => {
     try {
+      // Get player data to determine tribe
+      const authToken = localStorage.getItem("authToken")
+      if (authToken) {
+        const playerRes = await fetch("/api/auth/player-data", {
+          headers: {
+            "Authorization": `Bearer ${authToken}`,
+          },
+        })
+        const playerData = await playerRes.json()
+        if (playerData.success && playerData.data.player.tribe) {
+          setPlayerTribe(playerData.data.player.tribe)
+        }
+      }
+
       const res = await fetch("/api/villages?playerId=temp-player-id")
       const data = await res.json()
       if (data.success && data.data) {
@@ -114,6 +129,7 @@ export default function TroopsPage() {
             <h2 className="text-lg font-bold mb-2">Train Troops</h2>
             <TroopTrainer
               villageId={villageId}
+              tribe={playerTribe as any}
               onTrain={async () => {
                 const res = await fetch("/api/villages?playerId=temp-player-id")
                 const data = await res.json()

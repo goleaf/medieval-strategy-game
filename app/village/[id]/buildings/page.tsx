@@ -36,6 +36,9 @@ function getBuildingImage(type: string): string {
     HOSPITAL: "/buildings/hospital.svg",
     FARM: "/buildings/farm.svg",
     SNOB: "/buildings/snob.svg",
+    // Huns-specific buildings
+    COMMAND_CENTER: "/buildings/command_center.svg",
+    MAKESHIFT_WALL: "/buildings/makeshift_wall.svg",
   }
   return imageMap[type] || "/placeholder.svg"
 }
@@ -141,6 +144,30 @@ export default function BuildingsPage() {
           )}
           {loading && <div className="text-center py-4">Processing...</div>}
           <BuildingQueue buildings={village.buildings} />
+
+          {/* Instant Completion Section */}
+          <section className="bg-secondary/50 border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-yellow-500" />
+                  Instant Completion
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Instantly complete all ongoing constructions and research in this village
+                </p>
+              </div>
+              <Button
+                onClick={handleInstantComplete}
+                disabled={loading || !village.buildings.some(b => b.isBuilding)}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                Complete All
+              </Button>
+            </div>
+          </section>
 
           <section>
             <h2 className="text-lg font-bold mb-2">All Buildings</h2>

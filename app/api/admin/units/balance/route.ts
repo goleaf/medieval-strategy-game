@@ -127,6 +127,10 @@ export async function GET(req: NextRequest) {
       "CATAPULT",
       "KNIGHT",
       "NOBLEMAN",
+      // Huns-specific units
+      "STEPPE_ARCHER",
+      "HUN_WARRIOR",
+      "LOGADES",
     ]
 
     for (const type of troopTypes) {

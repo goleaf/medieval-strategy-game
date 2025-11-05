@@ -41,6 +41,10 @@ export function getTroopEmoji(type: string): string {
     CATAPULT: "🎯",
     KNIGHT: "♞",
     NOBLEMAN: "👑",
+    // Huns-specific units
+    STEPPE_ARCHER: "🏹",
+    HUN_WARRIOR: "⚔️",
+    LOGADES: "📜",
   }
   return emojiMap[type] || "🗡️"
 }

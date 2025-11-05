@@ -13,6 +13,15 @@ export const buildingUpgradeSchema = z.object({
   buildingId: z.string().min(1, "Building ID required"),
 })
 
+export const buildingDemolishSchema = z.object({
+  buildingId: z.string().min(1, "Building ID required"),
+  mode: z.enum(["LEVEL_BY_LEVEL", "INSTANT_COMPLETE", "FULL_BUILDING"]).optional(),
+})
+
+export const buildingCancelDemolitionSchema = z.object({
+  buildingId: z.string().min(1, "Building ID required"),
+})
+
 export const troopTrainSchema = z.object({
   villageId: z.string().min(1, "Village ID required"),
   troopType: z.enum([
@@ -26,6 +35,10 @@ export const troopTrainSchema = z.object({
     "CATAPULT",
     "KNIGHT",
     "NOBLEMAN",
+    // Huns-specific units
+    "STEPPE_ARCHER",
+    "HUN_WARRIOR",
+    "LOGADES",
   ]),
   quantity: z.number().int().min(1).max(10000),
 })
@@ -36,6 +49,19 @@ export const attackLaunchSchema = z.object({
   toX: z.number().int().min(0).max(1000).optional(),
   toY: z.number().int().min(0).max(1000).optional(),
   type: z.enum(["RAID", "CONQUEST", "SUPPRESSION", "SCOUT"]),
+  units: z.array(
+    z.object({
+      troopId: z.string().min(1),
+      quantity: z.number().int().min(1),
+    }),
+  ),
+})
+
+export const reinforcementSendSchema = z.object({
+  fromVillageId: z.string().min(1, "From village ID required"),
+  toVillageId: z.string().min(1, "To village ID required").optional(),
+  toX: z.number().int().min(0).max(1000).optional(),
+  toY: z.number().int().min(0).max(1000).optional(),
   units: z.array(
     z.object({
       troopId: z.string().min(1),
@@ -99,5 +125,16 @@ export const mapQuerySchema = z.object({
   centerY: z.number().int().min(0).max(1000).optional(),
   zoom: z.number().min(0.1).max(10).optional(),
   playerId: z.string().min(1).optional(), // For fog of war
+})
+
+export const npcMerchantExchangeSchema = z.object({
+  villageId: z.string().min(1, "Village ID required"),
+  fromResource: z.enum(["WOOD", "STONE", "IRON", "GOLD", "FOOD"]),
+  toResource: z.enum(["WOOD", "STONE", "IRON", "GOLD", "FOOD"]),
+  amount: z.number().int().min(50, "Exchange amount must be at least 50"),
+})
+
+export const npcMerchantBalanceSchema = z.object({
+  villageId: z.string().min(1, "Village ID required"),
 })
 

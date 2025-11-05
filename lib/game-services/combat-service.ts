@@ -176,6 +176,8 @@ export class CombatService {
       lootFood: 0,
       wallDamage,
       buildingDamage,
+      populationDamage,
+      buildingsDestroyed,
     }
   }
 
@@ -353,7 +355,6 @@ export class CombatService {
       })),
       hasSiege,
       attack.type,
-      isStoneWall,
     )
 
     // Apply wall damage
@@ -363,6 +364,25 @@ export class CombatService {
         where: { id: wallBuilding.id },
         data: { level: newWallLevel },
       })
+    }
+
+    // Apply population damage and check for village destruction
+    if (result.populationDamage && result.populationDamage > 0) {
+      const currentPopulation = attack.toVillage!.population
+      const newPopulation = Math.max(0, currentPopulation - result.populationDamage)
+
+      await prisma.village.update({
+        where: { id: attack.toVillageId! },
+        data: { population: newPopulation },
+      })
+
+      // Check if village should be destroyed (population <= 0)
+      if (newPopulation <= 0) {
+        const canDestroy = await VillageDestructionService.canVillageBeDestroyed(attack.toVillageId!)
+        if (canDestroy.canDestroy) {
+          await VillageDestructionService.destroyVillage(attack.toVillageId!, attack.fromVillage.playerId)
+        }
+      }
     }
 
     // Calculate loot (limited by carry capacity and defender storage, accounting for cranny protection)

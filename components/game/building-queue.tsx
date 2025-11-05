@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { X } from "lucide-react"
+import { X, Coins } from "lucide-react"
 import { CountdownTimer } from "./countdown-timer"
 import type { Building } from "@prisma/client"
 
@@ -28,13 +28,47 @@ function getBuildingImage(type: string): string {
   return imageMap[type] || "/placeholder.svg"
 }
 
-interface BuildingQueueProps {
-  buildings: Building[]
-  onCancel?: (buildingId: string) => void
+interface BuildingWithResearch extends Building {
+  research?: { isResearching: boolean } | null
 }
 
-export function BuildingQueue({ buildings, onCancel }: BuildingQueueProps) {
+interface BuildingQueueProps {
+  buildings: BuildingWithResearch[]
+  onCancel?: (buildingId: string) => void
+  villageId?: string
+  onInstantComplete?: () => void
+}
+
+export function BuildingQueue({ buildings, onCancel, villageId, onInstantComplete }: BuildingQueueProps) {
   const queuedBuildings = buildings.filter((b) => b.isBuilding && b.queuePosition !== null)
+  const activeResearch = buildings.filter((b) => b.research?.isResearching)
+  const totalActiveItems = queuedBuildings.length + activeResearch.length
+
+  const handleInstantComplete = async () => {
+    if (!villageId || totalActiveItems === 0) return
+
+    try {
+      const response = await fetch("/api/villages/instant-complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ villageId }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        alert(`Successfully completed ${data.data.completedBuildings} constructions and ${data.data.completedResearch} research orders for ${data.data.totalGoldCost} gold!`)
+        onInstantComplete?.()
+      } else {
+        alert(`Error: ${data.error}`)
+      }
+    } catch (error) {
+      console.error("Instant completion failed:", error)
+      alert("Failed to complete constructions instantly")
+    }
+  }
 
   if (queuedBuildings.length === 0) {
     return <div className="text-sm text-muted-foreground">No buildings in queue</div>
@@ -44,7 +78,19 @@ export function BuildingQueue({ buildings, onCancel }: BuildingQueueProps) {
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold">Construction Queue</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Construction Queue</h3>
+        {totalActiveItems > 0 && villageId && (
+          <button
+            onClick={handleInstantComplete}
+            className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 text-xs font-semibold rounded transition-colors"
+            title={`Complete all ${totalActiveItems} active constructions and research instantly (Cost: ${totalActiveItems * 2} Gold)`}
+          >
+            <Coins className="w-3 h-3" />
+            Complete Instantly ({totalActiveItems * 2} Gold)
+          </button>
+        )}
+      </div>
       {sortedBuildings.map((building) => (
         <div
           key={building.id}
@@ -73,10 +119,11 @@ export function BuildingQueue({ buildings, onCancel }: BuildingQueueProps) {
               </div>
             </div>
           </div>
-          {onCancel && building.queuePosition !== 1 && (
+          {onCancel && building.queuePosition !== 1 && !building.research?.isResearching && (
             <button
               onClick={() => onCancel(building.id)}
               className="ml-2 rounded border border-border bg-destructive px-2 py-1 text-xs hover:bg-destructive/80 flex items-center gap-1"
+              title={building.research?.isResearching ? "Cannot cancel building that is researching" : "Cancel construction"}
             >
               <X className="w-3 h-3" />
               Cancel

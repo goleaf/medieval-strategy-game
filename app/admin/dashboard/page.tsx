@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useAdminWebSocket } from "@/lib/hooks/use-admin-websocket"
+import { NpcMerchantAdmin } from "@/components/admin/npc-merchant-admin"
+import { CancelStats } from "@/components/admin/cancel-stats"
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -24,6 +26,9 @@ export default function AdminDashboard() {
   const [maintenance, setMaintenance] = useState<any>(null)
   const [messaging, setMessaging] = useState<any>(null)
   const [search, setSearch] = useState<any>(null)
+  const [content, setContent] = useState<any>(null)
+  const [moderation, setModeration] = useState<any>(null)
+  const [exportData, setExportData] = useState<any>(null)
   const [errorLogs, setErrorLogs] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState("stats")
   const [loading, setLoading] = useState(false)
@@ -155,6 +160,36 @@ export default function AdminDashboard() {
       } else if (tab === "search") {
         // Search is handled differently - it requires search parameters
         setSearch({ players: [], pagination: { total: 0, page: 1, pages: 1 } })
+      } else if (tab === "content") {
+        const res = await fetch('/api/admin/content', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setContent(data.data)
+        }
+      } else if (tab === "moderation") {
+        const res = await fetch('/api/admin/moderation', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setModeration(data.data)
+        }
+      } else if (tab === "export") {
+        const res = await fetch('/api/admin/export', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}`
+          }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setExportData(data.data)
+        }
       } else if (tab === "errors") {
         // Error logs are included in stats API
         if (stats?.errorLogs) {
@@ -198,7 +233,7 @@ export default function AdminDashboard() {
         },
         body: JSON.stringify(worldConfigForm),
       })
-      const data = await res.json()
+    const data = await res.json()
 
       if (data.success) {
         alert('World configuration updated successfully!')
@@ -701,10 +736,40 @@ export default function AdminDashboard() {
               Advanced Search
             </Button>
             <Button
+              onClick={() => switchTab('content')}
+              variant={activeTab === 'content' ? 'default' : 'ghost'}
+            >
+              Content Management
+            </Button>
+            <Button
+              onClick={() => switchTab('moderation')}
+              variant={activeTab === 'moderation' ? 'default' : 'ghost'}
+            >
+              Moderation Queue
+            </Button>
+            <Button
+              onClick={() => switchTab('export')}
+              variant={activeTab === 'export' ? 'default' : 'ghost'}
+            >
+              Data Export
+            </Button>
+            <Button
               onClick={() => switchTab('errors')}
               variant={activeTab === 'errors' ? 'default' : 'ghost'}
             >
               Error Logs
+            </Button>
+            <Button
+              onClick={() => switchTab('npc-merchant')}
+              variant={activeTab === 'npc-merchant' ? 'default' : 'ghost'}
+            >
+              NPC Merchant
+            </Button>
+            <Button
+              onClick={() => switchTab('cancel-stats')}
+              variant={activeTab === 'cancel-stats' ? 'default' : 'ghost'}
+            >
+              Cancel Stats
             </Button>
           </div>
 
@@ -769,8 +834,8 @@ export default function AdminDashboard() {
                             size="sm"
                             onClick={() => openPlayerActionDialog(player, 'ban')}
                           >
-                            Ban
-                          </Button>
+                          Ban
+                        </Button>
                         )}
                       </div>,
                     ])}
@@ -1039,7 +1104,7 @@ export default function AdminDashboard() {
                           <div className="flex gap-2">
                             <Button variant="outline" onClick={handleEditUnitBalance}>
                               Edit Unit Balance
-                            </Button>
+                  </Button>
                           </div>
                         </div>
                       ) : (
@@ -2389,6 +2454,14 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </div>
+              )}
+
+              {activeTab === 'npc-merchant' && (
+                <NpcMerchantAdmin />
+              )}
+
+              {activeTab === 'cancel-stats' && (
+                <CancelStats />
               )}
             </>
           )}

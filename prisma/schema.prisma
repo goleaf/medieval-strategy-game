@@ -168,6 +168,7 @@ model Player {
 
   // Player Stats
   totalPoints   Int @default(0)
+  culturePoints Int @default(500) // Starting culture points based on game world
   rank          Int @default(0)
   wavesSurvived Int @default(0)
   troopsKilled  Int @default(0)
@@ -191,7 +192,7 @@ model Player {
   receivedMessages AdminMessage[]
   materials        Material[]
   craftingActions  CraftingAction[]
-  playerQuicklinks PlayerQuicklink[]
+  quicklinks       PlayerQuicklink[]
 
   @@index([userId])
   @@index([gameWorldId])
@@ -316,12 +317,15 @@ model Village {
   // Relations
   buildings    Building[]
   troops       Troop[]
-  attacksFrom  Attack[]      @relation("AttackFrom")
-  attacksTo    Attack[]      @relation("AttackTo")
-  defenses     Defense[]
+  attacksFrom       Attack[]         @relation("AttackFrom")
+  attacksTo         Attack[]         @relation("AttackTo")
+  reinforcementsFrom Reinforcement[] @relation("ReinforcementFrom")
+  reinforcementsTo   Reinforcement[] @relation("ReinforcementTo")
+  defenses          Defense[]
   barbarians   Barbarian[]
   marketOrders MarketOrder[]
   messages     Message[]
+  quicklinks   VillageQuicklink[]
 
   @@unique([x, y])
   @@index([playerId])
@@ -409,9 +413,10 @@ model Troop {
   updatedAt DateTime @updatedAt
 
   // Relations
-  movements    Movement[]
-  attackUnits  AttackUnit[]
-  defenseUnits DefenseUnit[]
+  movements         Movement[]
+  attackUnits       AttackUnit[]
+  defenseUnits      DefenseUnit[]
+  reinforcementUnits ReinforcementUnit[]
 
   @@unique([villageId, type])
   @@index([villageId])
@@ -472,7 +477,8 @@ model Movement {
   cancelledAt DateTime?
 
   // Relations
-  attack Attack?
+  attack        Attack?
+  reinforcement Reinforcement? @relation("MovementReinforcement")
 
   @@index([troopId])
   @@index([arrivalAt])
@@ -1420,4 +1426,62 @@ model VillageQuicklink {
   @@unique([villageId, slotNumber])
   @@index([villageId])
   @@index([quickLinkOptionId])
+}
+
+// ============================================================================
+// REINFORCEMENTS
+// ============================================================================
+
+model Reinforcement {
+  id String @id @default(cuid())
+
+  // Sender
+  fromVillageId String
+  fromVillage   Village @relation("ReinforcementFrom", fields: [fromVillageId], references: [id], onDelete: Cascade)
+
+  // Receiver
+  toVillageId String
+  toVillage   Village @relation("ReinforcementTo", fields: [toVillageId], references: [id], onDelete: Cascade)
+
+  // Movement
+  movementId String   @unique
+  movement   Movement @relation("MovementReinforcement", fields: [movementId], references: [id], onDelete: Cascade)
+
+  // Status
+  status     ReinforcementStatus @default(IN_PROGRESS)
+  arrivalAt  DateTime
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  reinforcementUnits ReinforcementUnit[]
+
+  @@index([fromVillageId])
+  @@index([toVillageId])
+  @@index([arrivalAt])
+  @@index([status, arrivalAt]) // For processing reinforcements by status and time
+  @@index([movementId]) // For movement-reinforcement relationship queries
+}
+
+enum ReinforcementStatus {
+  IN_PROGRESS
+  ARRIVED
+  RETURNED
+  CANCELLED
+}
+
+model ReinforcementUnit {
+  id String @id @default(cuid())
+
+  reinforcementId String
+  reinforcement   Reinforcement @relation(fields: [reinforcementId], references: [id], onDelete: Cascade)
+
+  troopId String
+  troop   Troop  @relation(fields: [troopId], references: [id], onDelete: Cascade)
+
+  quantity Int
+
+  @@index([reinforcementId])
+  @@index([troopId])
 }

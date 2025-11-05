@@ -16,7 +16,15 @@ export async function GET(req: NextRequest) {
     const villages = await prisma.village.findMany({
       where: { playerId },
       include: {
-        buildings: true,
+        buildings: {
+          include: {
+            research: {
+              select: {
+                isResearching: true,
+              },
+            },
+          },
+        },
         troops: true,
         continent: true,
         player: {
