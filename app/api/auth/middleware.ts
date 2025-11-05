@@ -3,7 +3,12 @@ import { prisma } from "@/lib/db"
 import { verify } from "jsonwebtoken"
 import { ActivityTracker } from "@/lib/utils/activity-tracker"
 
-export async function authenticateRequest(req: NextRequest): Promise<{ userId: string; playerId?: string } | null> {
+export async function authenticateRequest(req: NextRequest): Promise<{
+  userId: string;
+  playerId?: string;
+  isSitter?: boolean;
+  sitterFor?: string;
+} | null> {
   try {
     const authHeader = req.headers.get("authorization")
     if (!authHeader?.startsWith("Bearer ")) {
@@ -20,16 +25,31 @@ export async function authenticateRequest(req: NextRequest): Promise<{ userId: s
 
     if (!user) return null
 
-    const playerId = user.players[0]?.id
+    let playerId: string | undefined
+    let isSitter = false
+    let sitterFor: string | undefined
+
+    if (decoded.isSitter && decoded.sitterFor) {
+      // This is a sitter session
+      isSitter = true
+      sitterFor = decoded.sitterFor
+      playerId = decoded.playerId // The target player being sat
+    } else {
+      // Regular user session
+      playerId = user.players[0]?.id
+    }
 
     // Record activity for authenticated requests
-    if (playerId) {
+    if (playerId && !isSitter) {
+      // Only record owner activity for non-sitter sessions
       ActivityTracker.recordPlayerActivity(playerId).catch(console.error)
     }
 
     return {
       userId: user.id,
       playerId,
+      isSitter,
+      sitterFor,
     }
   } catch (error) {
     return null

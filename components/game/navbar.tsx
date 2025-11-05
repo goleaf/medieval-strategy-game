@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import type { Village, Building } from "@prisma/client"
 import { CentralVillageOverview } from "./central-village-overview"
+import { SitterLogin } from "./sitter-login"
 
 interface NavbarProps {
   villages: (Village & { buildings: Building[] })[]
@@ -15,6 +16,7 @@ interface NavbarProps {
 
 export function Navbar({ villages, currentVillageId, onVillageChange, notificationCount = 0, playerId }: NavbarProps) {
   const [showCentralOverview, setShowCentralOverview] = useState(false)
+  const [showSitterLogin, setShowSitterLogin] = useState(false)
   const currentVillage = villages.find((v) => v.id === currentVillageId)
   
   // Calculate farm capacity from FARM building level
@@ -107,6 +109,13 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
         
         {/* Navigation Links */}
         <div className="flex justify-end gap-2">
+          <button
+            onClick={() => setShowSitterLogin(true)}
+            className="px-3 py-2 bg-secondary rounded border border-border hover:bg-accent transition"
+            aria-label="Sitter Login"
+          >
+            👤 Sitter
+          </button>
           <Link
             href="/sitters"
             className="px-3 py-2 bg-secondary rounded border border-border hover:bg-accent transition"
@@ -144,6 +153,28 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
                   onVillageChange(villageId)
                   setShowCentralOverview(false)
                 }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sitter Login Modal */}
+      {showSitterLogin && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-bold">Sitter Login</h2>
+              <button
+                onClick={() => setShowSitterLogin(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <SitterLogin
+                onLoginSuccess={() => setShowSitterLogin(false)}
               />
             </div>
           </div>

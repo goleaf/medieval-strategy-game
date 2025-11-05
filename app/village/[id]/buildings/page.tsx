@@ -14,6 +14,11 @@ import { Button } from "@/components/ui/button"
 type VillageWithBuildings = {
   id: string
   name: string
+  wood: number
+  stone: number
+  iron: number
+  gold: number
+  food: number
   buildings: Array<{ id: string; type: string; level: number; isBuilding: boolean; completionAt: string | null; queuePosition: number | null }>
 }
 
@@ -41,6 +46,27 @@ function getBuildingImage(type: string): string {
     MAKESHIFT_WALL: "/buildings/makeshift_wall.svg",
   }
   return imageMap[type] || "/placeholder.svg"
+}
+
+// Building costs (should match BuildingService.BUILDING_COSTS)
+const BUILDING_COSTS: Record<string, Record<string, number>> = {
+  HEADQUARTER: { wood: 100, stone: 100, iron: 50, gold: 20, food: 100 },
+  MARKETPLACE: { wood: 150, stone: 150, iron: 100, gold: 50, food: 150 },
+  BARRACKS: { wood: 200, stone: 100, iron: 150, gold: 0, food: 200 },
+  STABLES: { wood: 250, stone: 150, iron: 200, gold: 50, food: 250 },
+  WATCHTOWER: { wood: 100, stone: 200, iron: 100, gold: 0, food: 100 },
+  WALL: { wood: 50, stone: 300, iron: 50, gold: 0, food: 50 },
+  WAREHOUSE: { wood: 300, stone: 200, iron: 100, gold: 0, food: 300 },
+  GRANARY: { wood: 200, stone: 150, iron: 50, gold: 0, food: 200 },
+  SAWMILL: { wood: 100, stone: 100, iron: 50, gold: 0, food: 100 },
+  QUARRY: { wood: 100, stone: 100, iron: 50, gold: 0, food: 100 },
+  IRON_MINE: { wood: 100, stone: 100, iron: 100, gold: 0, food: 100 },
+  TREASURY: { wood: 200, stone: 200, iron: 200, gold: 100, food: 200 },
+  ACADEMY: { wood: 300, stone: 300, iron: 200, gold: 100, food: 300 },
+  TEMPLE: { wood: 250, stone: 250, iron: 100, gold: 50, food: 250 },
+  HOSPITAL: { wood: 200, stone: 200, iron: 150, gold: 0, food: 200 },
+  FARM: { wood: 150, stone: 100, iron: 50, gold: 0, food: 150 },
+  SNOB: { wood: 500, stone: 500, iron: 500, gold: 500, food: 500 },
 }
 
 export default function BuildingsPage() {
@@ -90,6 +116,50 @@ export default function BuildingsPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const checkInsufficientResources = (buildingType: string) => {
+    if (!village) return null
+    const costs = BUILDING_COSTS[buildingType]
+    if (!costs) return null
+
+    const insufficient: string[] = []
+    if (village.wood < costs.wood) insufficient.push("wood")
+    if (village.stone < costs.stone) insufficient.push("stone")
+    if (village.iron < costs.iron) insufficient.push("iron")
+    if (village.gold < costs.gold) insufficient.push("gold")
+    if (village.food < costs.food) insufficient.push("food")
+
+    return insufficient.length > 0 ? insufficient : null
+  }
+
+  const calculateRequiredExchange = (buildingType: string, insufficientResources: string[]) => {
+    if (!village) return []
+    const costs = BUILDING_COSTS[buildingType]
+    const exchanges: Array<{from: string, to: string, amount: number}> = []
+
+    // Simple logic: try to exchange from available resources to needed ones
+    const availableResources = ["wood", "stone", "iron", "gold", "food"].filter(
+      resource => !insufficientResources.includes(resource)
+    )
+
+    insufficientResources.forEach(needed => {
+      const neededAmount = costs[needed as keyof typeof costs]
+      const currentAmount = village[needed as keyof typeof village] as number
+      const requiredAmount = Math.max(0, neededAmount - currentAmount)
+
+      if (requiredAmount > 0 && availableResources.length > 0) {
+        // Use the first available resource as source
+        const fromResource = availableResources[0]
+        exchanges.push({
+          from: fromResource.toUpperCase(),
+          to: needed.toUpperCase(),
+          amount: Math.min(requiredAmount, village[fromResource as keyof typeof village] as number)
+        })
+      }
+    })
+
+    return exchanges
   }
 
   const handleNpcMerchantExchange = async (fromResource: string, toResource: string, amount: number) => {
@@ -225,16 +295,38 @@ export default function BuildingsPage() {
                 ) : (
                   "Ready"
                 ),
-                <Button
-                  key={building.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleUpgrade(building.id)}
-                  disabled={building.isBuilding}
-                >
-                  <Zap className="w-4 h-4" />
-                  {building.isBuilding ? "Building..." : "Upgrade"}
-                </Button>,
+                <div key={`actions-${building.id}`} className="flex flex-col gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleUpgrade(building.id)}
+                    disabled={building.isBuilding}
+                  >
+                    <Zap className="w-4 h-4" />
+                    {building.isBuilding ? "Building..." : "Upgrade"}
+                  </Button>
+
+                  {(() => {
+                    const insufficientResources = checkInsufficientResources(building.type)
+                    if (insufficientResources && !building.isBuilding) {
+                      const exchanges = calculateRequiredExchange(building.type, insufficientResources)
+                      return exchanges.length > 0 ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const exchange = exchanges[0]
+                            handleNpcMerchantExchange(exchange.from, exchange.to, exchange.amount)
+                          }}
+                          className="text-xs"
+                        >
+                          💰 Exchange ({exchanges[0].amount})
+                        </Button>
+                      ) : null
+                    }
+                    return null
+                  })()}
+                </div>,
               ])}
             />
           </section>

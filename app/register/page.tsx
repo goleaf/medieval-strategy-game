@@ -31,6 +31,34 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [gameWorlds, setGameWorlds] = useState<GameWorld[]>([])
+  const [selectedGameWorldId, setSelectedGameWorldId] = useState('')
+  const [selectedTribe, setSelectedTribe] = useState('')
+  const [loadingWorlds, setLoadingWorlds] = useState(true)
+
+  useEffect(() => {
+    loadGameWorlds()
+  }, [])
+
+  const loadGameWorlds = async () => {
+    try {
+      const response = await fetch('/api/admin/game-worlds')
+      const data = await response.json()
+      if (data.success) {
+        // Filter to only active worlds with open registration
+        const activeWorlds = data.data.filter((world: GameWorld) =>
+          world.isActive && world.isRegistrationOpen
+        )
+        setGameWorlds(activeWorlds)
+      }
+    } catch (error) {
+      console.error('Failed to load game worlds:', error)
+    } finally {
+      setLoadingWorlds(false)
+    }
+  }
+
+  const selectedGameWorld = gameWorlds.find(world => world.id === selectedGameWorldId)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,7 +81,13 @@ export default function RegisterPage() {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, username, password }),
+        body: JSON.stringify({
+          email,
+          username,
+          password,
+          gameWorldId: selectedGameWorldId,
+          tribe: selectedTribe
+        }),
       })
 
       if (!res.ok) {
@@ -86,56 +120,117 @@ export default function RegisterPage() {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-bold mb-2">Email</label>
-            <input
+            <Label htmlFor="email">Email</Label>
+            <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="your@email.com"
             />
           </div>
 
           <div>
-            <label htmlFor="username" className="block text-sm font-bold mb-2">Username</label>
-            <input
+            <Label htmlFor="username">Username</Label>
+            <Input
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="Your in-game name"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-bold mb-2">Password</label>
-            <input
+            <Label htmlFor="password">Password</Label>
+            <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="••••••••"
             />
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-bold mb-2">Confirm Password</label>
-            <input
+            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Input
               id="confirmPassword"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full p-3 border border-border rounded bg-background text-foreground"
               placeholder="••••••••"
             />
           </div>
+
+          {/* Game World Selection */}
+          <div>
+            <Label htmlFor="gameWorld">Game World</Label>
+            {loadingWorlds ? (
+              <div className="p-3 border border-border rounded bg-muted text-sm">Loading worlds...</div>
+            ) : (
+              <Select value={selectedGameWorldId} onValueChange={setSelectedGameWorldId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a game world" />
+                </SelectTrigger>
+                <SelectContent>
+                  {gameWorlds.map(world => (
+                    <SelectItem key={world.id} value={world.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{world.worldName} ({world.worldCode})</span>
+                        <Badge variant="outline" className="text-xs">{world.speed}x</Badge>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Tribe Selection */}
+          {selectedGameWorld && (
+            <div>
+              <Label htmlFor="tribe">Tribe</Label>
+              <Select value={selectedTribe} onValueChange={setSelectedTribe}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your tribe" />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedGameWorld.availableTribes.map(({ tribe }) => (
+                    <SelectItem key={tribe} value={tribe}>
+                      {tribe.charAt(0).toUpperCase() + tribe.slice(1).toLowerCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Selected World Info */}
+          {selectedGameWorld && (
+            <Card className="border-muted">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Globe className="w-4 h-4" />
+                  {selectedGameWorld.worldName}
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  {selectedGameWorld.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex gap-2 text-xs">
+                  <Badge variant="secondary">{selectedGameWorld.version.replace('_', ' ')}</Badge>
+                  <Badge variant="secondary">{selectedGameWorld.region}</Badge>
+                  <Badge variant="secondary">{selectedGameWorld.speed}x Speed</Badge>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Button type="submit" disabled={loading} className="w-full">
             <UserPlus className="w-4 h-4" />

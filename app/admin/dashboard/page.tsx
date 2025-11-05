@@ -10,6 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useAdminWebSocket } from "@/lib/hooks/use-admin-websocket"
 import { NpcMerchantAdmin } from "@/components/admin/npc-merchant-admin"
 import { CancelStats } from "@/components/admin/cancel-stats"
+import { GameWorldManager } from "@/components/admin/game-world-manager"
+import { SpeedConfiguration } from "@/components/admin/speed-configuration"
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -770,6 +772,18 @@ export default function AdminDashboard() {
               variant={activeTab === 'cancel-stats' ? 'default' : 'ghost'}
             >
               Cancel Stats
+            </Button>
+            <Button
+              onClick={() => switchTab('game-worlds')}
+              variant={activeTab === 'game-worlds' ? 'default' : 'ghost'}
+            >
+              Game Worlds
+            </Button>
+            <Button
+              onClick={() => switchTab('speed-config')}
+              variant={activeTab === 'speed-config' ? 'default' : 'ghost'}
+            >
+              Speed Config
             </Button>
           </div>
 
@@ -2462,6 +2476,14 @@ export default function AdminDashboard() {
 
               {activeTab === 'cancel-stats' && (
                 <CancelStats />
+              )}
+
+              {activeTab === 'game-worlds' && (
+                <GameWorldManager />
+              )}
+
+              {activeTab === 'speed-config' && (
+                <SpeedConfiguration />
               )}
             </>
           )}
