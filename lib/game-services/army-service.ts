@@ -8,8 +8,8 @@ export class ArmyService {
       where: { villageId },
     })
 
-    const totalAttack = TroopService.calculatePower(troops, "attack")
-    const totalDefense = TroopService.calculatePower(troops, "defense")
+    const totalAttack = await TroopService.calculatePower(troops, "attack", villageId)
+    const totalDefense = await TroopService.calculatePower(troops, "defense", villageId)
     const totalTroops = troops.reduce((sum, t) => sum + t.quantity, 0)
 
     return {

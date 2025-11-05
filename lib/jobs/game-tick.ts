@@ -3,6 +3,7 @@ import { VillageService } from "@/lib/game-services/village-service"
 import { CombatService } from "@/lib/game-services/combat-service"
 import { BuildingService } from "@/lib/game-services/building-service"
 import { TroopService } from "@/lib/game-services/troop-service"
+import { ReinforcementService } from "@/lib/game-services/reinforcement-service"
 
 /**
  * Main game tick job
@@ -44,6 +45,19 @@ export async function processGameTick() {
       await BuildingService.completeBuilding(building.id)
     }
 
+    // Process completed demolitions
+    const completedDemolitions = await prisma.building.findMany({
+      where: {
+        isDemolishing: true,
+        demolitionAt: { lte: now },
+      },
+    })
+
+    console.log(`[v0] Completing ${completedDemolitions.length} demolitions`)
+    for (const building of completedDemolitions) {
+      await BuildingService.completeDemolition(building.id)
+    }
+
     // Process completed troop training
     const completedTraining = await prisma.troopProduction.findMany({
       where: {
@@ -62,7 +76,7 @@ export async function processGameTick() {
         status: "IN_PROGRESS",
         arrivalAt: { lte: now },
       },
-      include: { attack: true },
+      include: { attack: true, reinforcement: true },
     })
 
     console.log(`[v0] Processing ${arrivedMovements.length} arrived movements`)
@@ -77,6 +91,14 @@ export async function processGameTick() {
       if (movement.attack) {
         await prisma.attack.update({
           where: { id: movement.attack.id },
+          data: { status: "ARRIVED" },
+        })
+      }
+
+      // If movement has a reinforcement, mark reinforcement as arrived
+      if (movement.reinforcement) {
+        await prisma.reinforcement.update({
+          where: { id: movement.reinforcement.id },
           data: { status: "ARRIVED" },
         })
       }
@@ -97,6 +119,14 @@ export async function processGameTick() {
       } catch (error) {
         console.error(`[v0] Error resolving attack ${attack.id}:`, error)
       }
+    }
+
+    // Process arrived reinforcements
+    console.log(`[v0] Processing arrived reinforcements`)
+    try {
+      await ReinforcementService.processArrivedReinforcements()
+    } catch (error) {
+      console.error(`[v0] Error processing reinforcements:`, error)
     }
 
     // Process expired market orders
@@ -126,6 +156,9 @@ export async function processGameTick() {
         data: { status: "EXPIRED" },
       })
     }
+
+    // Process troop evasion returns
+    await processTroopEvasionReturns(now)
 
     // Update player rankings (points = building levels + villages)
     await updatePlayerRankings()
@@ -189,6 +222,59 @@ async function updatePlayerRankings() {
   })
 
   console.log(`[v0] Updated rankings for ${sortedPlayers.length} players`)
+}
+
+/**
+ * Process troop returns after evasion periods
+ */
+async function processTroopEvasionReturns(now: Date) {
+  try {
+    // Find evasion return messages that are due
+    const evasionMessages = await prisma.message.findMany({
+      where: {
+        type: "SYSTEM",
+        content: {
+          contains: '"type":"EVASION_RETURN"',
+        },
+        createdAt: {
+          lte: new Date(now.getTime() - 3 * 60 * 1000), // Messages older than 3 minutes
+        },
+      },
+    })
+
+    console.log(`[v0] Processing ${evasionMessages.length} troop evasion returns`)
+
+    for (const message of evasionMessages) {
+      try {
+        const evasionData = JSON.parse(message.content)
+
+        if (evasionData.type === "EVASION_RETURN") {
+          const returnTime = new Date(evasionData.returnAt)
+
+          if (returnTime <= now) {
+            // Time to return troops
+            await CombatService.processTroopReturn(
+              evasionData.villageId,
+              evasionData.evadedTroops
+            )
+
+            // Mark message as processed (we'll keep it for history)
+            await prisma.message.update({
+              where: { id: message.id },
+              data: {
+                subject: "Troop Evasion Completed",
+                content: `Troops returned from evasion at ${returnTime.toISOString()}`,
+              },
+            })
+          }
+        }
+      } catch (error) {
+        console.error(`[v0] Error processing evasion message ${message.id}:`, error)
+      }
+    }
+  } catch (error) {
+    console.error("[v0] Error processing troop evasion returns:", error)
+  }
 }
 
 /**

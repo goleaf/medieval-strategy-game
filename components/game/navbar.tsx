@@ -1,17 +1,20 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import type { Village, Building } from "@prisma/client"
+import { CentralVillageOverview } from "./central-village-overview"
 
 interface NavbarProps {
   villages: (Village & { buildings: Building[] })[]
   currentVillageId: string | null
   onVillageChange: (villageId: string) => void
   notificationCount?: number
+  playerId: string
 }
 
-export function Navbar({ villages, currentVillageId, onVillageChange, notificationCount = 0 }: NavbarProps) {
+export function Navbar({ villages, currentVillageId, onVillageChange, notificationCount = 0, playerId }: NavbarProps) {
+  const [showCentralOverview, setShowCentralOverview] = useState(false)
   const currentVillage = villages.find((v) => v.id === currentVillageId)
   
   // Calculate farm capacity from FARM building level
@@ -41,30 +44,39 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
     <nav className="w-full border-b border-border bg-card">
       <div className="w-full p-2 space-y-2">
         {/* Village Switcher */}
-        <div
-          x-data={`{
-            selectedVillageId: '${currentVillageId || ''}',
-            handleChange() {
-              if (window.__navbarVillageChangeHandler) {
-                window.__navbarVillageChangeHandler(this.selectedVillageId);
+        <div className="flex gap-2 w-full">
+          <div
+            x-data={`{
+              selectedVillageId: '${currentVillageId || ''}',
+              handleChange() {
+                if (window.__navbarVillageChangeHandler) {
+                  window.__navbarVillageChangeHandler(this.selectedVillageId);
+                }
               }
-            }
-          }`}
-          className="w-full"
-        >
-          <label htmlFor="village-select" className="sr-only">Select Village</label>
-          <select
-            id="village-select"
-            x-model="selectedVillageId"
-            x-on:change="handleChange()"
-            className="w-full p-2 border border-border rounded bg-background text-foreground"
+            }`}
+            className="flex-1"
           >
-            {villages.map((village) => (
-              <option key={village.id} value={village.id}>
-                {village.name} ({village.x}, {village.y})
-              </option>
-            ))}
-          </select>
+            <label htmlFor="village-select" className="sr-only">Select Village</label>
+            <select
+              id="village-select"
+              x-model="selectedVillageId"
+              x-on:change="handleChange()"
+              className="w-full p-2 border border-border rounded bg-background text-foreground"
+            >
+              {villages.map((village) => (
+                <option key={village.id} value={village.id}>
+                  {village.name} ({village.x}, {village.y})
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={() => setShowCentralOverview(true)}
+            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm whitespace-nowrap"
+            title="Central Village Overview"
+          >
+            📊
+          </button>
         </div>
         
         {/* Resources Row */}
@@ -93,8 +105,15 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
           </span>
         </div>
         
-        {/* Notifications */}
-        <div className="flex justify-end">
+        {/* Navigation Links */}
+        <div className="flex justify-end gap-2">
+          <Link
+            href="/sitters"
+            className="px-3 py-2 bg-secondary rounded border border-border hover:bg-accent transition"
+            aria-label="Account Management"
+          >
+            👥 Sitters
+          </Link>
           <Link
             href="/reports"
             className="px-3 py-2 bg-secondary rounded border border-border hover:bg-accent transition"
@@ -104,6 +123,32 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
           </Link>
         </div>
       </div>
+
+      {/* Central Village Overview Modal */}
+      {showCentralOverview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full mx-4 max-h-[90vh] overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-bold">Central Village Overview</h2>
+              <button
+                onClick={() => setShowCentralOverview(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[calc(90vh-80px)]">
+              <CentralVillageOverview
+                playerId={playerId}
+                onVillageSelect={(villageId) => {
+                  onVillageChange(villageId)
+                  setShowCentralOverview(false)
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   )
 }

@@ -42,3 +42,12 @@
 - [ ] Update ranking calculation: points = building levels + villages
 - [ ] Implement leaderboard caching
 
+## Completed Features
+- [x] Task System: Complete implementation based on Travian: Legends
+  - Village-specific and global tasks
+  - Building level, resource field, population, and culture points tasks
+  - Reward system with resources and hero experience
+  - Village conquest task transfer logic
+  - API endpoints and frontend components
+  - Comprehensive documentation
+

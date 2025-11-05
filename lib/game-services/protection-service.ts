@@ -31,23 +31,110 @@ export class ProtectionService {
   }
 
   /**
-   * Initialize beginner protection for a new player
+   * Initialize beginner protection for a new player based on world speed
    */
   static async initializeProtection(playerId: string): Promise<void> {
-    const config = await prisma.worldConfig.findFirst()
+    const player = await prisma.player.findUnique({
+      where: { id: playerId },
+      include: { gameWorld: true },
+    })
 
-    if (!config || !config.beginnerProtectionEnabled) {
+    if (!player?.gameWorld?.beginnerProtectionDays) {
       return
     }
 
-    const protectionHours = config.beginnerProtectionHours || 72
+    const worldSpeed = player.gameWorld.speed
+    let protectionDays: number
+
+    // Calculate protection duration based on world speed (from Travian specs)
+    switch (worldSpeed) {
+      case 1:
+        protectionDays = 5
+        break
+      case 2:
+      case 3:
+        protectionDays = 3
+        break
+      case 5:
+        protectionDays = 2
+        break
+      case 10:
+        protectionDays = 1
+        break
+      default:
+        protectionDays = 3 // Default fallback
+    }
+
     const protectionUntil = new Date()
-    protectionUntil.setHours(protectionUntil.getHours() + protectionHours)
+    protectionUntil.setDate(protectionUntil.getDate() + protectionDays)
 
     await prisma.player.update({
       where: { id: playerId },
-      data: { beginnerProtectionUntil: protectionUntil },
+      data: {
+        beginnerProtectionUntil: protectionUntil,
+        hasExtendedProtection: false, // Reset extension flag for new players
+      },
     })
+  }
+
+  /**
+   * Extend beginner protection (can only be done once)
+   */
+  static async extendProtection(playerId: string): Promise<boolean> {
+    const player = await prisma.player.findUnique({
+      where: { id: playerId },
+      include: { gameWorld: true },
+    })
+
+    if (!player || !player.beginnerProtectionUntil || player.hasExtendedProtection) {
+      return false // Cannot extend if no protection or already extended
+    }
+
+    const worldSpeed = player.gameWorld?.speed || 1
+    let extensionDays: number
+
+    // Calculate extension duration based on world speed
+    switch (worldSpeed) {
+      case 1:
+        extensionDays = 3
+        break
+      case 2:
+      case 3:
+        extensionDays = 3
+        break
+      case 5:
+        extensionDays = 2
+        break
+      case 10:
+        extensionDays = 1
+        break
+      default:
+        extensionDays = 3
+    }
+
+    const newProtectionUntil = new Date(player.beginnerProtectionUntil)
+    newProtectionUntil.setDate(newProtectionUntil.getDate() + extensionDays)
+
+    await prisma.player.update({
+      where: { id: playerId },
+      data: {
+        beginnerProtectionUntil: newProtectionUntil,
+        hasExtendedProtection: true,
+      },
+    })
+
+    return true
+  }
+
+  /**
+   * Check if a player can extend their protection
+   */
+  static async canExtendProtection(playerId: string): Promise<boolean> {
+    const player = await prisma.player.findUnique({
+      where: { id: playerId },
+    })
+
+    return !!(player?.beginnerProtectionUntil && !player.hasExtendedProtection)
   }
 
   /**

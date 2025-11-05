@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Map, Swords, ShoppingCart, MessageCircle, Users, Trophy, Eye, Hammer, Shield, LogOut } from "lucide-react"
+import { Map, Swords, ShoppingCart, MessageCircle, Users, Trophy, Eye, Hammer, Shield, LogOut, Settings } from "lucide-react"
 import { VillageOverview } from "@/components/game/village-overview"
 import { ResourceDisplay } from "@/components/game/resource-display"
 import { BuildingQueue } from "@/components/game/building-queue"
+import { Navbar } from "@/components/game/navbar"
 import { Button } from "@/components/ui/button"
 // Types inferred from API responses
 type VillageWithRelations = {
@@ -115,14 +116,61 @@ export default function Dashboard() {
   useEffect(() => {
     fetchVillages()
     const interval = setInterval(fetchVillages, 30000) // Refresh every 30 seconds
+    if (typeof window !== "undefined") {
+      (window as any).__dashboardFetchHandler = fetchVillages
+      ;(window as any).__dashboardSetSelectedVillage = (id: string | null) => {
+        setSelectedVillageId(id)
+      }
+      ;(window as any).__dashboardLogoutHandler = handleLogout
+    }
     return () => {
       clearInterval(interval)
+      if (typeof window !== "undefined") {
+        delete (window as any).__dashboardFetchHandler
+        delete (window as any).__dashboardSetSelectedVillage
+        delete (window as any).__dashboardLogoutHandler
+      }
     }
-  }, [fetchVillages])
+  }, [fetchVillages, handleLogout])
 
+  useEffect(() => {
+    // Sync Alpine.js state when React state changes
+    if (typeof window !== "undefined" && (window as any).Alpine) {
+      const alpineElement = document.querySelector('[x-data]')
+      if (alpineElement && (alpineElement as any)._x_dataStack) {
+        const alpineData = (alpineElement as any)._x_dataStack[0]
+        if (alpineData && alpineData.selectedVillageId !== selectedVillageId) {
+          alpineData.selectedVillageId = selectedVillageId || ''
+        }
+        if (alpineData && alpineData.loading !== loading) {
+          alpineData.loading = loading
+        }
+        if (alpineData && alpineData.villagesCount !== villages.length) {
+          alpineData.villagesCount = villages.length
+        }
+      }
+    }
+  }, [selectedVillageId, loading, villages.length])
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div
+      x-data={`{
+        selectedVillageId: '${selectedVillageId || ''}',
+        loading: ${loading},
+        villagesCount: ${villages.length},
+        handleChange() {
+          if (window.__dashboardSetSelectedVillage) {
+            window.__dashboardSetSelectedVillage(this.selectedVillageId);
+          }
+        },
+        async handleLogout() {
+          if (window.__dashboardLogoutHandler) {
+            await window.__dashboardLogoutHandler();
+          }
+        }
+      }`}
+      className="min-h-screen bg-background text-foreground flex flex-col"
+    >
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">🏰 Medieval Strategy</h1>
@@ -151,6 +199,10 @@ export default function Dashboard() {
               <Trophy className="w-4 h-4" />
               Rankings
             </Link>
+            <Link href="/settings" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
+              <Settings className="w-4 h-4" />
+              Settings
+            </Link>
             <button
               onClick={handleLogout}
               className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded text-red-400 hover:text-red-300"
@@ -175,22 +227,13 @@ export default function Dashboard() {
           )}
           {!loading && villages.length > 0 && (
             <>
-              {villages.length > 1 && (
-                <div className="p-3 border border-border rounded bg-secondary">
-                  <label className="text-sm font-bold block mb-2">Select Village</label>
-                  <select
-                    value={selectedVillageId || ''}
-                    onChange={(e) => setSelectedVillageId(e.target.value)}
-                    className="w-full p-2 border border-border rounded bg-background"
-                  >
-                    {villages.map((village) => (
-                      <option key={village.id} value={village.id}>
-                        {village.name} ({village.x}, {village.y})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              <Navbar
+                villages={villages}
+                currentVillageId={selectedVillageId}
+                onVillageChange={setSelectedVillageId}
+                playerId={localStorage.getItem("playerId") || ""}
+                notificationCount={0}
+              />
             {(() => {
               const currentVillage = villages.find(v => v.id === selectedVillageId)
               return currentVillage ? (

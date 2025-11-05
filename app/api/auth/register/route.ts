@@ -5,11 +5,34 @@ import { VillageService } from "@/lib/game-services/village-service"
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, username, password, displayName } = await req.json()
+    const { email, username, password, displayName, gameWorldId, tribe } = await req.json()
 
     // Validation
     if (!email || !username || !password) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    // Validate game world and tribe selection
+    let selectedGameWorld = null
+    if (gameWorldId) {
+      selectedGameWorld = await prisma.gameWorld.findUnique({
+        where: { id: gameWorldId },
+        include: { availableTribes: true }
+      })
+
+      if (!selectedGameWorld) {
+        return NextResponse.json({ error: "Selected game world not found" }, { status: 400 })
+      }
+
+      if (!selectedGameWorld.isRegistrationOpen) {
+        return NextResponse.json({ error: "Registration is closed for this game world" }, { status: 400 })
+      }
+
+      if (tribe && !selectedGameWorld.availableTribes.some(t => t.tribe === tribe)) {
+        return NextResponse.json({
+          error: `Tribe ${tribe} is not available in this game world. Available tribes: ${selectedGameWorld.availableTribes.map(t => t.tribe).join(', ')}`
+        }, { status: 400 })
+      }
     }
 
     // Check if user exists
@@ -36,11 +59,14 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Create initial player
+    // Create initial player with game world assignment
     const player = await prisma.player.create({
       data: {
         userId: user.id,
         playerName: username,
+        gameWorldId: selectedGameWorld?.id,
+        culturePoints: selectedGameWorld?.startingCulturePoints || 500,
+        ...(tribe && { tribeId: tribe }),
       },
     })
 

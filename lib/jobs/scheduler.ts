@@ -1,7 +1,9 @@
 import { processGameTick, spawnBarbainians } from "./game-tick"
+import { updateInactivityAllowance } from "./inactivity-allowance"
 
 let gameTickInterval: NodeJS.Timeout | null = null
 let barbarianSpawnInterval: NodeJS.Timeout | null = null
+let inactivityAllowanceInterval: NodeJS.Timeout | null = null
 
 /**
  * Start the game scheduler
@@ -32,6 +34,16 @@ export async function startScheduler() {
     5 * 60 * 1000,
   ) // 5 minutes
 
+  // Update inactivity allowance daily
+  inactivityAllowanceInterval = setInterval(
+    () => {
+      updateInactivityAllowance().catch((error) => {
+        console.error("[v0] Inactivity allowance update error:", error)
+      })
+    },
+    24 * 60 * 60 * 1000,
+  ) // 24 hours
+
   // Run once immediately
   processGameTick().catch(console.error)
 
@@ -44,5 +56,6 @@ export async function startScheduler() {
 export function stopScheduler() {
   if (gameTickInterval) clearInterval(gameTickInterval)
   if (barbarianSpawnInterval) clearInterval(barbarianSpawnInterval)
+  if (inactivityAllowanceInterval) clearInterval(inactivityAllowanceInterval)
   console.log("[v0] Game scheduler stopped")
 }

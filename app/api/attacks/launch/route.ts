@@ -44,11 +44,26 @@ export async function POST(req: NextRequest) {
       include: { player: true },
     })
 
+    // Check if attacker has beginner protection
+    const attackerIsProtected = await ProtectionService.isPlayerProtected(fromVillage.playerId)
+
+    if (attackerIsProtected) {
+      // Protected players can only attack Natars and unoccupied oases
+      const isValidTarget = !targetVillage || // Unoccupied oasis
+        (targetVillage.player && targetVillage.player.playerName.toLowerCase().includes('natar'))
+
+      if (!isValidTarget) {
+        return errorResponse("Players under beginner protection can only attack Natars and unoccupied oases", 403)
+      }
+    }
+
     if (targetVillage) {
-      // Check beginner protection (except for scouting)
+      // Check if target village is protected (except for scouting and when attacking Natars)
       if (type !== "SCOUT") {
-        const isProtected = await ProtectionService.isVillageProtected(targetVillage.id)
-        if (isProtected) {
+        const isTargetProtected = await ProtectionService.isVillageProtected(targetVillage.id)
+        const isNatar = targetVillage.player?.playerName.toLowerCase().includes('natar')
+
+        if (isTargetProtected && !isNatar) {
           return errorResponse("Target village is protected by beginner protection", 403)
         }
       }

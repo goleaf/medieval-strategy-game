@@ -1,0 +1,343 @@
+import { prisma } from "@/lib/db"
+import type { Player, Sitter, Dual } from "@prisma/client"
+
+export class SitterDualService {
+  /**
+   * Update inactivity allowance for all players
+   * Runs daily to calculate inactivity allowance based on owner and sitter activity
+   */
+  static async updateInactivityAllowance(): Promise<void> {
+    const players = await prisma.player.findMany({
+      include: {
+        sittersAsOwner: {
+          where: { isActive: true },
+          include: { sitter: true }
+        }
+      }
+    })
+
+    for (const player of players) {
+      await this.updatePlayerInactivityAllowance(player)
+    }
+  }
+
+  /**
+   * Update inactivity allowance for a specific player
+   */
+  static async updatePlayerInactivityAllowance(player: Player & { sittersAsOwner: (Sitter & { sitter: Player })[] }): Promise<void> {
+    const now = new Date()
+    const lastActivity = player.lastActiveAt
+    const lastOwnerActivity = player.lastOwnerActivityAt || lastActivity
+
+    // Check if owner was active in the last 24 hours
+    const ownerActiveToday = this.isActiveToday(lastOwnerActivity)
+
+    // Check if any active sitters were active in the last 24 hours
+    const sitterActiveToday = player.sittersAsOwner.some(sitter =>
+      this.isActiveToday(sitter.sitter.lastActiveAt)
+    )
+
+    // Calculate inactivity allowance change
+    let allowanceChange = 0
+
+    if (ownerActiveToday && sitterActiveToday) {
+      // Both owner and sitter active: +1 day
+      allowanceChange = 1
+    } else if (ownerActiveToday && !sitterActiveToday) {
+      // Only owner active: +1 day
+      allowanceChange = 1
+    } else if (!ownerActiveToday && sitterActiveToday) {
+      // Only sitter active: -1 day
+      allowanceChange = -1
+    }
+    // If neither active: no change (allowanceChange = 0)
+
+    // Update allowance (clamp between 0 and 14)
+    const newAllowance = Math.max(0, Math.min(14, player.inactivityAllowanceDays + allowanceChange))
+
+    // Update player
+    await prisma.player.update({
+      where: { id: player.id },
+      data: {
+        inactivityAllowanceDays: newAllowance
+      }
+    })
+
+    // If allowance hits 0, deactivate all sitters
+    if (newAllowance === 0 && player.inactivityAllowanceDays > 0) {
+      await this.deactivateAllSitters(player.id)
+    }
+
+    // Send warning if allowance drops to 3 days
+    if (newAllowance === 3 && player.inactivityAllowanceDays > 3) {
+      await this.sendInactivityWarning(player)
+    }
+  }
+
+  /**
+   * Check if a timestamp represents activity within the last 24 hours
+   */
+  private static isActiveToday(lastActivity: Date): boolean {
+    const now = new Date()
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    return lastActivity >= yesterday
+  }
+
+  /**
+   * Deactivate all sitters for a player
+   */
+  static async deactivateAllSitters(ownerId: string): Promise<void> {
+    await prisma.sitter.updateMany({
+      where: { ownerId, isActive: true },
+      data: { isActive: false }
+    })
+
+    // Log the deactivation
+    await prisma.auditLog.create({
+      data: {
+        adminId: "system", // System action
+        action: "SITTER_DEACTIVATED_INACTIVITY",
+        details: `All sitters deactivated for player ${ownerId} due to inactivity allowance depletion`,
+        targetType: "Player",
+        targetId: ownerId
+      }
+    })
+  }
+
+  /**
+   * Send inactivity warning to player
+   */
+  private static async sendInactivityWarning(player: Player): Promise<void> {
+    await prisma.message.create({
+      data: {
+        senderId: player.id, // System message
+        subject: "Inactivity Warning",
+        content: "Your inactivity allowance has dropped to 3 days. If it reaches 0, all your sitters will be deactivated.",
+        type: "SYSTEM",
+        villageId: player.villages[0]?.id // Send to first village if available
+      }
+    })
+  }
+
+  /**
+   * Record owner activity (call this when owner performs any game action)
+   */
+  static async recordOwnerActivity(playerId: string): Promise<void> {
+    await prisma.player.update({
+      where: { id: playerId },
+      data: {
+        lastOwnerActivityAt: new Date()
+      }
+    })
+  }
+
+  /**
+   * Add a sitter for a player
+   */
+  static async addSitter(
+    ownerId: string,
+    sitterId: string,
+    permissions: {
+      canSendRaids: boolean
+      canUseResources: boolean
+      canBuyAndSpendGold: boolean
+    }
+  ): Promise<Sitter> {
+    // Validate that sitter is in the same tribe/confederacy
+    const owner = await prisma.player.findUnique({
+      where: { id: ownerId },
+      include: { tribe: true }
+    })
+
+    const sitter = await prisma.player.findUnique({
+      where: { id: sitterId },
+      include: { tribe: true }
+    })
+
+    if (!owner || !sitter) {
+      throw new Error("Player not found")
+    }
+
+    if (!owner.tribe || !sitter.tribe || owner.tribeId !== sitter.tribeId) {
+      throw new Error("Sitter must be in the same tribe")
+    }
+
+    // Check if sitter limit reached (max 2)
+    const activeSitters = await prisma.sitter.count({
+      where: { ownerId, isActive: true }
+    })
+
+    if (activeSitters >= 2) {
+      throw new Error("Maximum of 2 sitters allowed per player")
+    }
+
+    // Check if already a sitter
+    const existingSitter = await prisma.sitter.findUnique({
+      where: { ownerId_sitterId: { ownerId, sitterId } }
+    })
+
+    if (existingSitter) {
+      // Reactivate if exists
+      return await prisma.sitter.update({
+        where: { id: existingSitter.id },
+        data: {
+          ...permissions,
+          isActive: true,
+          addedAt: new Date()
+        }
+      })
+    }
+
+    // Create new sitter
+    return await prisma.sitter.create({
+      data: {
+        ownerId,
+        sitterId,
+        ...permissions
+      }
+    })
+  }
+
+  /**
+   * Remove a sitter
+   */
+  static async removeSitter(ownerId: string, sitterId: string): Promise<void> {
+    await prisma.sitter.updateMany({
+      where: { ownerId, sitterId },
+      data: { isActive: false }
+    })
+  }
+
+  /**
+   * Invite a dual
+   */
+  static async inviteDual(playerId: string, lobbyUserId: string, lobbyUsername: string): Promise<Dual> {
+    // Check if dual already exists
+    const existingDual = await prisma.dual.findFirst({
+      where: {
+        playerId,
+        lobbyUserId,
+        isActive: true
+      }
+    })
+
+    if (existingDual) {
+      throw new Error("Dual invitation already exists")
+    }
+
+    return await prisma.dual.create({
+      data: {
+        playerId,
+        lobbyUserId,
+        lobbyUsername
+      }
+    })
+  }
+
+  /**
+   * Accept a dual invitation
+   */
+  static async acceptDual(playerId: string, lobbyUserId: string): Promise<Dual> {
+    const dual = await prisma.dual.findFirst({
+      where: {
+        playerId,
+        lobbyUserId,
+        isActive: true,
+        acceptedAt: null
+      }
+    })
+
+    if (!dual) {
+      throw new Error("Dual invitation not found")
+    }
+
+    return await prisma.dual.update({
+      where: { id: dual.id },
+      data: { acceptedAt: new Date() }
+    })
+  }
+
+  /**
+   * Remove a dual
+   */
+  static async removeDual(playerId: string, lobbyUserId: string): Promise<void> {
+    await prisma.dual.updateMany({
+      where: { playerId, lobbyUserId },
+      data: { isActive: false }
+    })
+  }
+
+  /**
+   * Validate sitter permissions for an action
+   */
+  static async validateSitterPermissions(
+    sitterId: string,
+    ownerId: string,
+    action: 'sendRaids' | 'useResources' | 'buyAndSpendGold'
+  ): Promise<boolean> {
+    const sitter = await prisma.sitter.findFirst({
+      where: {
+        sitterId,
+        ownerId,
+        isActive: true
+      }
+    })
+
+    if (!sitter) {
+      return false
+    }
+
+    switch (action) {
+      case 'sendRaids':
+        return sitter.canSendRaids
+      case 'useResources':
+        return sitter.canUseResources
+      case 'buyAndSpendGold':
+        return sitter.canBuyAndSpendGold
+      default:
+        return false
+    }
+  }
+
+  /**
+   * Check if a player can access another player's account as a sitter
+   */
+  static async canAccessAsSitter(sitterId: string, ownerId: string): Promise<boolean> {
+    // Check if sitter relationship exists and is active
+    const sitter = await prisma.sitter.findFirst({
+      where: {
+        sitterId,
+        ownerId,
+        isActive: true
+      }
+    })
+
+    if (!sitter) {
+      return false
+    }
+
+    // Check if owner's inactivity allowance is > 0
+    const owner = await prisma.player.findUnique({
+      where: { id: ownerId },
+      select: { inactivityAllowanceDays: true }
+    })
+
+    return (owner?.inactivityAllowanceDays ?? 0) > 0
+  }
+
+  /**
+   * Check if a lobby user can access a player account as a dual
+   */
+  static async canAccessAsDual(lobbyUserId: string, playerId: string): Promise<boolean> {
+    const dual = await prisma.dual.findFirst({
+      where: {
+        lobbyUserId,
+        playerId,
+        isActive: true,
+        acceptedAt: { not: null }
+      }
+    })
+
+    return !!dual
+  }
+}

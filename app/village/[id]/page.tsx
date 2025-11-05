@@ -128,7 +128,11 @@ export default function VillageDetailPage() {
           </section>
 
           <section>
-            <BuildingQueue buildings={village.buildings} />
+            <BuildingQueue
+              buildings={village.buildings}
+              villageId={villageId}
+              onInstantComplete={fetchVillage}
+            />
           </section>
 
           <section>

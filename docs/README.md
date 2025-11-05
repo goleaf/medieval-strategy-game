@@ -18,7 +18,8 @@ docs/
 │   ├── admin-authentication.md
 │   ├── bulk-operations.md
 │   └── action-tracking.md
-├── features/              # Game features (future)
+├── features/              # Game features
+│   ├── beginner-protection.md
 ├── api/                   # API documentation (future)
 └── development/           # Development guides (future)
 ```
@@ -30,6 +31,7 @@ Medieval Strategy Game is a real-time strategy game featuring:
 - Military combat and troop training
 - Multiplayer interactions and alliances
 - Real-time game mechanics with configurable speed
+- Beginner protection system for new players
 
 ## 👨‍💼 Administration
 
@@ -105,6 +107,10 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 - `POST /api/admin/map/spawn-barbarian` - Spawn barbarian village
 - `POST /api/admin/map/relocate-tile` - Relocate village
 - `POST /api/admin/map/wipe-empty` - Remove empty villages
+
+### Game Features
+- `GET /api/protection` - Get player protection status
+- `POST /api/protection` - Extend beginner protection
 
 ## 🚀 Deployment
 

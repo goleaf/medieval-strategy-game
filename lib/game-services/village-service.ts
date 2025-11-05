@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db"
+import { VillageDestructionService } from "./village-destruction-service"
+import { createTasksForVillage } from "./task-service"
 import type { Village } from "@prisma/client"
 
 export class VillageService {
@@ -19,6 +21,22 @@ export class VillageService {
     })
     const shouldBeCapital = isCapital !== undefined ? isCapital : existingVillages.length === 0
 
+    // Get player with game world info for culture point requirements
+    const player = await prisma.player.findUnique({
+      where: { id: playerId },
+      include: { gameWorld: true }
+    })
+
+    if (!player) throw new Error("Player not found")
+
+    // Check culture point requirements for village expansion (not capital)
+    if (!shouldBeCapital) {
+      const requiredCP = player.gameWorld?.requirementForSecondVillage || 2000
+      if (player.culturePoints < requiredCP) {
+        throw new Error(`Insufficient culture points. Required: ${requiredCP}, You have: ${player.culturePoints}`)
+      }
+    }
+
     const village = await prisma.village.create({
       data: {
         playerId,
@@ -32,6 +50,9 @@ export class VillageService {
 
     // Create default buildings
     await this.initializeBuildings(village.id)
+
+    // Create village-specific tasks
+    await createTasksForVillage(village.id, playerId)
 
     return village
   }

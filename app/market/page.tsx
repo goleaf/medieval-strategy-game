@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { NpcMerchant } from "@/components/game/npc-merchant"
 
 interface MarketOrder {
   id: string
@@ -16,10 +18,24 @@ interface MarketOrder {
   village: { name: string; x: number; y: number }
 }
 
+interface Village {
+  id: string
+  name: string
+  wood: number
+  stone: number
+  iron: number
+  gold: number
+  food: number
+  x: number
+  y: number
+}
+
 export default function MarketPage() {
   const [orders, setOrders] = useState<MarketOrder[]>([])
+  const [villages, setVillages] = useState<Village[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("orders")
 
   const fetchOrders = async () => {
     try {
@@ -36,6 +52,20 @@ export default function MarketPage() {
     }
   }
 
+  const fetchVillages = async () => {
+    try {
+      // Get player data to find villages
+      const playerRes = await fetch("/api/auth/player-data")
+      const playerResult = await playerRes.json()
+
+      if (playerResult.success && playerResult.data) {
+        setVillages(playerResult.data.villages || [])
+      }
+    } catch (error) {
+      console.error("Failed to fetch villages:", error)
+    }
+  }
+
   const handleAccept = async (orderId: string) => {
     setLoading(true)
     setError(null)
@@ -48,6 +78,7 @@ export default function MarketPage() {
       const result = await res.json()
       if (result.success) {
         await fetchOrders()
+        await fetchVillages() // Refresh village data after trade
       } else {
         setError(result.error || "Failed to accept order")
         setTimeout(() => setError(null), 5000)
@@ -61,14 +92,19 @@ export default function MarketPage() {
     }
   }
 
+  const handleResourcesUpdated = async () => {
+    await fetchVillages() // Refresh village data after NPC merchant transaction
+  }
+
   useEffect(() => {
     fetchOrders()
+    fetchVillages()
   }, [])
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border p-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">
             ← Back
           </Link>
@@ -80,29 +116,45 @@ export default function MarketPage() {
       </header>
 
       <main className="w-full p-4">
-        <div className="max-w-4xl mx-auto space-y-4">
-          {error && <div className="bg-destructive/10 border border-destructive rounded p-3 text-sm text-destructive">{error}</div>}
-          {loading && <div className="text-center py-4">Processing...</div>}
-          {!loading && (
-            <TextTable
-              headers={["Type", "Offering", "Requesting", "Player", "Village", "Actions"]}
-              rows={orders.map((order) => [
-                order.type,
-                `${order.offeringAmount} ${order.offeringResource}`,
-                `${order.requestAmount} ${order.requestResource}`,
-                order.player.playerName,
-                `${order.village.name} (${order.village.x}, ${order.village.y})`,
-                <Button
-                  key={order.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAccept(order.id)}
-                >
-                  Accept
-                </Button>,
-              ])}
-            />
-          )}
+        <div className="max-w-6xl mx-auto">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="orders">Market Orders</TabsTrigger>
+              <TabsTrigger value="management">Management</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="orders" className="space-y-4">
+              {error && <div className="bg-destructive/10 border border-destructive rounded p-3 text-sm text-destructive">{error}</div>}
+              {loading && <div className="text-center py-4">Processing...</div>}
+              {!loading && (
+                <TextTable
+                  headers={["Type", "Offering", "Requesting", "Player", "Village", "Actions"]}
+                  rows={orders.map((order) => [
+                    order.type,
+                    `${order.offeringAmount} ${order.offeringResource}`,
+                    `${order.requestAmount} ${order.requestResource}`,
+                    order.player.playerName,
+                    `${order.village.name} (${order.village.x}, ${order.village.y})`,
+                    <Button
+                      key={order.id}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAccept(order.id)}
+                    >
+                      Accept
+                    </Button>,
+                  ])}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="management" className="space-y-4">
+              <NpcMerchant
+                villages={villages}
+                onResourcesUpdated={handleResourcesUpdated}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>

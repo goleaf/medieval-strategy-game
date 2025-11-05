@@ -74,6 +74,18 @@ export function BattleReport({ attack }: BattleReportProps) {
                   </div>
                 </div>
               )}
+              {scoutingData.cranny && (
+                <div>
+                  <h5 className="font-semibold">Cranny Protection:</h5>
+                  <div className="text-sm">
+                    <div>🛡️ Cranny Count: {scoutingData.cranny.crannyCount}</div>
+                    <div>🛡️ Total Capacity: {scoutingData.cranny.totalCapacity.toLocaleString()} per resource</div>
+                    {scoutingData.cranny.tribeBonus && (
+                      <div className="text-green-600">🎯 {scoutingData.cranny.tribeBonus}</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

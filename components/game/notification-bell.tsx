@@ -112,7 +112,7 @@ export function NotificationBell() {
           }
         }
       }`}
-      x-on:click.outside="showDropdown = false"
+      {...{ "x-on:click.outside": "showDropdown = false" }}
       className="relative"
     >
       <button
