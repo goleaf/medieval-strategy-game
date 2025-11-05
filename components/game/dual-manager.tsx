@@ -268,3 +268,4 @@ export function DualManager({ className }: DualManagerProps) {
     </Card>
   )
 }
+

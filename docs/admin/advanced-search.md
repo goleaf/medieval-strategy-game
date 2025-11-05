@@ -290,3 +290,4 @@ Authorization: Bearer <admin-jwt-token>
 - **PDF Reports**: Generate formatted search reports
 - **Scheduled Reports**: Automated periodic search reports
 - **Data Visualization**: Charts and graphs for search results
+

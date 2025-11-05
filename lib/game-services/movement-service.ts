@@ -121,4 +121,210 @@ export class MovementService {
     if (troops.length === 0) return 5 // Default speed
     return Math.min(...troops.map((t) => t.speed))
   }
+
+  /**
+   * Send troops between villages (Reign of Fire troop forwarding)
+   */
+  static async sendTroops(
+    fromVillageId: string,
+    toVillageId: string,
+    troopAmounts: Record<string, number>
+  ): Promise<void> {
+    const fromVillage = await prisma.village.findUnique({
+      where: { id: fromVillageId },
+      include: { player: true }
+    })
+
+    const toVillage = await prisma.village.findUnique({
+      where: { id: toVillageId },
+      include: { player: true }
+    })
+
+    if (!fromVillage || !toVillage) {
+      throw new Error("Village not found")
+    }
+
+    // Check ownership/alliance permissions (Reign of Fire: can send to own villages or allies)
+    const isOwnVillage = fromVillage.playerId === toVillage.playerId
+    const isAlly = await this.checkAllianceStatus(fromVillage.playerId, toVillage.playerId)
+
+    if (!isOwnVillage && !isAlly) {
+      throw new Error("Can only send troops to own villages or allies")
+    }
+
+    // Get available troops
+    const availableTroops = await prisma.troop.findMany({
+      where: { villageId: fromVillageId }
+    })
+
+    // Validate troop amounts
+    for (const [troopType, amount] of Object.entries(troopAmounts)) {
+      const troop = availableTroops.find(t => t.type === troopType)
+      if (!troop || troop.quantity < amount) {
+        throw new Error(`Insufficient ${troopType} troops`)
+      }
+    }
+
+    // Calculate travel time
+    const distance = this.distance(fromVillage.x, fromVillage.y, toVillage.x, toVillage.y)
+    const troopSpeeds = availableTroops.map(t => t.speed)
+    const travelTime = await this.calculateTravelTime(distance, troopSpeeds)
+    const arrivalTime = new Date(Date.now() + travelTime)
+
+    // Create movement record
+    const movement = await prisma.movement.create({
+      data: {
+        troopId: "", // We'll create individual movements for each troop type
+        fromX: fromVillage.x,
+        fromY: fromVillage.y,
+        toX: toVillage.x,
+        toY: toVillage.y,
+        path: JSON.stringify([]), // Simple path for now
+        currentStep: 0,
+        totalSteps: 1,
+        startedAt: new Date(),
+        arrivalAt: arrivalTime,
+        status: "IN_PROGRESS"
+      }
+    })
+
+    // Create troop movements for each type
+    for (const [troopType, amount] of Object.entries(troopAmounts)) {
+      if (amount > 0) {
+        const troop = availableTroops.find(t => t.type === troopType)
+        if (troop) {
+          // Deduct troops from source village
+          await prisma.troop.update({
+            where: {
+              villageId_type: {
+                villageId: fromVillageId,
+                type: troopType as any
+              }
+            },
+            data: {
+              quantity: troop.quantity - amount
+            }
+          })
+
+          // Create movement record for this troop type
+          await prisma.movement.create({
+            data: {
+              troopId: troop.id,
+              fromX: fromVillage.x,
+              fromY: fromVillage.y,
+              toX: toVillage.x,
+              toY: toVillage.y,
+              path: JSON.stringify([]),
+              currentStep: 0,
+              totalSteps: 1,
+              startedAt: new Date(),
+              arrivalAt: arrivalTime,
+              status: "IN_PROGRESS"
+            }
+          })
+        }
+      }
+    }
+  }
+
+  /**
+   * Merge arriving troops into destination village
+   */
+  static async mergeTroops(movementId: string): Promise<void> {
+    const movement = await prisma.movement.findUnique({
+      where: { id: movementId },
+      include: { troop: true }
+    })
+
+    if (!movement || !movement.troop) {
+      return
+    }
+
+    // Find destination village
+    const destinationVillage = await prisma.village.findFirst({
+      where: {
+        x: movement.toX,
+        y: movement.toY
+      }
+    })
+
+    if (!destinationVillage) {
+      return
+    }
+
+    // Add troops to destination village
+    const existingTroop = await prisma.troop.findUnique({
+      where: {
+        villageId_type: {
+          villageId: destinationVillage.id,
+          type: movement.troop.type
+        }
+      }
+    })
+
+    if (existingTroop) {
+      // Merge with existing troops
+      await prisma.troop.update({
+        where: {
+          villageId_type: {
+            villageId: destinationVillage.id,
+            type: movement.troop.type
+          }
+        },
+        data: {
+          quantity: existingTroop.quantity + movement.troop.quantity
+        }
+      })
+    } else {
+      // Create new troop entry
+      await prisma.troop.create({
+        data: {
+          villageId: destinationVillage.id,
+          type: movement.troop.type,
+          quantity: movement.troop.quantity,
+          health: movement.troop.health,
+          attack: movement.troop.attack,
+          defense: movement.troop.defense,
+          speed: movement.troop.speed
+        }
+      })
+    }
+
+    // Delete the movement record
+    await prisma.movement.delete({
+      where: { id: movementId }
+    })
+  }
+
+  /**
+   * Check if two players are allies
+   */
+  static async checkAllianceStatus(playerId1: string, playerId2: string): Promise<boolean> {
+    if (playerId1 === playerId2) return true
+
+    // Get player tribes
+    const player1 = await prisma.player.findUnique({
+      where: { id: playerId1 },
+      include: { tribe: true }
+    })
+
+    const player2 = await prisma.player.findUnique({
+      where: { id: playerId2 },
+      include: { tribe: true }
+    })
+
+    if (!player1?.tribe || !player2?.tribe) return false
+
+    // Check for alliance between tribes
+    const alliance = await prisma.alliance.findFirst({
+      where: {
+        OR: [
+          { tribe1Id: player1.tribe.id, tribe2Id: player2.tribe.id },
+          { tribe1Id: player2.tribe.id, tribe2Id: player1.tribe.id }
+        ]
+      }
+    })
+
+    return !!alliance
+  }
 }

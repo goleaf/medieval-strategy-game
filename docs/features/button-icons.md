@@ -204,3 +204,4 @@ Add the new icon to this document in the appropriate category.
 - Animated icons for loading states
 - Icon theming based on user preferences
 - Accessibility improvements for screen readers
+

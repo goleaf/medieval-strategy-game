@@ -230,3 +230,4 @@ When merchant system is enhanced:
 - Minimal database updates for cancels
 - Efficient queue position recalculation
 - Batch troop return operations
+

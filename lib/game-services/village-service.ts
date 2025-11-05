@@ -14,6 +14,7 @@ export class VillageService {
     x: number,
     y: number,
     isCapital?: boolean,
+    selectedTribe?: string, // Reign of Fire: allow tribe selection for first 3 villages
   ): Promise<Village> {
     // Check if this is the player's first village
     const existingVillages = await prisma.village.findMany({
@@ -53,6 +54,22 @@ export class VillageService {
 
     // Create village-specific tasks
     await createTasksForVillage(village.id, playerId)
+
+    // Reign of Fire: Allow tribe selection for first 3 villages
+    if (selectedTribe && existingVillages.length < 3) {
+      // Get the tribe to ensure it exists
+      const tribe = await prisma.tribe.findUnique({
+        where: { name: selectedTribe }
+      });
+
+      if (tribe) {
+        // Update player's tribe
+        await prisma.player.update({
+          where: { id: playerId },
+          data: { tribeId: tribe.id }
+        });
+      }
+    }
 
     return village
   }

@@ -8,6 +8,8 @@ export async function authenticateRequest(req: NextRequest): Promise<{
   playerId?: string;
   isSitter?: boolean;
   sitterFor?: string;
+  isDual?: boolean;
+  dualFor?: string;
 } | null> {
   try {
     const authHeader = req.headers.get("authorization")
@@ -28,20 +30,27 @@ export async function authenticateRequest(req: NextRequest): Promise<{
     let playerId: string | undefined
     let isSitter = false
     let sitterFor: string | undefined
+    let isDual = false
+    let dualFor: string | undefined
 
     if (decoded.isSitter && decoded.sitterFor) {
       // This is a sitter session
       isSitter = true
       sitterFor = decoded.sitterFor
       playerId = decoded.playerId // The target player being sat
+    } else if (decoded.isDual && decoded.dualFor) {
+      // This is a dual session
+      isDual = true
+      dualFor = decoded.dualFor
+      playerId = decoded.playerId // The target player being dual-controlled
     } else {
       // Regular user session
       playerId = user.players[0]?.id
     }
 
     // Record activity for authenticated requests
-    if (playerId && !isSitter) {
-      // Only record owner activity for non-sitter sessions
+    if (playerId && !isSitter && !isDual) {
+      // Only record owner activity for non-sitter/dual sessions
       ActivityTracker.recordPlayerActivity(playerId).catch(console.error)
     }
 
@@ -50,6 +59,8 @@ export async function authenticateRequest(req: NextRequest): Promise<{
       playerId,
       isSitter,
       sitterFor,
+      isDual,
+      dualFor,
     }
   } catch (error) {
     return null

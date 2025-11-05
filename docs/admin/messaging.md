@@ -288,3 +288,4 @@ When an admin sends a message:
 - **Smart Scheduling**: Optimal message timing
 - **Follow-up Automation**: Automatic follow-up messages
 - **Personalization**: Dynamic message customization
+

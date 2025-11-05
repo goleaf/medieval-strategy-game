@@ -117,3 +117,4 @@ export function ProtectionInfobox({ playerId, onClose }: ProtectionInfoboxProps)
     </div>
   )
 }
+

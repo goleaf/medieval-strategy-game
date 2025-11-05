@@ -257,3 +257,4 @@ Click **"Run Simulation"** to execute the combat calculation. The simulator uses
 - **Wall Levels**: 0-20 range enforced
 - **Hero Bonus**: 0-100% range enforced
 - **Resource Amounts**: Non-negative values required
+

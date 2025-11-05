@@ -372,3 +372,4 @@ const { isConnected, stats } = useAdminWebSocket({
 - Bidirectional communication support
 - File transfer capabilities
 - Voice/video integration (future)
+

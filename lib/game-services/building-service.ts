@@ -22,11 +22,99 @@ const BUILDING_COSTS: Record<BuildingType, Record<string, number>> = {
   FARM: { wood: 150, stone: 100, iron: 50, gold: 0, food: 150 },
   SNOB: { wood: 500, stone: 500, iron: 500, gold: 500, food: 500 },
   CRANNY: { wood: 40, stone: 50, iron: 30, gold: 0, food: 40 },
+  // Reign of Fire buildings
+  CITY: { wood: 500, stone: 500, iron: 300, gold: 200, food: 300 },
+  WATCHTOWER: { wood: 150, stone: 200, iron: 100, gold: 50, food: 150 },
   // Teutonic-specific buildings
   EARTH_WALL: { wood: 100, stone: 200, iron: 50, gold: 0, food: 100 },
   BREWERY: { wood: 300, stone: 250, iron: 150, gold: 100, food: 200 },
   // Defensive buildings
   TRAPPER: { wood: 100, stone: 100, iron: 100, gold: 20, food: 100 },
+}
+
+// Building bonuses (Reign of Fire features)
+const BUILDING_BONUSES: Record<BuildingType, {
+  woodProduction?: number;
+  stoneProduction?: number;
+  ironProduction?: number;
+  goldProduction?: number;
+  foodProduction?: number;
+  visibility?: number; // Watchtower bonus
+}> = {
+  HEADQUARTER: {},
+  MARKETPLACE: {},
+  BARRACKS: {},
+  STABLES: {},
+  WATCHTOWER: { visibility: 2 }, // +2 visibility radius per level
+  WALL: {},
+  WAREHOUSE: {},
+  GRANARY: {},
+  SAWMILL: {},
+  QUARRY: {},
+  IRON_MINE: {},
+  TREASURY: {},
+  ACADEMY: {},
+  TEMPLE: {},
+  HOSPITAL: {},
+  FARM: {},
+  SNOB: {},
+  CRANNY: {},
+  // Reign of Fire buildings
+  CITY: { woodProduction: 10, stoneProduction: 10, ironProduction: 5, goldProduction: 3, foodProduction: 15 }, // +bonuses per level
+  WATCHTOWER: { visibility: 3 }, // Enhanced visibility
+  // Teutonic-specific buildings
+  EARTH_WALL: {},
+  BREWERY: {},
+  // Huns-specific buildings
+  COMMAND_CENTER: {},
+  MAKESHIFT_WALL: {},
+  // Defensive buildings
+  TRAPPER: {},
+}
+
+// Get building bonuses for a specific building type and level
+export function getBuildingBonuses(buildingType: BuildingType, level: number = 1) {
+  const baseBonuses = BUILDING_BONUSES[buildingType] || {};
+  const scaledBonuses: any = {};
+
+  // Scale bonuses by building level
+  Object.entries(baseBonuses).forEach(([key, value]) => {
+    if (typeof value === 'number') {
+      scaledBonuses[key] = value * level;
+    } else {
+      scaledBonuses[key] = value;
+    }
+  });
+
+  return scaledBonuses;
+}
+
+// Get total bonuses for all buildings in a village
+export async function getVillageBuildingBonuses(villageId: string) {
+  const buildings = await prisma.building.findMany({
+    where: { villageId },
+    select: { type: true, level: true }
+  });
+
+  const totalBonuses = {
+    woodProduction: 0,
+    stoneProduction: 0,
+    ironProduction: 0,
+    goldProduction: 0,
+    foodProduction: 0,
+    visibility: 0,
+  };
+
+  buildings.forEach(building => {
+    const bonuses = getBuildingBonuses(building.type as BuildingType, building.level);
+    Object.entries(bonuses).forEach(([key, value]) => {
+      if (typeof value === 'number' && key in totalBonuses) {
+        (totalBonuses as any)[key] += value;
+      }
+    });
+  });
+
+  return totalBonuses;
 }
 
 const BUILDING_UPGRADE_TIME: Record<BuildingType, number> = {
@@ -48,6 +136,9 @@ const BUILDING_UPGRADE_TIME: Record<BuildingType, number> = {
   FARM: 2400,
   SNOB: 7200,
   CRANNY: 1800,
+  // Reign of Fire buildings
+  CITY: 7200, // 2 hours base time
+  WATCHTOWER: 3600, // 1 hour base time
   // Teutonic-specific buildings
   EARTH_WALL: 2700,
   BREWERY: 3600,
@@ -118,6 +209,14 @@ export class BuildingService {
           bonuses.iron += building.level * 3
           bonuses.gold += building.level * 3
           bonuses.food += building.level * 3
+          break
+        case "CITY":
+          // Reign of Fire City: provides resource production bonuses
+          bonuses.wood += building.level * 10
+          bonuses.stone += building.level * 10
+          bonuses.iron += building.level * 5
+          bonuses.gold += building.level * 3
+          bonuses.food += building.level * 15
           break
       }
     }
@@ -191,6 +290,24 @@ export class BuildingService {
     if (player?.gameWorld?.speed && player.gameWorld.speed > 1) {
       // Speed scaling: higher speed = faster construction (time divided by speed factor)
       baseCompletionTime = baseCompletionTime / player.gameWorld.speed
+    }
+
+    // Apply Reign of Fire construction speed bonus (25% faster for specific buildings)
+    if (player?.gameWorld?.version === "REIGN_OF_FIRE") {
+      const reignOfFireFastBuildings: BuildingType[] = [
+        "HEADQUARTER",
+        "WAREHOUSE",
+        "GRANARY",
+        "SAWMILL",
+        "QUARRY",
+        "IRON_MINE",
+        "FARM"
+      ];
+
+      if (reignOfFireFastBuildings.includes(building.type as BuildingType)) {
+        // 25% faster = 0.75 multiplier
+        baseCompletionTime = baseCompletionTime * 0.75;
+      }
     }
 
     const completionTime = baseCompletionTime

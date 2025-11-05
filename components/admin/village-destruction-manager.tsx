@@ -356,3 +356,4 @@ export function VillageDestructionManager() {
     </div>
   )
 }
+

@@ -340,4 +340,102 @@ export class SitterDualService {
 
     return !!dual
   }
+
+  /**
+   * Validate dual access - ensure dual can only access one avatar per gameworld
+   */
+  static async validateDualAccess(lobbyUserId: string, playerId: string): Promise<{
+    canAccess: boolean;
+    reason?: string;
+  }> {
+    // Check if this dual relationship exists and is active
+    const dual = await prisma.dual.findFirst({
+      where: {
+        lobbyUserId,
+        playerId,
+        isActive: true,
+        acceptedAt: { not: null }
+      },
+      include: {
+        player: {
+          select: { gameWorldId: true }
+        }
+      }
+    })
+
+    if (!dual) {
+      return { canAccess: false, reason: "Dual relationship not found or not accepted" }
+    }
+
+    // Check if this lobby user already has an active dual session in the same gameworld
+    const existingDualInWorld = await prisma.dual.findFirst({
+      where: {
+        lobbyUserId,
+        player: {
+          gameWorldId: dual.player.gameWorldId
+        },
+        isActive: true,
+        acceptedAt: { not: null },
+        playerId: { not: playerId } // Exclude the current player
+      }
+    })
+
+    if (existingDualInWorld) {
+      return {
+        canAccess: false,
+        reason: "Dual can only access one avatar per gameworld"
+      }
+    }
+
+    return { canAccess: true }
+  }
+
+  /**
+   * Create a dual session token
+   */
+  static async createDualSession(lobbyUserId: string, playerId: string): Promise<{
+    token: string;
+    player: any;
+  }> {
+    // Validate dual access
+    const validation = await this.validateDualAccess(lobbyUserId, playerId)
+    if (!validation.canAccess) {
+      throw new Error(validation.reason)
+    }
+
+    // Get player info
+    const player = await prisma.player.findUnique({
+      where: { id: playerId },
+      include: {
+        user: true,
+        villages: true
+      }
+    })
+
+    if (!player) {
+      throw new Error("Player not found")
+    }
+
+    // Create dual session token
+    const { sign } = await import("jsonwebtoken")
+    const dualToken = sign(
+      {
+        userId: lobbyUserId,
+        playerId: playerId,
+        isDual: true,
+        dualFor: playerId
+      },
+      process.env.JWT_SECRET || "secret",
+      { expiresIn: "24h" }
+    )
+
+    return {
+      token: dualToken,
+      player: {
+        id: player.id,
+        playerName: player.playerName,
+        villages: player.villages.length
+      }
+    }
+  }
 }

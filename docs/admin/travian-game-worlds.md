@@ -311,3 +311,4 @@ Potential additions:
 ---
 
 This implementation provides a complete admin system for managing multiple Travian: Legends-style game worlds with all the speed scaling and configuration options from the original game.
+

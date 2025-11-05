@@ -241,3 +241,4 @@ function getSpeedMultipliers(speed: number) {
     natarAttackDelayHours: baseValues.natarAttackDelayHours / speed // Faster = more frequent natar attacks
   }
 }
+

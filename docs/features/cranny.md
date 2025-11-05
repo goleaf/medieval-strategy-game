@@ -292,3 +292,4 @@ npm run test combat-simulator
 - Tribe bonuses (Gaul 1.5x, Teuton raid reduction)
 - Admin management interface
 - Scouting integration
+

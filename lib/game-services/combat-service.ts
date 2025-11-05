@@ -614,6 +614,68 @@ export class CombatService {
   }
 
   /**
+   * Send alliance attack notifications (Reign of Fire feature)
+   */
+  static async sendAllianceAttackNotifications(attackId: string): Promise<void> {
+    const attack = await prisma.attack.findUnique({
+      where: { id: attackId },
+      include: {
+        toVillage: { include: { player: { include: { tribe: true } } } },
+        fromVillage: { include: { player: { include: { tribe: true } } } },
+      },
+    });
+
+    if (!attack?.toVillage?.player?.tribe) return;
+
+    // Find all alliance members of the attacked village
+    const alliances = await prisma.alliance.findMany({
+      where: {
+        OR: [
+          { tribe1Id: attack.toVillage.player.tribe.id },
+          { tribe2Id: attack.toVillage.player.tribe.id }
+        ]
+      },
+      include: {
+        tribe1: { include: { members: true } },
+        tribe2: { include: { members: true } },
+      }
+    });
+
+    const allianceMembers = new Set<string>();
+
+    for (const alliance of alliances) {
+      // Add members from tribe1 (excluding the attacked player)
+      alliance.tribe1.members.forEach(member => {
+        if (member.id !== attack.toVillage!.playerId) {
+          allianceMembers.add(member.id);
+        }
+      });
+
+      // Add members from tribe2 (excluding the attacked player)
+      alliance.tribe2.members.forEach(member => {
+        if (member.id !== attack.toVillage!.playerId) {
+          allianceMembers.add(member.id);
+        }
+      });
+    }
+
+    // Send notifications to all alliance members
+    const notificationPromises = Array.from(allianceMembers).map(memberId =>
+      prisma.message.create({
+        data: {
+          senderId: attack.toVillage!.playerId, // From the attacked player
+          villageId: attack.toVillageId!,
+          type: "ALLIANCE_ATTACK",
+          subject: "Alliance Member Under Attack!",
+          content: `Your alliance member ${attack.toVillage.player.playerName}'s village ${attack.toVillage.name} is under attack from ${attack.fromVillage.player.playerName}!`,
+        },
+      })
+    );
+
+    await Promise.all(notificationPromises);
+  }
+
+  /**
    * Transfer village ownership on conquest
    */
   static async transferVillageOwnership(villageId: string, newOwnerId: string): Promise<void> {

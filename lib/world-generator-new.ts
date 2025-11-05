@@ -155,3 +155,4 @@ export async function initializeWorld() {
 
   console.log("[Reign of Fire] World initialization completed");
 }
+

@@ -192,6 +192,7 @@ model Player {
   materials        Material[]
   craftingActions  CraftingAction[]
   quicklinks       PlayerQuicklink[]
+  controllingRegions Region[]
 
   @@index([userId])
   @@index([gameWorldId])
@@ -254,6 +255,43 @@ model Continent {
   @@index([name])
 }
 
+model Region {
+  id              String    @id @default(cuid())
+  name            String
+  regionCode      String    @unique // e.g., "R01", "R02", etc.
+
+  // Geographic bounds
+  centerX         Int
+  centerY         Int
+  radius          Int       // Region radius for boundary checking
+
+  // Victory Points
+  victoryPoints   Int       @default(0) // Current VP production rate
+  controllingPlayerId String?
+  controllingPlayer   Player? @relation(fields: [controllingPlayerId], references: [id])
+
+  // Region type and bonuses
+  regionType      RegionType @default(NORMAL)
+  population      Int       @default(0) // Population density affects VP production
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  villages        Village[]
+
+  @@index([regionCode])
+  @@index([controllingPlayerId])
+  @@index([regionType])
+}
+
+enum RegionType {
+  NORMAL
+  CAPITAL
+  BORDER
+  STRATEGIC
+}
+
 model Barbarian {
   id        String   @id @default(cuid())
   x         Int
@@ -285,6 +323,9 @@ model Village {
 
   continentId String
   continent   Continent @relation(fields: [continentId], references: [id])
+
+  regionId String?
+  region   Region? @relation(fields: [regionId], references: [id])
 
   x         Int
   y         Int
@@ -329,6 +370,7 @@ model Village {
   @@unique([x, y])
   @@index([playerId])
   @@index([continentId])
+  @@index([regionId])
   @@index([isCapital])
   @@index([lastTickAt]) // For game tick processing
   @@index([playerId, isCapital]) // For capital village queries
@@ -375,7 +417,6 @@ enum BuildingType {
   MARKETPLACE
   BARRACKS
   STABLES
-  WATCHTOWER
   WALL
   WAREHOUSE
   GRANARY
@@ -388,6 +429,9 @@ enum BuildingType {
   HOSPITAL
   FARM
   SNOB
+  // Reign of Fire buildings
+  CITY
+  WATCHTOWER
   // Teutonic-specific buildings
   EARTH_WALL
   BREWERY
@@ -874,6 +918,7 @@ enum MessageType {
   DIPLOMACY
   TRADE_OFFER
   SYSTEM
+  ALLIANCE_ATTACK
 }
 
 // ============================================================================
@@ -1043,6 +1088,21 @@ enum LeaderboardType {
   PLAYERS
   TRIBES
   VILLAGES
+}
+
+enum TaskType {
+  BUILDING_LEVEL
+  RESOURCE_FIELD_LEVEL
+  POPULATION_REACH
+  CULTURE_POINTS_PRODUCTION
+  CELEBRATION_HOLD
+}
+
+enum TaskCategory {
+  VILLAGE
+  ECONOMY
+  MILITARY
+  VILLAGE_SPECIFIC
 }
 
 // ============================================================================

@@ -63,3 +63,4 @@ export async function DELETE(req: NextRequest) {
     return serverErrorResponse(error)
   }
 }
+

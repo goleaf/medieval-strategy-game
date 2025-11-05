@@ -222,3 +222,4 @@ model Adventure {
 - Region assignment conflicts
 - Item generation errors
 - Construction speed calculation issues
+

@@ -4,6 +4,7 @@ import { CombatService } from "@/lib/game-services/combat-service"
 import { BuildingService } from "@/lib/game-services/building-service"
 import { TroopService } from "@/lib/game-services/troop-service"
 import { ReinforcementService } from "@/lib/game-services/reinforcement-service"
+import { MovementService } from "@/lib/game-services/movement-service"
 
 /**
  * Main game tick job
@@ -101,6 +102,11 @@ export async function processGameTick() {
           where: { id: movement.reinforcement.id },
           data: { status: "ARRIVED" },
         })
+      }
+
+      // Handle troop forwarding (Reign of Fire feature)
+      if (movement.troopId && !movement.attack && !movement.reinforcement) {
+        await MovementService.mergeTroops(movement.id)
       }
     }
 

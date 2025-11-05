@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
       validated.name || "New Village",
       validated.x,
       validated.y,
+      undefined, // isCapital
+      validated.selectedTribe, // Reign of Fire: tribe selection
     )
 
     return successResponse(village, 201)

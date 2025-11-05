@@ -522,3 +522,4 @@ export function CentralVillageOverview({ playerId, onVillageSelect }: CentralVil
     </div>
   )
 }
+

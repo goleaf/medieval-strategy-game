@@ -7,6 +7,7 @@ export const villageSchema = z.object({
   name: z.string().min(1).max(50).optional(),
   x: z.number().int().min(0).max(1000),
   y: z.number().int().min(0).max(1000),
+  selectedTribe: z.string().optional(), // Reign of Fire: tribe selection for first 3 villages
 })
 
 export const buildingUpgradeSchema = z.object({

@@ -215,3 +215,4 @@ interface EvasionEvent {
 ---
 
 *This feature is part of the Gold Club premium service. Gold Club membership is required to access troop evasion functionality.*
+

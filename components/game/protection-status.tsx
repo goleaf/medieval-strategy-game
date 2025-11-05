@@ -147,3 +147,4 @@ export function ProtectionStatus({ playerId }: ProtectionStatusProps) {
     </Card>
   )
 }
+

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { MovementService } from "@/lib/game-services/movement-service"
 import { ProtectionService } from "@/lib/game-services/protection-service"
+import { CombatService } from "@/lib/game-services/combat-service"
 import { type NextRequest } from "next/server"
 import { attackLaunchSchema } from "@/lib/utils/validation"
 import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
@@ -136,6 +137,16 @@ export async function POST(req: NextRequest) {
       },
       include: { attackUnits: { include: { troop: true } } },
     })
+
+    // Send alliance attack notifications (Reign of Fire feature)
+    if (targetVillage) {
+      try {
+        await CombatService.sendAllianceAttackNotifications(attack.id);
+      } catch (error) {
+        console.error("Failed to send alliance attack notifications:", error);
+        // Don't fail the attack launch if notifications fail
+      }
+    }
 
     return successResponse(attack, 201)
   } catch (error) {

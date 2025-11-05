@@ -144,3 +144,4 @@ function getSmeltDuration(rarity: string): number {
 
   return durationHours[rarity] || 1
 }
+

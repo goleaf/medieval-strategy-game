@@ -31,24 +31,25 @@ const REWARD_MULTIPLIERS = {
 };
 
 // Task definitions based on Travian: Legends system
-export const TASK_DEFINITIONS: TaskDefinition[] = [
-  // Village-specific building tasks
-  // Warehouse levels
-  ...[1, 3, 7, 12, 20].map(level => ({
-    type: TaskType.BUILDING_LEVEL,
-    category: TaskCategory.VILLAGE_SPECIFIC,
-    level,
-    buildingType: BuildingType.WAREHOUSE,
-    targetLevel: level,
-    rewards: {
-      wood: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
-      stone: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
-      iron: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
-      gold: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
-      food: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
-      heroExperience: level * 10,
-    },
-  })),
+function createTaskDefinitions(): TaskDefinition[] {
+  return [
+    // Village-specific building tasks
+    // Warehouse levels
+    ...[1, 3, 7, 12, 20].map(level => ({
+      type: TaskType.BUILDING_LEVEL,
+      category: TaskCategory.VILLAGE_SPECIFIC,
+      level,
+      buildingType: BuildingType.WAREHOUSE,
+      targetLevel: level,
+      rewards: {
+        wood: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
+        stone: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
+        iron: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
+        gold: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
+        food: REWARD_MULTIPLIERS.BUILDING_LEVEL * level,
+        heroExperience: level * 10,
+      },
+    })),
 
   // Granary levels
   ...[1, 3, 7, 12, 20].map(level => ({
@@ -403,14 +404,31 @@ export const TASK_DEFINITIONS: TaskDefinition[] = [
       heroExperience: 100,
     },
   })),
-];
+  ];
+}
+
+// Lazy-loaded task definitions
+let _taskDefinitions: TaskDefinition[] | null = null;
 
 /**
  * Get all task definitions
  */
 export function getAllTaskDefinitions(): TaskDefinition[] {
-  return TASK_DEFINITIONS;
+  if (!_taskDefinitions) {
+    _taskDefinitions = createTaskDefinitions();
+  }
+  return _taskDefinitions;
 }
+
+// Export for backward compatibility - this will be lazy-loaded when first accessed
+export const TASK_DEFINITIONS = new Proxy([] as TaskDefinition[], {
+  get(target, prop) {
+    if (!_taskDefinitions) {
+      _taskDefinitions = createTaskDefinitions();
+    }
+    return (_taskDefinitions as any)[prop];
+  }
+});
 
 /**
  * Get task definitions for a specific category
