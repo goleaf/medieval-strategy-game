@@ -92,6 +92,39 @@ export default function BuildingsPage() {
     }
   }
 
+  const handleNpcMerchantExchange = async (fromResource: string, toResource: string, amount: number) => {
+    setError(null)
+    setSuccess(null)
+    setLoading(true)
+    try {
+      const res = await fetch("/api/market/npc-merchant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          villageId,
+          fromResource,
+          toResource,
+          amount,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSuccess(`Successfully exchanged ${amount} ${fromResource} for ${amount} ${toResource}!`)
+        setTimeout(() => setSuccess(null), 5000)
+        await fetchVillage()
+      } else {
+        setError(data.error || "Failed to exchange resources")
+        setTimeout(() => setError(null), 5000)
+      }
+    } catch (error) {
+      console.error("Failed to exchange resources:", error)
+      setError("Failed to exchange resources. Please try again.")
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchVillage()
     const interval = setInterval(fetchVillage, 10000)
