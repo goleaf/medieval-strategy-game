@@ -3,30 +3,51 @@
 import { Button } from "@/components/ui/button"
 import { useState } from "react"
 import { Sword, Check } from "lucide-react"
-import type { TroopType } from "@prisma/client"
+import type { TroopType, GameTribe } from "@prisma/client"
 import { TextTable } from "./text-table"
+import { TribeService } from "@/lib/game-services/tribe-service"
+import { TroopService } from "@/lib/game-services/troop-service"
 
 interface TroopTrainerProps {
   villageId: string
+  tribe: GameTribe
   onTrain: (troopType: TroopType, quantity: number) => Promise<void>
 }
 
-const TROOP_TYPES: { type: TroopType; name: string; cost: string }[] = [
-  { type: "WARRIOR", name: "Warrior", cost: "100 🪵, 50 🧱, 20 ⛓, 200 🌾" },
-  { type: "SPEARMAN", name: "Spearman", cost: "120 🪵, 60 🧱, 25 ⛓, 220 🌾" },
-  { type: "BOWMAN", name: "Bowman", cost: "80 🪵, 40 🧱, 30 ⛓, 180 🌾" },
-  { type: "HORSEMAN", name: "Horseman", cost: "150 🪵, 100 🧱, 50 ⛓, 300 🌾" },
-  { type: "PALADIN", name: "Paladin", cost: "200 🪵, 150 🧱, 100 ⛓, 400 🌾" },
-  { type: "RAM", name: "Ram", cost: "300 🪵, 200 🧱, 50 ⛓, 100 🌾" },
-  { type: "CATAPULT", name: "Catapult", cost: "400 🪵, 300 🧱, 150 ⛓, 200 🌾" },
-]
+// Helper function to format cost display
+function formatCost(cost: Record<string, number>): string {
+  const parts = []
+  if (cost.wood) parts.push(`${cost.wood} 🪵`)
+  if (cost.stone) parts.push(`${cost.stone} 🧱`)
+  if (cost.iron) parts.push(`${cost.iron} ⛓`)
+  if (cost.gold) parts.push(`${cost.gold} 🪙`)
+  if (cost.food) parts.push(`${cost.food} 🌾`)
+  return parts.join(", ")
+}
 
-export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
+// Helper function to format troop name
+function formatTroopName(troopType: TroopType): string {
+  return troopType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+}
+
+export function TroopTrainer({ villageId, tribe, onTrain }: TroopTrainerProps) {
+  // Get tribe-specific troops
+  const tribeTroops = TribeService.getTribeTroops(tribe)
+
+  // Generate troop types for display
+  const troopTypes = tribeTroops.map(troopType => {
+    const stats = TroopService.getTroopStats(troopType)
+    return {
+      type: troopType,
+      name: formatTroopName(troopType),
+      cost: formatCost(stats.cost)
+    }
+  })
   const [selected, setSelected] = useState<TroopType | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(false)
 
-  const troopInfo = selected ? TROOP_TYPES.find(t => t.type === selected) : null
+  const troopInfo = selected ? troopTypes.find(t => t.type === selected) : null
 
   const handleTrain = async () => {
     if (!selected) return
@@ -44,7 +65,7 @@ export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
     <div className="w-full space-y-4">
       <TextTable
         headers={["Type", "Cost", "Action"]}
-        rows={TROOP_TYPES.map((troop) => [
+        rows={troopTypes.map((troop) => [
           troop.name,
           <span key={`cost-${troop.type}`} className="text-sm">{troop.cost}</span>,
           <button

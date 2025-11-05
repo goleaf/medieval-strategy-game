@@ -156,12 +156,34 @@ export class VillageService {
     // Calculate production based on loyalty
     const loyaltyMultiplier = village.loyalty / 100
 
-    const production = {
+    // Get hero resource production bonus
+    let heroBonus = 0
+    if (village.playerId) {
+      const player = await prisma.player.findUnique({
+        where: { id: village.playerId },
+        select: { gameTribe: true }
+      })
+      if (player?.gameTribe) {
+        const { TribeService } = await import("./tribe-service")
+        heroBonus = TribeService.getHeroResourceProductionBonus(player.gameTribe)
+      }
+    }
+
+    const baseProduction = {
       wood: Math.floor(village.woodProduction * loyaltyMultiplier),
       stone: Math.floor(village.stoneProduction * loyaltyMultiplier),
       iron: Math.floor(village.ironProduction * loyaltyMultiplier),
       gold: Math.floor(village.goldProduction * loyaltyMultiplier),
       food: Math.floor(village.foodProduction * loyaltyMultiplier),
+    }
+
+    // Apply hero bonus
+    const production = {
+      wood: Math.floor(baseProduction.wood * (1 + heroBonus)),
+      stone: Math.floor(baseProduction.stone * (1 + heroBonus)),
+      iron: Math.floor(baseProduction.iron * (1 + heroBonus)),
+      gold: Math.floor(baseProduction.gold * (1 + heroBonus)),
+      food: Math.floor(baseProduction.food * (1 + heroBonus)),
     }
 
     // Get storage capacities

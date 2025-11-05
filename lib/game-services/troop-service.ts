@@ -52,6 +52,121 @@ const TROOP_STATS: Record<TroopType, { cost: Record<string, number>; stats: Reco
     stats: { attack: 60, defense: 40, speed: 7, health: 500 },
     buildTime: 2400,
   },
+  // Viking-specific units
+  BERSERKER: {
+    cost: { wood: 180, stone: 90, iron: 60, gold: 20, food: 400 },
+    stats: { attack: 25, defense: 8, speed: 6, health: 180 },
+    buildTime: 600,
+  },
+  VALKYRIES_BLESSING: {
+    cost: { wood: 250, stone: 125, iron: 125, gold: 50, food: 200 },
+    stats: { attack: 30, defense: 15, speed: 10, health: 200 },
+    buildTime: 900,
+  },
+  JARL: {
+    cost: { wood: 800, stone: 500, iron: 300, gold: 300, food: 800 },
+    stats: { attack: 45, defense: 30, speed: 8, health: 400 },
+    buildTime: 1800,
+  },
+  // Huns-specific units
+  STEPPE_ARCHER: {
+    cost: { wood: 120, stone: 100, iron: 150, gold: 30, food: 180 },
+    stats: { attack: 30, defense: 10, speed: 14, health: 140 },
+    buildTime: 600,
+  },
+  HUN_WARRIOR: {
+    cost: { wood: 200, stone: 150, iron: 180, gold: 60, food: 240 },
+    stats: { attack: 40, defense: 20, speed: 13, health: 160 },
+    buildTime: 900,
+  },
+  LOGADES: {
+    cost: { wood: 550, stone: 440, iron: 320, gold: 180, food: 600 },
+    stats: { attack: 50, defense: 30, speed: 10, health: 300 },
+    buildTime: 1800,
+  },
+  // Roman-specific units
+  LEGIONNAIRE: {
+    cost: { wood: 120, stone: 100, iron: 150, gold: 30, food: 300 },
+    stats: { attack: 40, defense: 35, speed: 6, health: 300 },
+    buildTime: 900,
+  },
+  PRAETORIAN: {
+    cost: { wood: 200, stone: 170, iron: 250, gold: 60, food: 360 },
+    stats: { attack: 30, defense: 65, speed: 8, health: 200 },
+    buildTime: 1200,
+  },
+  IMPERIAN: {
+    cost: { wood: 300, stone: 200, iron: 350, gold: 100, food: 500 },
+    stats: { attack: 50, defense: 40, speed: 7, health: 250 },
+    buildTime: 1500,
+  },
+  SENATOR: {
+    cost: { wood: 800, stone: 600, iron: 400, gold: 500, food: 1000 },
+    stats: { attack: 60, defense: 40, speed: 7, health: 400 },
+    buildTime: 2400,
+  },
+  // Egyptian-specific units (defensive focus, cheap and fast training)
+  NUBIAN: {
+    cost: { wood: 80, stone: 40, iron: 15, gold: 0, food: 150 },
+    stats: { attack: 8, defense: 12, speed: 6, health: 90 },
+    buildTime: 240, // Fast training
+  },
+  MUMMY: {
+    cost: { wood: 110, stone: 55, iron: 25, gold: 0, food: 180 },
+    stats: { attack: 10, defense: 18, speed: 4, health: 120 },
+    buildTime: 300, // Fast training
+  },
+  ANUBITE: {
+    cost: { wood: 160, stone: 80, iron: 60, gold: 20, food: 220 },
+    stats: { attack: 15, defense: 25, speed: 5, health: 160 },
+    buildTime: 420, // Fast training
+  },
+  PHARAOH: {
+    cost: { wood: 250, stone: 125, iron: 100, gold: 60, food: 350 },
+    stats: { attack: 25, defense: 35, speed: 6, health: 220 },
+    buildTime: 600, // Fast training
+  },
+  NOMARCH: {
+    cost: { wood: 600, stone: 450, iron: 300, gold: 300, food: 800 },
+    stats: { attack: 45, defense: 30, speed: 6, health: 350 },
+    buildTime: 1800, // Special loyalty-reducing unit
+  },
+  // Teutonic-specific units (cheap, fast, high carrying capacity)
+  CLUBSWINGER: {
+    cost: { wood: 95, stone: 75, iron: 40, gold: 0, food: 180 },
+    stats: { attack: 40, defense: 20, speed: 7, health: 200 },
+    buildTime: 600,
+  },
+  SPEARMAN_TEUTONIC: {
+    cost: { wood: 110, stone: 80, iron: 50, gold: 0, food: 200 },
+    stats: { attack: 35, defense: 30, speed: 6, health: 240 },
+    buildTime: 720,
+  },
+  AXEMAN: {
+    cost: { wood: 130, stone: 85, iron: 60, gold: 0, food: 220 },
+    stats: { attack: 50, defense: 25, speed: 5, health: 260 },
+    buildTime: 840,
+  },
+  SCOUT: {
+    cost: { wood: 160, stone: 100, iron: 50, gold: 0, food: 240 },
+    stats: { attack: 0, defense: 10, speed: 9, health: 120 },
+    buildTime: 600,
+  },
+  PALADIN_TEUTONIC: {
+    cost: { wood: 260, stone: 140, iron: 150, gold: 50, food: 360 },
+    stats: { attack: 55, defense: 35, speed: 8, health: 320 },
+    buildTime: 1200,
+  },
+  TEUTONIC_KNIGHT: {
+    cost: { wood: 320, stone: 180, iron: 200, gold: 80, food: 420 },
+    stats: { attack: 70, defense: 45, speed: 6, health: 400 },
+    buildTime: 1800,
+  },
+  CHIEF: {
+    cost: { wood: 900, stone: 700, iron: 500, gold: 600, food: 1200 },
+    stats: { attack: 80, defense: 50, speed: 5, health: 500 },
+    buildTime: 3000,
+  },
 }
 
 export class TroopService {
@@ -67,15 +182,15 @@ export class TroopService {
 
     if (!village) return 1.0
 
-    // Barracks bonus for infantry (WARRIOR, SPEARMAN, BOWMAN)
+    // Barracks bonus for infantry (WARRIOR, SPEARMAN, BOWMAN, NUBIAN, MUMMY, ANUBITE, PHARAOH, NOMARCH)
     const barracks = village.buildings.find((b) => b.type === "BARRACKS")
     const barracksBonus = barracks ? 1 + barracks.level * 0.1 : 1.0
 
-    // Stables bonus for cavalry (HORSEMAN, PALADIN, EAGLE_KNIGHT, KNIGHT)
+    // Stables bonus for cavalry (HORSEMAN, PALADIN, EAGLE_KNIGHT, KNIGHT, VALKYRIES_BLESSING, PRAETORIAN, IMPERIAN)
     const stables = village.buildings.find((b) => b.type === "STABLES")
     const stablesBonus = stables ? 1 + stables.level * 0.1 : 1.0
 
-    const isCavalry = ["HORSEMAN", "PALADIN", "EAGLE_KNIGHT", "KNIGHT"].includes(troopType)
+    const isCavalry = ["HORSEMAN", "PALADIN", "EAGLE_KNIGHT", "KNIGHT", "VALKYRIES_BLESSING", "PRAETORIAN", "IMPERIAN"].includes(troopType)
     return isCavalry ? stablesBonus : barracksBonus
   }
 
@@ -205,11 +320,50 @@ export class TroopService {
   /**
    * Get total attack/defense power of a troop stack
    */
-  static calculatePower(troops: Troop[], type: "attack" | "defense"): number {
-    return troops.reduce((total, troop) => {
+  static async calculatePower(troops: Troop[], type: "attack" | "defense", villageId?: string): Promise<number> {
+    let basePower = troops.reduce((total, troop) => {
       const stat = type === "attack" ? troop.attack : troop.defense
       return total + stat * troop.quantity
     }, 0)
+
+    // Apply Brewery bonus for Teutonic troops (only affects attack power)
+    if (type === "attack" && villageId) {
+      basePower = this.applyBreweryBonus(basePower, troops, villageId)
+    }
+
+    return basePower
+  }
+
+  /**
+   * Apply Brewery attack bonus to Teutonic troops
+   */
+  private static async applyBreweryBonus(basePower: number, troops: Troop[], villageId: string): Promise<number> {
+    try {
+      const { prisma } = await import("@/lib/db")
+      const village = await prisma.village.findUnique({
+        where: { id: villageId },
+        include: { buildings: true },
+      })
+
+      if (!village) return basePower
+
+      const brewery = village.buildings.find(b => b.type === "BREWERY")
+      if (!brewery) return basePower
+
+      // Check if troops include any Teutonic units
+      const teutonicTroops = troops.filter(t =>
+        ["CLUBSWINGER", "SPEARMAN_TEUTONIC", "AXEMAN", "SCOUT", "PALADIN_TEUTONIC", "TEUTONIC_KNIGHT", "CHIEF"].includes(t.type)
+      )
+
+      if (teutonicTroops.length === 0) return basePower
+
+      // Apply 5% attack bonus per Brewery level
+      const bonusMultiplier = 1 + (brewery.level * 0.05)
+      return Math.floor(basePower * bonusMultiplier)
+    } catch (error) {
+      console.error("Error applying Brewery bonus:", error)
+      return basePower
+    }
   }
 
   /**

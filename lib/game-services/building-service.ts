@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db"
-import type { BuildingType } from "@prisma/client"
+import type { BuildingType, DemolitionMode } from "@prisma/client"
 
 const BUILDING_COSTS: Record<BuildingType, Record<string, number>> = {
   HEADQUARTER: { wood: 100, stone: 100, iron: 50, gold: 20, food: 100 },
@@ -19,6 +19,12 @@ const BUILDING_COSTS: Record<BuildingType, Record<string, number>> = {
   HOSPITAL: { wood: 200, stone: 200, iron: 150, gold: 0, food: 200 },
   FARM: { wood: 150, stone: 100, iron: 50, gold: 0, food: 150 },
   SNOB: { wood: 500, stone: 500, iron: 500, gold: 500, food: 500 },
+  CRANNY: { wood: 40, stone: 50, iron: 30, gold: 0, food: 40 },
+  // Teutonic-specific buildings
+  EARTH_WALL: { wood: 100, stone: 200, iron: 50, gold: 0, food: 100 },
+  BREWERY: { wood: 300, stone: 250, iron: 150, gold: 100, food: 200 },
+  // Defensive buildings
+  TRAPPER: { wood: 100, stone: 100, iron: 100, gold: 20, food: 100 },
 }
 
 const BUILDING_UPGRADE_TIME: Record<BuildingType, number> = {
@@ -39,9 +45,16 @@ const BUILDING_UPGRADE_TIME: Record<BuildingType, number> = {
   HOSPITAL: 3600,
   FARM: 2400,
   SNOB: 7200,
+  CRANNY: 1800,
+  // Teutonic-specific buildings
+  EARTH_WALL: 2700,
+  BREWERY: 3600,
+  // Huns-specific buildings
+  COMMAND_CENTER: 4800,
+  MAKESHIFT_WALL: 2400,
+  // Defensive buildings
+  TRAPPER: 1800,
 }
-
-const CONSTRUCTION_REFUND_PERCENTAGE = 0.5 // 50% refund on cancel
 
 export class BuildingService {
   /**
@@ -95,6 +108,15 @@ export class BuildingService {
         case "FARM":
           bonuses.food += building.level * 6 // +6 food per level
           break
+        case "WATERWORKS":
+          // Egyptian Waterworks: boosts resource production through oasis bonuses
+          // +3 to all resources per level (simulating oasis bonus enhancement)
+          bonuses.wood += building.level * 3
+          bonuses.stone += building.level * 3
+          bonuses.iron += building.level * 3
+          bonuses.gold += building.level * 3
+          bonuses.food += building.level * 3
+          break
       }
     }
 
@@ -123,6 +145,16 @@ export class BuildingService {
 
     if (!building) throw new Error("Building not found")
     if (building.isBuilding) throw new Error("Building already under construction")
+
+    // Check Brewery building restrictions (Teutonic-only)
+    if (building.type === "BREWERY") {
+      const restrictedBuildings = building.village.buildings.filter(b =>
+        ["RESIDENCE", "PALACE", "COMMAND_CENTER"].includes(b.type)
+      )
+      if (restrictedBuildings.length > 0) {
+        throw new Error("Cannot build Brewery in a village that contains Residence, Palace, or Command Center")
+      }
+    }
 
     // Check queue limit
     const queueLimit = await this.getQueueLimit()
@@ -186,12 +218,18 @@ export class BuildingService {
   }
 
   /**
-   * Cancel building construction with refund
+   * Cancel building construction with refund based on Travian system
+   * - Level 1 upgrades: full refund
+   * - Higher level upgrades: refund the cost difference between levels
+   * - Research actions cannot be canceled
    */
   static async cancelBuilding(buildingId: string): Promise<void> {
     const building = await prisma.building.findUnique({
       where: { id: buildingId },
-      include: { village: true },
+      include: {
+        village: true,
+        research: true
+      },
     })
 
     if (!building) throw new Error("Building not found")
@@ -199,13 +237,59 @@ export class BuildingService {
       throw new Error("Building is not under construction")
     }
 
-    // Calculate refund
-    const refund = {
-      wood: Math.floor(building.constructionCostWood * CONSTRUCTION_REFUND_PERCENTAGE),
-      stone: Math.floor(building.constructionCostStone * CONSTRUCTION_REFUND_PERCENTAGE),
-      iron: Math.floor(building.constructionCostIron * CONSTRUCTION_REFUND_PERCENTAGE),
-      gold: Math.floor(building.constructionCostGold * CONSTRUCTION_REFUND_PERCENTAGE),
-      food: Math.floor(building.constructionCostFood * CONSTRUCTION_REFUND_PERCENTAGE),
+    // Prevent canceling buildings that are currently researching (Travian rule)
+    if (building.research?.isResearching) {
+      throw new Error("Cannot cancel building that is currently researching")
+    }
+
+    let refund = {
+      wood: 0,
+      stone: 0,
+      iron: 0,
+      gold: 0,
+      food: 0,
+    }
+
+    // Calculate refund based on Travian system
+    if (building.level === 0) {
+      // Level 1 upgrade - full refund
+      refund = {
+        wood: building.constructionCostWood,
+        stone: building.constructionCostStone,
+        iron: building.constructionCostIron,
+        gold: building.constructionCostGold,
+        food: building.constructionCostFood,
+      }
+    } else {
+      // Higher level upgrade - refund difference between new and current level costs
+      const currentLevelCost = this.getBuildingCosts(building.type as BuildingType)
+      const newLevelCost = BUILDING_COSTS[building.type as BuildingType]
+
+      // Apply level scaling to both costs
+      const currentLevelScaled = {
+        wood: Math.floor(currentLevelCost.wood * Math.pow(1.2, building.level - 1)),
+        stone: Math.floor(currentLevelCost.stone * Math.pow(1.2, building.level - 1)),
+        iron: Math.floor(currentLevelCost.iron * Math.pow(1.2, building.level - 1)),
+        gold: Math.floor(currentLevelCost.gold * Math.pow(1.2, building.level - 1)),
+        food: Math.floor(currentLevelCost.food * Math.pow(1.2, building.level - 1)),
+      }
+
+      const newLevelScaled = {
+        wood: Math.floor(newLevelCost.wood * Math.pow(1.2, building.level)),
+        stone: Math.floor(newLevelCost.stone * Math.pow(1.2, building.level)),
+        iron: Math.floor(newLevelCost.iron * Math.pow(1.2, building.level)),
+        gold: Math.floor(newLevelCost.gold * Math.pow(1.2, building.level)),
+        food: Math.floor(newLevelCost.food * Math.pow(1.2, building.level)),
+      }
+
+      // Refund is the difference between invested cost and current level cost
+      refund = {
+        wood: Math.max(0, building.constructionCostWood - currentLevelScaled.wood),
+        stone: Math.max(0, building.constructionCostStone - currentLevelScaled.stone),
+        iron: Math.max(0, building.constructionCostIron - currentLevelScaled.iron),
+        gold: Math.max(0, building.constructionCostGold - currentLevelScaled.gold),
+        food: Math.max(0, building.constructionCostFood - currentLevelScaled.food),
+      }
     }
 
     // Refund resources
@@ -356,5 +440,256 @@ export class BuildingService {
   static getBuildingUpgradeTime(type: BuildingType, level: number) {
     const baseTime = BUILDING_UPGRADE_TIME[type]
     return baseTime * (1 + level * 0.1)
+  }
+
+  /**
+   * Get demolition time for a building level (in seconds)
+   * Demolition time is roughly half the construction time
+   */
+  static getDemolitionTime(type: BuildingType, level: number): number {
+    const baseTime = BUILDING_UPGRADE_TIME[type]
+    return Math.floor((baseTime * (1 + level * 0.1)) * 0.5) // 50% of construction time
+  }
+
+  /**
+   * Calculate gold cost for instant demolition operations
+   */
+  static getInstantDemolitionCost(buildingLevel: number, mode: DemolitionMode): number {
+    const baseCost = buildingLevel * 2 // 2 gold per level
+
+    switch (mode) {
+      case "INSTANT_COMPLETE":
+        return baseCost // Cost to complete current demolition instantly
+      case "FULL_BUILDING":
+        return baseCost * 3 // Higher cost for instant full building demolition
+      default:
+        return 0
+    }
+  }
+
+  /**
+   * Start demolishing a building level by level (normal speed)
+   */
+  static async startDemolition(buildingId: string): Promise<void> {
+    const building = await prisma.building.findUnique({
+      where: { id: buildingId },
+      include: { village: true },
+    })
+
+    if (!building) throw new Error("Building not found")
+    if (building.isBuilding) throw new Error("Cannot demolish building that is currently under construction")
+    if (building.isDemolishing) throw new Error("Building is already being demolished")
+    if (building.level <= 1) throw new Error("Cannot demolish the last level of a building")
+
+    // Check if Main Building is at least level 10 (Travian requirement)
+    const mainBuilding = building.village.buildings.find(b => b.type === "HEADQUARTER")
+    if (!mainBuilding || mainBuilding.level < 10) {
+      throw new Error("Main Building must be at least level 10 to demolish buildings")
+    }
+
+    const demolitionTime = this.getDemolitionTime(building.type as BuildingType, building.level)
+
+    await prisma.building.update({
+      where: { id: buildingId },
+      data: {
+        isDemolishing: true,
+        demolitionAt: new Date(Date.now() + demolitionTime * 1000),
+        demolitionMode: "LEVEL_BY_LEVEL",
+        demolitionCost: 0,
+      },
+    })
+  }
+
+  /**
+   * Complete current demolition instantly using gold
+   */
+  static async completeDemolitionInstantly(buildingId: string): Promise<void> {
+    const building = await prisma.building.findUnique({
+      where: { id: buildingId },
+      include: { village: true },
+    })
+
+    if (!building) throw new Error("Building not found")
+    if (!building.isDemolishing) throw new Error("Building is not being demolished")
+
+    const goldCost = this.getInstantDemolitionCost(building.level, "INSTANT_COMPLETE")
+
+    // Check if village has enough gold
+    if (building.village.gold < goldCost) {
+      throw new Error(`Insufficient gold. Required: ${goldCost}, Available: ${building.village.gold}`)
+    }
+
+    // Deduct gold and complete demolition
+    await prisma.village.update({
+      where: { id: building.villageId },
+      data: { gold: building.village.gold - goldCost },
+    })
+
+    await this.completeDemolition(buildingId)
+  }
+
+  /**
+   * Demolish entire building instantly using gold
+   */
+  static async demolishBuildingInstantly(buildingId: string): Promise<void> {
+    const building = await prisma.building.findUnique({
+      where: { id: buildingId },
+      include: { village: true },
+    })
+
+    if (!building) throw new Error("Building not found")
+    if (building.isBuilding) throw new Error("Cannot demolish building that is currently under construction")
+    if (building.isDemolishing) throw new Error("Building is already being demolished")
+
+    // Check if Main Building is at least level 10
+    const mainBuilding = building.village.buildings.find(b => b.type === "HEADQUARTER")
+    if (!mainBuilding || mainBuilding.level < 10) {
+      throw new Error("Main Building must be at least level 10 to demolish buildings")
+    }
+
+    const goldCost = this.getInstantDemolitionCost(building.level, "FULL_BUILDING")
+
+    // Check if village has enough gold
+    if (building.village.gold < goldCost) {
+      throw new Error(`Insufficient gold. Required: ${goldCost}, Available: ${building.village.gold}`)
+    }
+
+    // Deduct gold and demolish entire building
+    await prisma.village.update({
+      where: { id: building.villageId },
+      data: { gold: building.village.gold - goldCost },
+    })
+
+    // Reduce building to level 1 instantly
+    await prisma.building.update({
+      where: { id: buildingId },
+      data: {
+        level: 1,
+        isDemolishing: false,
+        demolitionAt: null,
+        demolitionMode: null,
+        demolitionCost: 0,
+      },
+    })
+
+    // Update production rates
+    await this.updateVillageProductionRates(building.villageId)
+  }
+
+  /**
+   * Complete demolition process (reduce building level by 1)
+   */
+  static async completeDemolition(buildingId: string): Promise<void> {
+    const building = await prisma.building.findUnique({
+      where: { id: buildingId },
+      include: { village: true },
+    })
+
+    if (!building) throw new Error("Building not found")
+    if (!building.isDemolishing) return
+
+    // Reduce building level by 1
+    const newLevel = Math.max(1, building.level - 1)
+
+    await prisma.building.update({
+      where: { id: buildingId },
+      data: {
+        level: newLevel,
+        isDemolishing: false,
+        demolitionAt: null,
+        demolitionMode: null,
+        demolitionCost: 0,
+      },
+    })
+
+    // Update production rates
+    await this.updateVillageProductionRates(building.villageId)
+  }
+
+  /**
+   * Cancel ongoing demolition
+   */
+  static async cancelDemolition(buildingId: string): Promise<void> {
+    const building = await prisma.building.findUnique({
+      where: { id: buildingId },
+      include: { village: true },
+    })
+
+    if (!building) throw new Error("Building not found")
+    if (!building.isDemolishing) throw new Error("Building is not being demolished")
+
+    // For instant operations, no refund
+    if (building.demolitionMode !== "LEVEL_BY_LEVEL") {
+      await prisma.building.update({
+        where: { id: buildingId },
+        data: {
+          isDemolishing: false,
+          demolitionAt: null,
+          demolitionMode: null,
+          demolitionCost: 0,
+        },
+      })
+      return
+    }
+
+    // For level-by-level demolition, provide partial refund based on time remaining
+    const now = new Date()
+    const totalTime = building.demolitionAt ? building.demolitionAt.getTime() - building.updatedAt.getTime() : 0
+    const remainingTime = building.demolitionAt ? building.demolitionAt.getTime() - now.getTime() : 0
+
+    let refundPercentage = 0
+    if (totalTime > 0) {
+      refundPercentage = Math.max(0, remainingTime / totalTime)
+    }
+
+    // Refund a portion of the "virtual" resources that would be gained from demolition
+    const baseCosts = BUILDING_COSTS[building.type as BuildingType]
+    const refundWood = Math.floor(baseCosts.wood * refundPercentage * 0.1) // 10% of construction cost
+    const refundStone = Math.floor(baseCosts.stone * refundPercentage * 0.1)
+    const refundIron = Math.floor(baseCosts.iron * refundPercentage * 0.1)
+
+    await prisma.village.update({
+      where: { id: building.villageId },
+      data: {
+        wood: { increment: refundWood },
+        stone: { increment: refundStone },
+        iron: { increment: refundIron },
+      },
+    })
+
+    await prisma.building.update({
+      where: { id: buildingId },
+      data: {
+        isDemolishing: false,
+        demolitionAt: null,
+        demolitionMode: null,
+        demolitionCost: 0,
+      },
+    })
+  }
+
+  /**
+   * Update village production rates after building changes
+   */
+  private static async updateVillageProductionRates(villageId: string): Promise<void> {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      include: { buildings: true },
+    })
+
+    if (!village) return
+
+    const bonuses = this.calculateProductionBonuses(village.buildings)
+
+    await prisma.village.update({
+      where: { id: villageId },
+      data: {
+        woodProduction: 10 + bonuses.wood,
+        stoneProduction: 8 + bonuses.stone,
+        ironProduction: 5 + bonuses.iron,
+        goldProduction: 2 + bonuses.gold,
+        foodProduction: 15 + bonuses.food,
+      },
+    })
   }
 }
