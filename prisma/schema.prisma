@@ -168,7 +168,6 @@ model Player {
 
   // Player Stats
   totalPoints   Int @default(0)
-  culturePoints Int @default(500) // Starting culture points based on game world
   rank          Int @default(0)
   wavesSurvived Int @default(0)
   troopsKilled  Int @default(0)
@@ -261,7 +260,7 @@ model Barbarian {
   y         Int
   villageId String?
   village   Village? @relation(fields: [villageId], references: [id])
-
+  
   // Barbarian Troops
   warriors Int @default(100)
   spearmen Int @default(50)
@@ -270,7 +269,7 @@ model Barbarian {
 
   spawnedAt    DateTime  @default(now())
   lastAttackAt DateTime?
-
+  
   @@index([x, y])
   @@index([villageId])
 }
@@ -389,6 +388,9 @@ enum BuildingType {
   HOSPITAL
   FARM
   SNOB
+  // Teutonic-specific buildings
+  EARTH_WALL
+  BREWERY
 }
 
 // ============================================================================
@@ -402,7 +404,7 @@ model Troop {
 
   type     TroopType
   quantity Int       @default(0)
-
+  
   // Combat Stats
   health  Int @default(100)
   attack  Int @default(10)
@@ -411,13 +413,13 @@ model Troop {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  
   // Relations
   movements         Movement[]
   attackUnits       AttackUnit[]
   defenseUnits      DefenseUnit[]
   reinforcementUnits ReinforcementUnit[]
-
+  
   @@unique([villageId, type])
   @@index([villageId])
 }
@@ -433,6 +435,14 @@ enum TroopType {
   CATAPULT
   KNIGHT
   NOBLEMAN
+  // Teutonic-specific units
+  CLUBSWINGER
+  SPEARMAN_TEUTONIC
+  AXEMAN
+  SCOUT
+  PALADIN_TEUTONIC
+  TEUTONIC_KNIGHT
+  CHIEF
 }
 
 model TroopProduction {
@@ -575,7 +585,7 @@ model AttackUnit {
   troop   Troop  @relation(fields: [troopId], references: [id], onDelete: Cascade)
 
   quantity Int
-
+  
   @@index([attackId])
   @@index([troopId])
 }
@@ -589,7 +599,7 @@ model DefenseUnit {
   troop   Troop  @relation(fields: [troopId], references: [id], onDelete: Cascade)
 
   quantity Int
-
+  
   @@index([attackId])
   @@index([troopId])
 }
@@ -598,16 +608,16 @@ model Defense {
   id        String  @id @default(cuid())
   villageId String
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
-
+  
   // Defense Configuration
   wallLevel Int @default(0)
   archers   Int @default(0)
   catapults Int @default(0)
-
+  
   // Defensive Perks
   bonusAgainstRaid     Int @default(0)
   bonusAgainstConquest Int @default(0)
-
+  
   @@unique([villageId])
   @@index([villageId])
 }

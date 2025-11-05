@@ -446,6 +446,9 @@ export class BuildingService {
       // Building already has completion time calculated, just mark as active
       // The game tick will handle completion
     }
+
+    // Check for task completion after building upgrade
+    await updateTaskProgress(building.village.playerId, building.villageId)
   }
 
   static getBuildingCosts(type: BuildingType) {
