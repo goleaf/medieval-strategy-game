@@ -84,6 +84,29 @@ export async function initializeWorld() {
 
   console.log("[Reign of Fire] Created WorldConfig:", worldConfig.id);
 
+  const prismaAny = prisma as Record<string, any>
+  if (prismaAny.endgameConfig) {
+    // Seed default endgame configuration so domination tracking starts immediately after initialization.
+    await prismaAny.endgameConfig.create({
+      data: {
+        worldConfigId: worldConfig.id,
+        type: "RUNE_WARS",
+        dominanceThreshold: 0.7,
+        dominanceHoldHours: 48,
+        dominanceBaseline: "PLAYER_OWNED",
+        dominanceWarningDistance: 0.05,
+        runeRequirement: 3,
+        runeHoldHours: 24,
+        runeTimerBehavior: "RESET_ON_LOSS",
+        relicsEnabled: true,
+        relicPlacementLimit: 10,
+        relicCooldownHours: 24,
+        relicStackCap: 0.1,
+        relicSubstatCap: 0.05,
+      },
+    })
+  }
+
   // Generate continents in a 6x6 grid for larger map
   const continents = []
   for (let i = 0; i < 6; i++) {
