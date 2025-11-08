@@ -30,6 +30,10 @@
 - Run `npm run prisma:seed` before any test that assumes specific tribes, worlds, or admin accounts.
 - New systems need another `test-*.js` harness or a lightweight `lib/__tests__/` suite that documents fetch flows and setup notes.
 
+## Combat Systems Notes
+- Morale now follows the official point-ratio formula `(defender ÷ attacker)^exponent` with optional time-based floors; keep code comments in place and update `docs/features/combat-simulator.md` plus the changelog whenever behaviour shifts.
+- Shared morale utilities live in `lib/combat/morale.ts`; reuse them instead of reimplementing multiplier logic in other modules.
+
 ## Commit & Pull Request Guidelines
 - Commits are concise, present-tense, and single-purpose (e.g., `feat: add loyalty decay`); branch names follow `feature/<summary>` or `fix/<summary>`.
 - Rebase before opening a PR and include purpose, validation commands (`npm run lint`, `node test-combat-system.js`, etc.), and any linked docs/schema updates.

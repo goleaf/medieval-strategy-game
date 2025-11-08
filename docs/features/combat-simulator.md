@@ -114,6 +114,16 @@ Click **"Run Simulation"** to execute the combat calculation. The simulator uses
 - **Hero Bonus**: Applied as percentage multiplier to total offense
 - **Wall Bonus**: Added as flat defense bonus (level × 50)
 
+### Morale Scaling
+- **Purpose**: Softens blows from much larger attackers by scaling down their effective strength instead of rewarding defenders.
+- **Formula**: Uses the Travian/Tribal Wars-style ratio `(defender_points ÷ attacker_points)^exponent`, capped between the configured **min** (30% by default) and **max** (100%).
+- **Default Slope**: With the tuned exponent of **0.45**, bullying a target with one sixth of your points lands near the official **45% morale** example.
+- **Points-Based**: The simulator compares attacker vs. defender points; bullying vastly smaller accounts typically lands in the **30–50%** range depending on the ratio and exponent.
+- **Optional Time Floor**: Worlds that opt-in can gradually raise the morale floor toward **50%** as the defender's account ages, preventing veteran low-point players from being farmed indefinitely.
+- **No Underdog Boosts**: Hitting larger opponents never exceeds **100%** morale; smaller → larger attacks stay at full strength.
+- **Exclusions**: Barbarian or abandoned villages always defend at **100%** morale, and scout-vs-scout intel runs ignore morale entirely.
+- **Visibility**: The attack screen and simulator footer show the exact morale multiplier being applied, so you can plan clears and backtimes accurately.
+
 ### Casualty Determination
 - **Win/Loss**: Determined by offense vs defense comparison
 - **Casualty Rates**:
