@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GameWorldManager } from "@/components/admin/game-world-manager"
 import { SpeedConfiguration } from "@/components/admin/speed-configuration"
+import { TribalWarsWorldPresets } from "@/components/admin/tribal-wars-world-presets"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Globe, Zap, Settings, Users, BarChart3 } from "lucide-react"
 
@@ -23,7 +24,8 @@ export default function GameWorldsAdminPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          {/* Add a dedicated tab for Tribal Wars presets so ops can reach the new switchboard quickly. */}
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="worlds" className="flex items-center gap-2">
               <Globe className="w-4 h-4" />
               Game Worlds
@@ -31,6 +33,10 @@ export default function GameWorldsAdminPage() {
             <TabsTrigger value="speed" className="flex items-center gap-2">
               <Zap className="w-4 h-4" />
               Speed Config
+            </TabsTrigger>
+            <TabsTrigger value="presets" className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Tribal Wars Presets
             </TabsTrigger>
             <TabsTrigger value="players" className="flex items-center gap-2">
               <Users className="w-4 h-4" />
@@ -48,6 +54,10 @@ export default function GameWorldsAdminPage() {
 
           <TabsContent value="speed" className="space-y-6">
             <SpeedConfiguration />
+          </TabsContent>
+
+          <TabsContent value="presets" className="space-y-6">
+            <TribalWarsWorldPresets />
           </TabsContent>
 
           <TabsContent value="players" className="space-y-6">

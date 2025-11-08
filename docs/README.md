@@ -16,7 +16,8 @@ docs/
 │   ├── error-logs.md
 │   ├── admin-authentication.md
 │   ├── bulk-operations.md
-│   └── action-tracking.md
+│   ├── action-tracking.md
+│   └── tribal-wars-world-types.md  # Presets + switchboard checklist + admin UI link
 ├── features/              # Game features
 │   ├── beginner-protection.md
 │   ├── resource-system.md
@@ -48,6 +49,7 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 ### Core Features
 - **World Configuration**: Adjust game speed, production rates, and global settings
 - **Speed Templates**: Apply predefined game speed configurations
+- **Tribal Wars Presets**: Interactive switchboard with canonical world templates sourced from the admin API
 - **Player Management**: Ban, unban, rename, and relocate players
 - **Error Monitoring**: View system errors and performance metrics
 
