@@ -15,6 +15,10 @@ type DirectShipmentParams = {
   departAt?: Date
   ledgerReason?: StorageLedgerReason
   metadata?: Record<string, unknown>
+  client?: PrismaCtx
+  reserveMerchants?: boolean
+  deductResources?: boolean
+  merchantsToUse?: number
 }
 
 type TravelResult = {
@@ -36,26 +40,35 @@ export class ShipmentService {
 
     const departAt = params.departAt ?? new Date()
     const reason = params.ledgerReason ?? StorageLedgerReason.TRADE_OUT
+    const client = params.client ?? prisma
+    const shouldReserve = params.reserveMerchants ?? true
+    const shouldDeduct = params.deductResources ?? true
 
-    return prisma.$transaction(async (tx) => {
+    return this.runWithClient(client, async (tx) => {
       const merchantSnapshot = await MerchantService.getSnapshot(params.sourceVillageId, tx)
-      const merchantsNeeded = MerchantService.calculateRequiredMerchants(
-        sanitizedBundle,
-        merchantSnapshot.capacityPerMerchant,
-      )
+      const merchantsNeeded =
+        params.merchantsToUse ??
+        MerchantService.calculateRequiredMerchants(sanitizedBundle, merchantSnapshot.capacityPerMerchant)
 
       if (merchantsNeeded <= 0) {
         throw new Error("Unable to calculate merchant requirement for shipment")
       }
 
-      await MerchantService.reserveMerchants(params.sourceVillageId, merchantsNeeded, tx)
-      await StorageService.deductResources(params.sourceVillageId, sanitizedBundle, reason, {
-        client: tx,
-        metadata: {
-          targetVillageId: params.targetVillageId,
-          shipmentIntent: params.metadata?.intent ?? "direct_shipment",
-        },
-      })
+      if (shouldReserve) {
+        // Default flow marks merchants busy so they cannot be double-booked.
+        await MerchantService.reserveMerchants(params.sourceVillageId, merchantsNeeded, tx)
+      }
+
+      if (shouldDeduct) {
+        // When shipments originate from storage (not prior reservations) the ledger records the outflow.
+        await StorageService.deductResources(params.sourceVillageId, sanitizedBundle, reason, {
+          client: tx,
+          metadata: {
+            targetVillageId: params.targetVillageId,
+            shipmentIntent: params.metadata?.intent ?? "direct_shipment",
+          },
+        })
+      }
 
       const travel = await this.calculateTravelWindow({
         sourceVillageId: params.sourceVillageId,
@@ -270,5 +283,14 @@ export class ShipmentService {
       const applied = appliedDelta[key] ?? 0
       return overflow + Math.max(0, requestedAmount - applied)
     }, 0)
+  }
+
+  private static runWithClient<T>(client: PrismaCtx, cb: (tx: Prisma.TransactionClient) => Promise<T>) {
+    // Mirror MerchantService helper so callers can provide existing transactions.
+    const maybeClient = client as Prisma.TransactionClient & { $transaction?: typeof prisma.$transaction }
+    if (typeof (maybeClient as any).$transaction === "function") {
+      return (client as typeof prisma).$transaction(cb)
+    }
+    return cb(client as Prisma.TransactionClient)
   }
 }

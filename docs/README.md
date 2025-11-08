@@ -21,6 +21,7 @@ docs/
 ├── features/              # Game features
 │   ├── beginner-protection.md
 │   ├── resource-system.md
+│   ├── market-trading.md       # Marketplace & merchant trading spec with printable logistics checklists
 │   ├── subsystem-effects.md
 │   ├── troop-system.md
 │   ├── asymmetric-mechanics.md   # Gaul/Roman/Teuton asymmetric spec

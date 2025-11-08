@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Authenticated marketplace offer flow that reserves merchants, locks resources, and dispatches reciprocal shipments when trades complete.
+- Comprehensive market & merchant trading documentation covering player-to-player logistics, including printable operations checklists.
 - Complete admin dashboard with all management features ✅
 - Speed templates system for game configuration ✅
 - Player management (ban, unban, rename, move village) ✅
