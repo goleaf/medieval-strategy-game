@@ -29,6 +29,58 @@ export type BuildingBlueprintDefinition = {
   levels: BuildingLevelDefinition[]
 }
 
+type LevelGeneratorOptions = {
+  baseCost: { wood: number; clay: number; iron: number; crop: number }
+  costGrowth: number
+  baseTimeSeconds: number
+  timeGrowth: number
+  baseCpPerHour: number
+  cpGrowth: number
+  maxLevel?: number
+  effectFactory: (level: number) => Record<string, number | string | boolean>
+}
+
+/**
+ * Helper utility that creates level progressions from a compact set of tuning parameters.
+ * It keeps the construction blueprint definitions readable while still exposing deterministic
+ * per-level values to downstream systems such as the construction queue and task tracking.
+ */
+function generateLevels(options: LevelGeneratorOptions): BuildingLevelDefinition[] {
+  const {
+    baseCost,
+    costGrowth,
+    baseTimeSeconds,
+    timeGrowth,
+    baseCpPerHour,
+    cpGrowth,
+    maxLevel = 10,
+    effectFactory,
+  } = options
+
+  const levels: BuildingLevelDefinition[] = []
+  for (let level = 1; level <= maxLevel; level++) {
+    const levelIndex = level - 1
+    const costFactor = costGrowth ** levelIndex
+    const timeFactor = timeGrowth ** levelIndex
+    const cpFactor = cpGrowth ** levelIndex
+
+    levels.push({
+      level,
+      cost: {
+        wood: Math.round(baseCost.wood * costFactor),
+        clay: Math.round(baseCost.clay * costFactor),
+        iron: Math.round(baseCost.iron * costFactor),
+        crop: Math.round(baseCost.crop * costFactor),
+      },
+      buildTimeSeconds: Math.round(baseTimeSeconds * timeFactor),
+      cpPerHour: parseFloat((baseCpPerHour * cpFactor).toFixed(2)),
+      effects: effectFactory(level),
+    })
+  }
+
+  return levels
+}
+
 export type ConstructionConfig = {
   version: string
   defaults: {
@@ -203,25 +255,222 @@ export const CONSTRUCTION_CONFIG: ConstructionConfig = {
         { level: 10, cost: { wood: 5315, clay: 4285, iron: 3315, crop: 1710 }, buildTimeSeconds: 12120, cpPerHour: 12, effects: { loyaltyCap: 170, settlerSlotsUnlocked: 1 } },
       ],
     },
-    academy: {
-      key: "academy",
-      displayName: "Academy",
+    smithy: {
+      key: "smithy",
+      displayName: "Smithy",
       category: "inner",
       maxLevel: 20,
       prerequisites: { main_building: 3, barracks: 3 },
       effects: { unlocksResearch: true },
-      levels: [
-        { level: 1, cost: { wood: 360, clay: 330, iron: 280, crop: 120 }, buildTimeSeconds: 1980, cpPerHour: 3, effects: { researchSpeedMultiplier: 1 } },
-        { level: 2, cost: { wood: 460, clay: 420, iron: 360, crop: 155 }, buildTimeSeconds: 2520, cpPerHour: 3.8, effects: { researchSpeedMultiplier: 0.96 } },
-        { level: 3, cost: { wood: 590, clay: 535, iron: 460, crop: 195 }, buildTimeSeconds: 3180, cpPerHour: 4.2, effects: { researchSpeedMultiplier: 0.93 } },
-        { level: 4, cost: { wood: 755, clay: 690, iron: 590, crop: 250 }, buildTimeSeconds: 3960, cpPerHour: 4.9, effects: { researchSpeedMultiplier: 0.9 } },
-        { level: 5, cost: { wood: 975, clay: 890, iron: 755, crop: 320 }, buildTimeSeconds: 4920, cpPerHour: 5.7, effects: { researchSpeedMultiplier: 0.87 } },
-        { level: 6, cost: { wood: 1260, clay: 1145, iron: 965, crop: 410 }, buildTimeSeconds: 6120, cpPerHour: 6.6, effects: { researchSpeedMultiplier: 0.84 } },
-        { level: 7, cost: { wood: 1630, clay: 1470, iron: 1230, crop: 525 }, buildTimeSeconds: 7680, cpPerHour: 7.6, effects: { researchSpeedMultiplier: 0.81 } },
-        { level: 8, cost: { wood: 2110, clay: 1890, iron: 1570, crop: 675 }, buildTimeSeconds: 9660, cpPerHour: 8.8, effects: { researchSpeedMultiplier: 0.78 } },
-        { level: 9, cost: { wood: 2740, clay: 2435, iron: 2000, crop: 865 }, buildTimeSeconds: 12180, cpPerHour: 10.2, effects: { researchSpeedMultiplier: 0.75 } },
-        { level: 10, cost: { wood: 3560, clay: 3130, iron: 2550, crop: 1105 }, buildTimeSeconds: 15360, cpPerHour: 11.8, effects: { researchSpeedMultiplier: 0.72 } },
-      ],
+      levels: generateLevels({
+        baseCost: { wood: 360, clay: 330, iron: 280, crop: 120 },
+        costGrowth: 1.25,
+        baseTimeSeconds: 1980,
+        timeGrowth: 1.22,
+        baseCpPerHour: 3,
+        cpGrowth: 1.14,
+        effectFactory: (level) => ({
+          researchSpeedMultiplier: parseFloat((1 - 0.04 * (level - 1)).toFixed(2)),
+        }),
+      }),
+    },
+    stable: {
+      key: "stable",
+      displayName: "Stable",
+      category: "inner",
+      maxLevel: 20,
+      prerequisites: { main_building: 5, barracks: 5, smithy: 3 },
+      effects: { unlocks: ["cavalry"] },
+      levels: generateLevels({
+        baseCost: { wood: 240, clay: 220, iron: 260, crop: 100 },
+        costGrowth: 1.27,
+        baseTimeSeconds: 1500,
+        timeGrowth: 1.2,
+        baseCpPerHour: 2.2,
+        cpGrowth: 1.13,
+        effectFactory: (level) => ({
+          trainingSpeedMultiplier: parseFloat((Math.max(0.55, 1 - 0.035 * (level - 1))).toFixed(2)),
+        }),
+      }),
+    },
+    workshop: {
+      key: "workshop",
+      displayName: "Workshop",
+      category: "inner",
+      maxLevel: 20,
+      prerequisites: { main_building: 7, smithy: 5, stable: 3 },
+      effects: { unlocks: ["siege"] },
+      levels: generateLevels({
+        baseCost: { wood: 300, clay: 260, iron: 320, crop: 200 },
+        costGrowth: 1.28,
+        baseTimeSeconds: 1800,
+        timeGrowth: 1.22,
+        baseCpPerHour: 2.6,
+        cpGrowth: 1.16,
+        effectFactory: (level) => ({
+          trainingSpeedMultiplier: parseFloat((Math.max(0.6, 1 - 0.04 * (level - 1))).toFixed(2)),
+        }),
+      }),
+    },
+    marketplace: {
+      key: "marketplace",
+      displayName: "Market",
+      category: "inner",
+      maxLevel: 20,
+      prerequisites: { main_building: 3, warehouse: 2 },
+      effects: { unlocksTrading: true },
+      levels: generateLevels({
+        baseCost: { wood: 200, clay: 170, iron: 90, crop: 80 },
+        costGrowth: 1.25,
+        baseTimeSeconds: 1200,
+        timeGrowth: 1.18,
+        baseCpPerHour: 2,
+        cpGrowth: 1.12,
+        effectFactory: (level) => ({
+          merchants: 2 + level,
+          merchantCapacity: 1000 + 250 * (level - 1),
+        }),
+      }),
+    },
+    rally_point: {
+      key: "rally_point",
+      displayName: "Rally Point",
+      category: "inner",
+      maxLevel: 20,
+      uniquePerVillage: true,
+      prerequisites: { main_building: 1 },
+      effects: { missionHub: true },
+      levels: generateLevels({
+        baseCost: { wood: 90, clay: 80, iron: 70, crop: 50 },
+        costGrowth: 1.22,
+        baseTimeSeconds: 600,
+        timeGrowth: 1.18,
+        baseCpPerHour: 1.5,
+        cpGrowth: 1.1,
+        effectFactory: (level) => ({
+          commandSlots: Math.min(6, 1 + Math.floor(level / 3)),
+          precisionWindowMs: Math.max(100, 500 - level * 15),
+        }),
+      }),
+    },
+    wall: {
+      key: "wall",
+      displayName: "Wall",
+      category: "inner",
+      maxLevel: 20,
+      prerequisites: { main_building: 1, barracks: 1 },
+      effects: { defenseStructure: true },
+      levels: generateLevels({
+        baseCost: { wood: 50, clay: 200, iron: 50, crop: 0 },
+        costGrowth: 1.28,
+        baseTimeSeconds: 900,
+        timeGrowth: 1.2,
+        baseCpPerHour: 2,
+        cpGrowth: 1.12,
+        effectFactory: (level) => ({
+          defenseMultiplier: parseFloat((1 + 0.05 * level ** 1.35).toFixed(2)),
+        }),
+      }),
+    },
+    watchtower: {
+      key: "watchtower",
+      displayName: "Watchtower",
+      category: "inner",
+      maxLevel: 20,
+      prerequisites: { main_building: 5, wall: 5 },
+      effects: { intelRadius: true },
+      levels: generateLevels({
+        baseCost: { wood: 200, clay: 200, iron: 120, crop: 60 },
+        costGrowth: 1.3,
+        baseTimeSeconds: 1500,
+        timeGrowth: 1.24,
+        baseCpPerHour: 2.4,
+        cpGrowth: 1.14,
+        effectFactory: (level) => ({
+          detectionRadius: parseFloat((8 + level * 1.5).toFixed(2)),
+        }),
+      }),
+    },
+    temple: {
+      key: "temple",
+      displayName: "Church",
+      category: "inner",
+      maxLevel: 3,
+      uniquePerVillage: true,
+      prerequisites: { main_building: 5, marketplace: 5 },
+      effects: { providesFaith: true },
+      levels: generateLevels({
+        baseCost: { wood: 500, clay: 500, iron: 500, crop: 400 },
+        costGrowth: 1.4,
+        baseTimeSeconds: 3600,
+        timeGrowth: 1.3,
+        baseCpPerHour: 4,
+        cpGrowth: 1.2,
+        maxLevel: 3,
+        effectFactory: (level) => ({
+          faithRadius: 7 + level * 5,
+        }),
+      }),
+    },
+    farm: {
+      key: "farm",
+      displayName: "Farm",
+      category: "inner",
+      maxLevel: 20,
+      prerequisites: { main_building: 1 },
+      effects: { populationCapProvider: true },
+      levels: generateLevels({
+        baseCost: { wood: 60, clay: 80, iron: 40, crop: 0 },
+        costGrowth: 1.3,
+        baseTimeSeconds: 900,
+        timeGrowth: 1.18,
+        baseCpPerHour: 1.5,
+        cpGrowth: 1.1,
+        effectFactory: (level) => ({
+          populationCap: 200 + Math.round(65 * level ** 1.4),
+        }),
+      }),
+    },
+    cranny: {
+      key: "cranny",
+      displayName: "Hiding Place",
+      category: "inner",
+      maxLevel: 20,
+      prerequisites: { main_building: 1 },
+      effects: { hideResources: true },
+      levels: generateLevels({
+        baseCost: { wood: 40, clay: 50, iron: 40, crop: 0 },
+        costGrowth: 1.32,
+        baseTimeSeconds: 600,
+        timeGrowth: 1.18,
+        baseCpPerHour: 1.2,
+        cpGrowth: 1.08,
+        effectFactory: (level) => ({
+          protectedPerResource: 150 + 120 * (level - 1),
+        }),
+      }),
+    },
+    academy: {
+      key: "academy",
+      displayName: "Academy",
+      category: "inner",
+      maxLevel: 3,
+      uniquePerVillage: true,
+      prerequisites: { main_building: 20, smithy: 20, marketplace: 10 },
+      effects: { trainsNobles: true },
+      levels: generateLevels({
+        baseCost: { wood: 1200, clay: 1000, iron: 800, crop: 400 },
+        costGrowth: 1.45,
+        baseTimeSeconds: 7200,
+        timeGrowth: 1.32,
+        baseCpPerHour: 5,
+        cpGrowth: 1.25,
+        maxLevel: 3,
+        effectFactory: (level) => ({
+          nobleSlots: level,
+          coinDiscountPercent: Math.max(0, 20 - level * 5),
+        }),
+      }),
     },
     wood_field: {
       key: "wood_field",

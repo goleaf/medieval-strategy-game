@@ -1,14 +1,26 @@
 import type { BuildingType, ResourceType } from "@prisma/client"
 import type { ConstructionEntityKey } from "@/lib/config/construction"
 
+// Normalizes Prisma building identifiers into construction blueprint keys so downstream
+// systems can reuse a single tuning source for upgrade costs and timing.
 const BUILDING_BLUEPRINT_MAP: Partial<Record<BuildingType, ConstructionEntityKey>> = {
   HEADQUARTER: "main_building",
   BARRACKS: "barracks",
-  WAREHOUSE: "warehouse",
-  GRANARY: "granary",
+  STABLES: "stable",
+  WORKSHOP: "workshop",
+  SMITHY: "smithy",
+  MARKETPLACE: "marketplace",
   ACADEMY: "academy",
   RESIDENCE: "residence",
-  SNOB: "residence",
+  SNOB: "academy",
+  RALLY_POINT: "rally_point",
+  WALL: "wall",
+  WATCHTOWER: "watchtower",
+  TEMPLE: "temple",
+  FARM: "farm",
+  WAREHOUSE: "warehouse",
+  GRANARY: "granary",
+  CRANNY: "cranny",
   CITY: "main_building",
 }
 

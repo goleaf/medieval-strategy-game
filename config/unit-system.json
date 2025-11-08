@@ -102,7 +102,7 @@
       "trainTimeSec": 190,
       "cost": { "wood": 140, "clay": 150, "iron": 185, "crop": 60 },
       "buildingReq": { "barracks": 1 },
-      "researchReq": { "academy": 2 }
+      "researchReq": { "smithy": 2 }
     },
     "cav_light": {
       "role": "cav",
@@ -116,7 +116,7 @@
       "trainTimeSec": 420,
       "cost": { "wood": 350, "clay": 400, "iron": 210, "crop": 80 },
       "buildingReq": { "stable": 1 },
-      "researchReq": { "academy": 3 }
+      "researchReq": { "smithy": 3 }
     },
     "ram": {
       "role": "ram",
@@ -144,7 +144,7 @@
       "trainTimeSec": 1200,
       "cost": { "wood": 900, "clay": 1200, "iron": 1200, "crop": 200 },
       "buildingReq": { "workshop": 5 },
-      "researchReq": { "academy": 5 }
+      "researchReq": { "smithy": 5 }
     },
     "settler": {
       "role": "settler",
@@ -172,7 +172,7 @@
       "trainTimeSec": 1200,
       "cost": { "wood": 30750, "clay": 27200, "iron": 45000, "crop": 37500 },
       "buildingReq": { "residence": 20 },
-      "researchReq": { "academy": 10 },
+      "researchReq": { "smithy": 10 },
       "loyaltyHit": { "min": 18, "max": 30 },
       "defAdminMult": 1
     }

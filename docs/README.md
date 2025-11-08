@@ -22,6 +22,7 @@ docs/
 │   ├── resource-system.md
 │   ├── subsystem-effects.md
 │   ├── troop-system.md
+│   ├── building-reference.md      # Core building behaviours, toggles, quick matrix, implementation checklist
 │   ├── asymmetric-mechanics.md   # Gaul/Roman/Teuton asymmetric spec
 │   ├── map-vision-system.md      # Fog-of-war & recon design
 │   ├── ui-ux-tools.md
@@ -113,6 +114,7 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 ### Game Features
 
 - **Gaul/Roman/Teuton asymmetric mechanics**: see `docs/features/asymmetric-mechanics.md` for the authoritative trapping, double build-queue, and raid-focus spec.
+- **Core building behaviours**: see `docs/features/building-reference.md` for building functions, toggles, and edge cases.
 - **Map & Fog-of-War Vision System**: see `docs/features/map-vision-system.md` for the combined design + implementation plan covering topology, vision sources, recon, contacts, and rollout.
 - `GET /api/protection` - Get player protection status
 - `POST /api/protection` - Extend beginner protection
