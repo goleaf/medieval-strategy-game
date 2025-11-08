@@ -12,9 +12,14 @@
     "defense_pct_per_level": 1.5
   },
   "morale": {
-    "exponent": 0.2,
-    "min_def_mult": 1.0,
-    "max_def_mult": 1.5
+    "exponent": 0.45,
+    "min_att_mult": 0.3,
+    "max_att_mult": 1.0,
+    "time_floor": {
+      "enabled": false,
+      "floor": 0.5,
+      "full_effect_days": 90
+    }
   },
   "luck": {
     "range": 0.05,

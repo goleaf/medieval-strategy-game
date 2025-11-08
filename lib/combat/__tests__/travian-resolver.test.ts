@@ -59,7 +59,7 @@ describe("Travian combat resolver", () => {
     expect(reportCav.aggregates.defender.wCav).toBeCloseTo(1)
   })
 
-  it("caps morale multiplier when attacker is much larger", () => {
+  it("reduces attacker morale when bullying vastly smaller targets", () => {
     const attacker = makeArmy([makeStack("inf", "inf", 100, 50, 40, 40)], "att")
     const defender = makeArmy([makeStack("def", "inf", 100, 30, 60, 30)], "def")
     const report = resolveBattle({
@@ -67,7 +67,52 @@ describe("Travian combat resolver", () => {
       defender,
       environment: baseEnvironment({ attackerSize: 1_000_000, defenderSize: 1 }),
     })
-    expect(report.multipliers.morale).toBeCloseTo(1.5)
+    expect(report.multipliers.morale).toBeCloseTo(0.3)
+    expect(report.attackBreakdown.postMorale).toBeLessThan(report.attackBreakdown.postBonuses)
+  })
+
+  it("matches the official 45% example when attacking a target six times smaller", () => {
+    const attacker = makeArmy([makeStack("inf", "inf", 100, 50, 40, 40)], "att")
+    const defender = makeArmy([makeStack("def", "inf", 100, 30, 60, 30)], "def")
+    const report = resolveBattle({
+      attacker,
+      defender,
+      environment: baseEnvironment({ attackerSize: 6000, defenderSize: 1000 }),
+    })
+    expect(report.multipliers.morale).toBeCloseTo(0.45, 2)
+  })
+
+  it("never grants morale bonuses when attacking stronger opponents", () => {
+    const attacker = makeArmy([makeStack("inf", "inf", 100, 50, 40, 40)], "att")
+    const defender = makeArmy([makeStack("def", "inf", 100, 30, 60, 30)], "def")
+    const report = resolveBattle({
+      attacker,
+      defender,
+      environment: baseEnvironment({ attackerSize: 5_000, defenderSize: 50_000 }),
+    })
+    expect(report.multipliers.morale).toBe(1)
+    expect(report.attackBreakdown.postMorale).toBeCloseTo(report.attackBreakdown.postBonuses)
+  })
+
+  // The optional time-based morale floor should gently raise the penalty ceiling for older accounts.
+  it("raises morale floor for veteran defenders when optional time floor is active", () => {
+    const attacker = makeArmy([makeStack("inf", "inf", 100, 50, 40, 40)], "att")
+    const defender = makeArmy([makeStack("def", "inf", 100, 30, 60, 30)], "def")
+    const report = resolveBattle({
+      attacker,
+      defender,
+      environment: baseEnvironment({
+        attackerSize: 1_000_000,
+        defenderSize: 1,
+        defenderAccountAgeDays: 120,
+      }),
+      configOverrides: {
+        morale: {
+          time_floor: { enabled: true, floor: 0.5, full_effect_days: 90 },
+        },
+      },
+    })
+    expect(report.multipliers.morale).toBeCloseTo(0.5, 5)
   })
 
   it("draws symmetric bounded luck for identical seeds", () => {

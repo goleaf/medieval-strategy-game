@@ -1,11 +1,12 @@
 import combatConfig from "@/config/combat.json"
+import { calculateMoraleMultiplier } from "@/lib/combat/morale"
 
 const TWO_POW_53 = 2 ** 53
 const UINT64_MAX = (1n << 64n) - 1n
 const DEFAULT_SEED = 0x4d595df4d0f33173n
 
 export type UnitRole = "inf" | "cav" | "scout" | "ram" | "catapult" | "admin" | "settler"
-export type Mission = "attack" | "raid" | "siege" | "admin_attack"
+export type Mission = "attack" | "raid" | "siege" | "admin_attack" | "scout"
 type RoundingMode = "bankers"
 
 export interface UnitStackInput {
@@ -43,6 +44,10 @@ export interface CombatEnvironment {
   wallLevel?: number
   attackerSize?: number
   defenderSize?: number
+  /**
+   * Defender account age in days (used when morale time floors are enabled).
+   */
+  defenderAccountAgeDays?: number
   nightActive?: boolean
   attackerModifiers?: BonusModifier[]
   defenderModifiers?: BonusModifier[]
@@ -57,7 +62,12 @@ export interface CombatConfig {
   raid_lethality_factor: number
   size_floor: number
   smithy: { attack_pct_per_level: number; defense_pct_per_level: number }
-  morale: { exponent: number; min_def_mult: number; max_def_mult: number }
+  morale: {
+    exponent: number
+    min_att_mult: number
+    max_att_mult: number
+    time_floor?: { enabled: boolean; floor: number; full_effect_days: number }
+  }
   luck: { range: number }
   night: { enabled: boolean; def_mult: number }
   walls: Record<string, { def_pct_per_level: number }>
@@ -100,12 +110,12 @@ export interface BattleReport {
   attackBreakdown: {
     base: number
     postBonuses: number
+    postMorale: number
     final: number
   }
   defenseBreakdown: {
     weighted: number
     postWall: number
-    postMorale: number
     postNight: number
     postBonuses: number
     final: number
@@ -221,15 +231,6 @@ function wallMultiplier(wallType: string | undefined, wallLevel: number | undefi
   const wall = config.walls[type] ?? config.walls.city_wall
   const pct = wall?.def_pct_per_level ?? 0
   return 1 + (pct / 100) * level
-}
-
-function moraleMultiplier(attackerSize: number | undefined, defenderSize: number | undefined, config: CombatConfig): number {
-  const { morale, size_floor } = config
-  const att = Math.max(size_floor, attackerSize ?? size_floor)
-  const def = Math.max(size_floor, defenderSize ?? size_floor)
-  const ratio = att / def
-  const base = Math.pow(ratio, morale.exponent)
-  return clamp(base, morale.min_def_mult, morale.max_def_mult)
 }
 
 function productOfModifiers(mods: BonusModifier[] | undefined): number {
@@ -416,23 +417,25 @@ export function resolveBattle(input: ResolveBattleInput): BattleReport {
   const defenseAgg = aggregateDefense(defender, weights, config)
 
   const wallMult = wallMultiplier(environment.wallType, environment.wallLevel, config)
-  const moraleMult = moraleMultiplier(environment.attackerSize, environment.defenderSize, config)
+  // Delegate morale calculations to the shared helper so other systems can reuse it.
+  const moraleMult = calculateMoraleMultiplier(environment, config)
   const nightMult = config.night.enabled && environment.nightActive ? config.night.def_mult : 1
   const attackBonus = productOfModifiers(environment.attackerModifiers)
   const defenseBonus = productOfModifiers(environment.defenderModifiers)
 
+  const attackBase = attackAgg.total
+  const attackAfterBonuses = attackBase * attackBonus
+  const attackAfterMorale = attackAfterBonuses * moraleMult
   const defenseAfterWall = defenseAgg.weighted * wallMult
-  const defenseAfterMorale = defenseAfterWall * moraleMult
-  const defenseAfterNight = defenseAfterMorale * nightMult
+  const defenseAfterNight = defenseAfterWall * nightMult
   const defenseFinal = defenseAfterNight * defenseBonus
-  const attackFinalBase = attackAgg.total * attackBonus
 
   const rngSeed = deriveSeed(environment.luck, environment.seed, environment.seedComponents)
   const rng = new Xorshift128Plus(rngSeed)
   const luckRange = environment.luck?.range ?? config.luck.range
   const luck = drawLuck(luckRange, rng)
 
-  const attackerStrength = attackFinalBase * (1 + luck.attacker)
+  const attackerStrength = attackAfterMorale * (1 + luck.attacker)
   const defenderStrength = defenseFinal * (1 + luck.defender)
 
   let attackerLossRate = 0
@@ -499,14 +502,14 @@ export function resolveBattle(input: ResolveBattleInput): BattleReport {
       defender: defenseAgg,
     },
     attackBreakdown: {
-      base: attackAgg.total,
-      postBonuses: attackFinalBase,
+      base: attackBase,
+      postBonuses: attackAfterBonuses,
+      postMorale: attackAfterMorale,
       final: attackerStrength,
     },
     defenseBreakdown: {
       weighted: defenseAgg.weighted,
       postWall: defenseAfterWall,
-      postMorale: defenseAfterMorale,
       postNight: defenseAfterNight,
       postBonuses: defenseFinal,
       final: defenderStrength,

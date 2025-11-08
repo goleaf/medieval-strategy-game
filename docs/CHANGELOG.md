@@ -51,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added TypeScript interfaces for better type safety
 - Enhanced input validation and security measures
 - Improved database query optimization
+- Reworked morale calculations to follow official point-ratio scaling with optional account-age floor support
+- Extracted morale logic into a shared helper, retuned the exponent to 0.45 for the canonical 45% example, and refreshed tests/documentation
 
 ### Fixed
 - Fixed admin authentication middleware implementation
