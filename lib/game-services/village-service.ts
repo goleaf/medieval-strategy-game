@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { getRandomPositionInContinent } from "@/lib/world/continent-utils"
 import { VillageDestructionService } from "./village-destruction-service"
 import { createTasksForVillage } from "./task-service"
 import { CapacityService } from "./capacity-service"
@@ -369,8 +370,8 @@ export class VillageService {
     }
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const x = continent.x + Math.floor(Math.random() * continent.size * 10)
-      const y = continent.y + Math.floor(Math.random() * continent.size * 10)
+      // Use the shared helper so we honour the 100x100 continent footprint.
+      const { x, y } = getRandomPositionInContinent(continent)
 
       const existing = await prisma.village.findUnique({
         where: { x_y: { x, y } },

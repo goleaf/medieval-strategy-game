@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db"
 import { ProtectionService } from "@/lib/game-services/protection-service"
 import { VillageService } from "@/lib/game-services/village-service"
+import { WORLD_MAX_COORDINATE } from "@/lib/world/constants"
+import { buildContinentGrid } from "@/lib/world/continent-utils"
 import { hash } from "bcryptjs"
 
 const DEFAULT_PASSWORD = process.env.DEMO_ACCOUNT_PASSWORD || "pass123"
@@ -43,8 +45,8 @@ async function ensureWorldConfig(gameWorldId: string) {
     update: {},
     create: {
       gameWorldId,
-      maxX: 200,
-      maxY: 200,
+      maxX: WORLD_MAX_COORDINATE,
+      maxY: WORLD_MAX_COORDINATE,
       unitSpeed: 1,
       isRunning: true,
       resourcePerTick: 10,
@@ -62,27 +64,15 @@ async function ensureContinents() {
   const count = await prisma.continent.count()
   if (count > 0) return
 
-  const operations = []
-  for (let i = 0; i < 2; i++) {
-    for (let j = 0; j < 2; j++) {
-      const x = i * 50
-      const y = j * 50
-      operations.push(
-        prisma.continent.upsert({
-          where: {
-            x_y: { x, y },
-          },
-          update: {},
-          create: {
-            name: `Continent-${i}-${j}`,
-            x,
-            y,
-            size: 50,
-          },
-        }),
-      )
-    }
-  }
+  // Build the full 10x10 K-grid so the demo environment mirrors production world layout.
+  const grid = buildContinentGrid()
+  const operations = grid.map(({ name, x, y, size }) =>
+    prisma.continent.upsert({
+      where: { x_y: { x, y } },
+      update: { name, size },
+      create: { name, x, y, size },
+    }),
+  )
 
   await Promise.all(operations)
 }

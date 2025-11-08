@@ -1,4 +1,14 @@
-export function validateCoordinates(x: number, y: number, maxX = 200, maxY = 200): boolean {
+import { WORLD_MAX_COORDINATE } from "@/lib/world/constants"
+
+/**
+ * Validate that a coordinate pair falls within the configured world bounds.
+ */
+export function validateCoordinates(
+  x: number,
+  y: number,
+  maxX = WORLD_MAX_COORDINATE,
+  maxY = WORLD_MAX_COORDINATE,
+): boolean {
   return x >= 0 && x <= maxX && y >= 0 && y <= maxY && Number.isInteger(x) && Number.isInteger(y)
 }
 

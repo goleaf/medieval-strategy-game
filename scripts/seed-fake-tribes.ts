@@ -2,6 +2,7 @@ import { faker } from "@faker-js/faker"
 import type { Continent, Player, User } from "@prisma/client"
 import { JoinPolicy, Prisma, PrismaClient } from "@prisma/client"
 import { hash } from "bcryptjs"
+import { getRandomPositionInContinent } from "@/lib/world/continent-utils"
 
 const prisma = new PrismaClient()
 
@@ -123,11 +124,9 @@ function buildPlayerStats(): PlayerStats {
 }
 
 function pickCoordinate(continent: Continent) {
-  const maxOffset = Math.max(1, continent.size * 8)
-
   for (let attempt = 0; attempt < 40; attempt++) {
-    const x = continent.x + faker.number.int({ min: 0, max: maxOffset })
-    const y = continent.y + faker.number.int({ min: 0, max: maxOffset })
+    // Shared helper keeps the fake tribe seeding aligned with the core 100x100 continents.
+    const { x, y } = getRandomPositionInContinent(continent)
     const key = `${x}:${y}`
     if (!occupiedCoordinates.has(key)) {
       occupiedCoordinates.add(key)

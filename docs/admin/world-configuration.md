@@ -23,6 +23,8 @@ The World Configuration system allows administrators to manage global game setti
 - **World Name**: Display name for the game world
 - **Siege Rules Config**: JSON blob merged into `DEFAULT_CATAPULT_RULES` to toggle field targeting, floors, WW caps, etc. (see `docs/features/catapult-targeting.md`)
 
+> ℹ️ **Coordinate bounds**: `maxX` and `maxY` default to `999`, producing a 0–999 grid (1000×1000 tiles) with the canonical 10×10 continent layout (`K00`–`K99`).
+
 ## API Endpoints
 
 ### Get World Configuration
@@ -34,8 +36,8 @@ GET /api/admin/world/config
 ```json
 {
   "worldName": "Medieval World",
-  "maxX": 100,
-  "maxY": 100,
+  "maxX": 999,
+  "maxY": 999,
   "speed": 1,
   "unitSpeed": 1.0,
   "resourcePerTick": 10,
@@ -115,8 +117,8 @@ model WorldConfig {
 
   // World Settings
   worldName       String    @default("Medieval World")
-  maxX            Int       @default(100)
-  maxY            Int       @default(100)
+  maxX            Int       @default(999)
+  maxY            Int       @default(999)
   speed           Int       @default(1)
   unitSpeed       Float     @default(1.0)
 

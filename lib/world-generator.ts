@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { getRandomPositionInContinent } from "@/lib/world/continent-utils"
 
 export async function initializeWorld() {
   console.log("[Reign of Fire] Initializing Reign of Fire game world...");
@@ -106,8 +107,8 @@ export async function initializeWorld() {
   for (const continent of continents) {
     const barbarianCount = 12 + Math.floor(Math.random() * 8); // More barbarians for larger map
     for (let i = 0; i < barbarianCount; i++) {
-      const x = continent.x + Math.floor(Math.random() * continent.size * 10);
-      const y = continent.y + Math.floor(Math.random() * continent.size * 10);
+      // Respect the configured continent footprint when scattering villages.
+      const { x, y } = getRandomPositionInContinent(continent);
 
       const existing = await prisma.village.findUnique({
         where: { x_y: { x, y } },

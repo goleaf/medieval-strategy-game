@@ -5,6 +5,7 @@
 - `components/` splits into `ui`, `game`, and `admin`; colocate feature files and re-export from each folder’s `index.ts`.
 - `hooks/` stores shared state and client utilities, while `scripts/` reuses `lib/` helpers for seeding, data repair, or simulation tooling.
 - `prisma/` owns the schema, migrations, and seeds—update `docs/` in tandem so gameplay/admin expectations match the database.
+- When touching map, vision, or minimap logic, reread the full `docs/` tree (especially `docs/features/map-vision-system.md` and `docs/features/ui-ux-tools.md`) so coordinate/continent guidance stays consistent across specs.
 
 ## Build, Test, and Development Commands
 - `npm run dev`: start the dev server on `http://localhost:3000`.
@@ -28,6 +29,7 @@
 - Commits are concise, present-tense, and single-purpose (e.g., `feat: add loyalty decay`); branch names follow `feature/<summary>` or `fix/<summary>`.
 - Rebase before opening a PR and include purpose, validation commands (`npm run lint`, `node test-combat-system.js`, etc.), and any linked docs/schema updates.
 - Add screenshots or logs for UI/admin work, and split gameplay tuning, tooling, and docs edits into separate PRs for fast reviews.
+- Future tasks that alter documentation must summarize which files under `docs/` were reviewed to keep the design set coherent.
 
 ## Security & Configuration Tips
 - Copy `.env.example` to `.env.local`, then set `DATABASE_URL`, `JWT_SECRET`, `NEXTAUTH_SECRET`, and WebSocket secrets before running the app.

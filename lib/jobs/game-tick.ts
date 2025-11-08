@@ -12,6 +12,7 @@ import { TradeRouteService } from "@/lib/game-services/trade-route-service"
 import { ExpansionService } from "@/lib/game-services/expansion-service"
 import { LoyaltyService } from "@/lib/game-services/loyalty-service"
 import { getRallyPointEngine } from "@/lib/rally-point/server"
+import { getRandomPositionInContinent } from "@/lib/world/continent-utils"
 
 /**
  * Main game tick job
@@ -352,8 +353,8 @@ export async function spawnBarbainians() {
 
     for (let i = 0; i < spawnCount; i++) {
       const continent = continents[Math.floor(Math.random() * continents.length)]
-      const x = continent.x + Math.floor(Math.random() * continent.size) * 10
-      const y = continent.y + Math.floor(Math.random() * continent.size) * 10
+      // Pull a random coordinate that respects the official continent tile span.
+      const { x, y } = getRandomPositionInContinent(continent)
 
       // Check if position is free
       const existing = await prisma.village.findUnique({

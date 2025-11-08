@@ -73,9 +73,12 @@ async function findAvailablePosition(continentId, maxAttempts = 50) {
     return null;
   }
 
+  const maxOffset = Math.max(0, continent.size - 1);
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const x = continent.x + Math.floor(Math.random() * continent.size * 10);
-    const y = continent.y + Math.floor(Math.random() * continent.size * 10);
+    // Mirror the runtime helper so tests stay within the 100x100 continent footprint.
+    const x = continent.x + Math.floor(Math.random() * (maxOffset + 1));
+    const y = continent.y + Math.floor(Math.random() * (maxOffset + 1));
 
     const existing = await prisma.village.findUnique({
       where: { x_y: { x, y } },

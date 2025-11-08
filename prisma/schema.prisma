@@ -338,8 +338,8 @@ model WorldConfig {
   gameWorld   GameWorld? @relation(fields: [gameWorldId], references: [id], onDelete: Cascade)
 
   // World Settings
-  maxX      Int   @default(100)
-  maxY      Int   @default(100)
+  maxX      Int   @default(999) // 10x10 continents → coordinates 0..999
+  maxY      Int   @default(999) // 10x10 continents → coordinates 0..999
   unitSpeed Float @default(1.0) // Base unit speed multiplier
 
   // Game State

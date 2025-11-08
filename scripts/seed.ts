@@ -26,13 +26,15 @@ async function bootstrapOccupiedCoordinates() {
 
 function computeCoordinate(continent: Continent, slot: number) {
   const gridWidth = Math.max(4, Math.floor(Math.sqrt(Math.max(1, continent.size))))
-  const spacing = Math.max(2, Math.floor(continent.size / gridWidth))
+  const spacing = Math.max(1, Math.floor(continent.size / gridWidth))
   const column = slot % gridWidth
   const row = Math.floor(slot / gridWidth)
+  const maxOffset = Math.max(0, continent.size - 1)
 
   return {
-    x: continent.x + column * spacing,
-    y: continent.y + row * spacing,
+    // Clamp the offsets so we never escape the 100x100 continent footprint.
+    x: Math.min(continent.x + column * spacing, continent.x + maxOffset),
+    y: Math.min(continent.y + row * spacing, continent.y + maxOffset),
   }
 }
 

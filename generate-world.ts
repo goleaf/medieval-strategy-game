@@ -1,10 +1,16 @@
 import { PrismaClient } from '@prisma/client'
 import { faker } from '@faker-js/faker'
+import {
+  CONTINENT_GRID_WIDTH,
+  CONTINENT_TILE_SIZE,
+  WORLD_MAX_COORDINATE,
+  WORLD_TILE_WIDTH,
+} from '@/lib/world/constants'
+import { buildContinentGrid } from '@/lib/world/continent-utils'
 
 const prisma = new PrismaClient()
 
 // Configuration
-const WORLD_SIZE = 200 // 200x200 world
 const NUM_USERS = 2000
 const VILLAGES_PER_USER = 1 // One village per user
 const TOTAL_VILLAGES = NUM_USERS * VILLAGES_PER_USER
@@ -102,16 +108,16 @@ async function createWorldConfig() {
     where: { id: 'world-config' },
     update: {
       worldName: 'Medieval World',
-      maxX: WORLD_SIZE,
-      maxY: WORLD_SIZE,
+      maxX: WORLD_MAX_COORDINATE,
+      maxY: WORLD_MAX_COORDINATE,
       speed: 1,
       isRunning: true,
     },
     create: {
       id: 'world-config',
       worldName: 'Medieval World',
-      maxX: WORLD_SIZE,
-      maxY: WORLD_SIZE,
+      maxX: WORLD_MAX_COORDINATE,
+      maxY: WORLD_MAX_COORDINATE,
       speed: 1,
       isRunning: true,
     },
@@ -123,22 +129,10 @@ async function createWorldConfig() {
 async function createContinents() {
   console.log('🗺️ Creating continents...')
 
-  const continents = []
-  const continentSize = 50 // Each continent is 50x50
-
-  for (let y = 0; y < WORLD_SIZE; y += continentSize) {
-    for (let x = 0; x < WORLD_SIZE; x += continentSize) {
-      continents.push({
-        name: `Continent ${Math.floor(x / continentSize) + 1}-${Math.floor(y / continentSize) + 1}`,
-        x,
-        y,
-        size: continentSize,
-      })
-    }
-  }
-
+  // Construct the canonical 10x10 continent grid (K00..K99) before persisting rows.
+  const continents = buildContinentGrid()
   await prisma.continent.createMany({
-    data: continents,
+    data: continents.map(({ name, x, y, size }) => ({ name, x, y, size })),
   })
 
   console.log(`✅ Created ${continents.length} continents`)
@@ -306,12 +300,12 @@ async function createBuildingsForVillages() {
 
   for (const village of villages) {
     // Calculate level based on distance from center (center villages are more developed)
-    const centerX = WORLD_SIZE / 2
-    const centerY = WORLD_SIZE / 2
+    const centerX = WORLD_TILE_WIDTH / 2
+    const centerY = WORLD_TILE_WIDTH / 2
     const distanceFromCenter = Math.sqrt(
       Math.pow(village.x - centerX, 2) + Math.pow(village.y - centerY, 2)
     )
-    const maxDistance = Math.sqrt(2) * (WORLD_SIZE / 2)
+    const maxDistance = Math.sqrt(2) * (WORLD_TILE_WIDTH / 2)
     const developmentFactor = 1 - (distanceFromCenter / maxDistance)
 
     // Headquarters (always level 1-20)
@@ -404,7 +398,9 @@ async function updatePlayerRanks() {
 
 async function main() {
   console.log('🚀 Starting world generation...')
-  console.log(`Target: ${NUM_USERS} users, ${TOTAL_VILLAGES} villages in ${WORLD_SIZE}x${WORLD_SIZE} world`)
+  console.log(
+    `Target: ${NUM_USERS} users, ${TOTAL_VILLAGES} villages in ${WORLD_TILE_WIDTH}x${WORLD_TILE_WIDTH} world`,
+  )
 
   try {
     await clearExistingData()
@@ -417,10 +413,13 @@ async function main() {
 
     console.log('🎉 World generation completed successfully!')
     console.log(`📊 Summary:`)
-    console.log(`   - World Size: ${WORLD_SIZE}x${WORLD_SIZE}`)
+    console.log(`   - World Size: ${WORLD_TILE_WIDTH}x${WORLD_TILE_WIDTH} tiles`)
+    console.log(`   - Coordinate Range: 0..${WORLD_MAX_COORDINATE}`)
     console.log(`   - Users: ${NUM_USERS}`)
     console.log(`   - Villages: ${TOTAL_VILLAGES}`)
-    console.log(`   - Continents: ${Math.pow(WORLD_SIZE / 50, 2)}`)
+    console.log(
+      `   - Continents: ${Math.pow(CONTINENT_GRID_WIDTH, 2)} (${CONTINENT_TILE_SIZE}x${CONTINENT_TILE_SIZE} tiles each)`,
+    )
 
   } catch (error) {
     console.error('❌ Error during world generation:', error)

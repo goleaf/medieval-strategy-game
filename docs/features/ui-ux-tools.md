@@ -107,16 +107,20 @@ The Travian-style interface in this project is designed around fast status check
 ## Map experience
 
 ### Minimap
-- **Placement**: Docked bottom-right on the primary map page and optionally as an overlay in the village view.
-- **Data**: Renders a low-resolution heatmap of activity using aggregated counts per 5x5 tile chunk. Uses the same dataset as the main map but caches at a lower zoom.
-- **Interactions**: Drag to pan the main map, scroll to zoom, click to drop a focus marker. A toggle collapses it when screen width < 1024px.
+- **Placement**: Docked bottom-right on the primary map page and optionally as an overlay in the village view. Keyboard arrows mirror drag gestures to match classic Tribal Wars muscle memory.
+- **Data**: Renders a low-resolution heatmap of activity using aggregated counts per 5×5 tile chunk. Uses the same dataset as the main map but caches at a lower zoom. The data window must extend far enough to display at least a 5×5 continent block (500×500 fields) around the main viewport so players can see border pressure early.
+- **Interactions**: Drag to pan the main map, scroll to zoom, click to drop a focus marker. Hover tooltips show the cursor coordinate plus its `Kxy` continent label (e.g., `475|724 — K55`) and call out whether the location sits inside the "core" (`K44`, `K45`, `K54`, `K55`) or the expanding rim. A toggle collapses the minimap when screen width < 1024px.
+- **Political overlay (Premium)**: Gold Club/Premium accounts reveal a "Political map" switch in the minimap header. Flipping it recolors tiles by tribe ownership, applies custom highlight colors from player/tribe markers, and adds pattern badges for accessibility. Non-premium accounts still see the neutral heatmap view.
+- **Marker integration**: Color assignments made in the highlight drawer (players, tribes, villages) must stay in sync with both the minimap and political overlay, reusing the same legend tokens as the main grid.
+- **Accessibility**: Provide pattern fills and textual tooltips for any political coloration so colorblind users can distinguish alliances. Align iconography with the legend described below.
+- **Player workflow cues**: Mirror the four-step reading guide from §3.2 of the map-vision spec. When a player hovers or taps the minimap, surface helper copy such as “Band: K55 (core)” and echo the same coordinate highlight on the main grid. Enlarged map states must retain these cues so strategists can sketch launch zones or rim growth without re-learning the UI.
 
 ### Continent grid (K-map)
-- **Background**: The world is partitioned into continents (K-XX) via the `Continent` model tied to each `Village`.
+- **Background**: The world is partitioned into a fixed 10×10 lattice of continents (`K00`–`K99`), each spanning exactly 100×100 tiles. These labels never shift; new start zones spawn by unlocking additional rim continents rather than resizing existing cores.
 - **UI**:
-  - Overlay draws labeled grid lines every 100 tiles (configurable). Each cell shows K-number, number of owned villages, and alliance color coding.
+  - Overlay draws labeled grid lines every 100 tiles (configurable). Each cell shows the K-number, number of owned villages, and alliance color coding. Core continents (`K44`, `K45`, `K54`, `K55`) receive a subtle outline so commanders can orient themselves instantly.
   - Clicking a continent label filters the map/list to the villages inside that K and updates the minimap highlight.
-  - Tooltip copy references `generate-regions.ts` to explain boundaries when debugging.
+  - Tooltip copy references `generate-regions.ts` to explain boundaries when debugging and clarifies whether the selection lies in the core or rim.
 
 ### Markers & notes
 - **Markers**: Players can drop markers with categories (attack, support, scout, reminder). Markers show on the map, minimap, and command overview.
