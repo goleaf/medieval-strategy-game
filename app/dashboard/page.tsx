@@ -89,7 +89,7 @@ export default function Dashboard() {
       }
   }, [])
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       const authToken = localStorage.getItem("authToken")
       if (authToken) {
@@ -111,7 +111,7 @@ export default function Dashboard() {
 
     // Redirect to login page
     router.push("/login")
-  }
+  }, [router])
 
   useEffect(() => {
     fetchVillages()

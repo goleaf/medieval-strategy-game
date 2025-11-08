@@ -1,0 +1,79 @@
+{
+  "version": "2024-11-rally-point-alpha",
+  "generatedAt": "2024-11-10T00:00:00.000Z",
+  "notes": [
+    "Framework-agnostic data pack for Rally Point missions",
+    "All timing values use milliseconds"
+  ],
+  "travel": {
+    "serverSpeed": 1,
+    "minWaveArrivalLeadMs": 1500
+  },
+  "missions": {
+    "attack": {
+      "allowRoles": ["inf", "cav", "ram", "catapult", "admin"],
+      "lethality": 1,
+      "siegeEffects": "full"
+    },
+    "raid": {
+      "allowRoles": ["inf", "cav", "ram", "catapult", "admin"],
+      "lethality": 0.6,
+      "siegeEffects": "none"
+    },
+    "reinforce": {
+      "allowRoles": ["inf", "cav", "ram", "catapult", "admin", "settler"],
+      "combat": "none"
+    },
+    "siege": {
+      "allowRoles": ["inf", "cav", "ram", "catapult", "admin"],
+      "requireSiege": true,
+      "lethality": 1,
+      "siegeEffects": "full"
+    }
+  },
+  "rallyPoint": {
+    "waveWindowDefaultMs": 150,
+    "cancelGraceMs": 2000,
+    "catapultTargeting": {
+      "levels": [
+        { "min": 1, "max": 9, "mode": "random" },
+        { "min": 10, "max": 19, "mode": "one" },
+        { "min": 20, "max": null, "mode": "two" }
+      ]
+    },
+    "wavePrecisionMsByLevel": {
+      "1": 300,
+      "10": 150,
+      "20": 50
+    }
+  },
+  "siege": {
+    "raidLethalityFactor": 0.6,
+    "ramTechPctPerLevel": 0.03,
+    "catapultTechPctPerLevel": 0.03,
+    "ramCurve": {
+      "alpha": 1.9,
+      "beta": 1.1,
+      "gamma": 0.06
+    },
+    "catapultCurve": {
+      "baseDrop": 0.45,
+      "perLevelFalloff": 0.15,
+      "minDrop": 1
+    }
+  },
+  "walls": {
+    "city_wall": {
+      "defPctPerLevel": 4,
+      "ramResistanceMultiplier": 0.9
+    },
+    "palisade": {
+      "defPctPerLevel": 2.5,
+      "ramResistanceMultiplier": 1
+    },
+    "earth_wall": {
+      "defPctPerLevel": 1.67,
+      "ramResistanceMultiplier": 1.2
+    }
+  }
+}

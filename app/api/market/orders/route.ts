@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { ProtectionService } from "@/lib/game-services/protection-service"
 import { type NextRequest } from "next/server"
 import { marketOrderSchema } from "@/lib/utils/validation"
 import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"

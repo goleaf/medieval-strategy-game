@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
       OR: [
         { village: { playerId } },
         { sender: { villages: { some: { playerId } } } },
+        { recipientId: playerId }, // Include received messages
       ],
     }
 
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         sender: { select: { playerName: true } },
+        recipient: { select: { playerName: true } },
         village: { select: { name: true, x: true, y: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -49,6 +51,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const validated = messageSchema.parse(body)
 
+    // Handle alliance messaging
+    if (validated.allianceRole) {
+      return await handleAllianceMessage(validated)
+    }
+
+    // Handle player-to-player messaging
+    if (validated.recipientId) {
+      return await handlePlayerMessage(validated)
+    }
+
+    // Handle regular messages (village/system messages)
     const message = await prisma.message.create({
       data: {
         senderId: validated.senderId,
@@ -59,6 +72,8 @@ export async function POST(req: NextRequest) {
       },
       include: {
         sender: { select: { playerName: true } },
+        recipient: { select: { playerName: true } },
+        village: { select: { name: true, x: true, y: true } },
       },
     })
 
@@ -68,6 +83,102 @@ export async function POST(req: NextRequest) {
     if (validationError) return validationError
     return serverErrorResponse(error)
   }
+}
+
+async function handlePlayerMessage(validated: any) {
+  // Validate recipient exists
+  const recipient = await prisma.player.findUnique({
+    where: { id: validated.recipientId },
+  })
+
+  if (!recipient) {
+    return errorResponse("Recipient not found", 404)
+  }
+
+  const message = await prisma.message.create({
+    data: {
+      senderId: validated.senderId,
+      recipientId: validated.recipientId,
+      type: "PLAYER",
+      subject: validated.subject,
+      content: validated.content,
+    },
+    include: {
+      sender: { select: { playerName: true } },
+      recipient: { select: { playerName: true } },
+    },
+  })
+
+  return successResponse(message, 201)
+}
+
+async function handleAllianceMessage(validated: any) {
+  // Get sender's tribe
+  const sender = await prisma.player.findUnique({
+    where: { id: validated.senderId },
+    include: { tribe: true },
+  })
+
+  if (!sender?.tribe) {
+    return errorResponse("You must be in a tribe to send alliance messages", 403)
+  }
+
+  // Check if sender has permission to send alliance messages
+  const canSendAllianceMessages = sender.tribe.leaderId === validated.senderId
+    // TODO: Add role-based permissions for alliance messaging
+
+  if (!canSendAllianceMessages) {
+    return errorResponse("You don't have permission to send alliance messages", 403)
+  }
+
+  // Get tribe members based on role
+  let targetMembers: any[] = []
+
+  if (validated.allianceRole === "ally") {
+    // Get all tribe members
+    targetMembers = await prisma.player.findMany({
+      where: { tribeId: sender.tribe.id },
+    })
+  } else if (validated.allianceRole === "def") {
+    // TODO: Get defense coordinators
+    targetMembers = await prisma.player.findMany({
+      where: { tribeId: sender.tribe.id },
+      // Add role filtering when implemented
+    })
+  } else if (validated.allianceRole === "off") {
+    // TODO: Get offense coordinators
+    targetMembers = await prisma.player.findMany({
+      where: { tribeId: sender.tribe.id },
+      // Add role filtering when implemented
+    })
+  }
+
+  // Create messages for all target members
+  const messages = []
+  for (const member of targetMembers) {
+    if (member.id !== validated.senderId) { // Don't send to self
+      const message = await prisma.message.create({
+        data: {
+          senderId: validated.senderId,
+          recipientId: member.id,
+          allianceRole: validated.allianceRole,
+          type: "PLAYER",
+          subject: `[${validated.allianceRole.toUpperCase()}] ${validated.subject}`,
+          content: validated.content,
+        },
+        include: {
+          sender: { select: { playerName: true } },
+          recipient: { select: { playerName: true } },
+        },
+      })
+      messages.push(message)
+    }
+  }
+
+  return successResponse({
+    message: `Alliance message sent to ${messages.length} members`,
+    sentCount: messages.length,
+  }, 201)
 }
 
 export async function PATCH(req: NextRequest) {

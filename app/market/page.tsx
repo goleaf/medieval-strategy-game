@@ -16,6 +16,7 @@ interface MarketOrder {
   requestAmount: number
   player: { playerName: string }
   village: { name: string; x: number; y: number }
+  isDemo?: boolean
 }
 
 interface Village {
@@ -28,7 +29,94 @@ interface Village {
   food: number
   x: number
   y: number
+  isDemo?: boolean
 }
+
+const FALLBACK_MARKET_ORDERS: MarketOrder[] = [
+  {
+    id: "demo-order-wood-stone",
+    type: "SELL",
+    offeringResource: "WOOD",
+    offeringAmount: 2400,
+    requestResource: "STONE",
+    requestAmount: 1900,
+    player: { playerName: "Lady Maera" },
+    village: { name: "Sunspire", x: 512, y: 284 },
+    isDemo: true,
+  },
+  {
+    id: "demo-order-gold-iron",
+    type: "BUY",
+    offeringResource: "GOLD",
+    offeringAmount: 120,
+    requestResource: "IRON",
+    requestAmount: 900,
+    player: { playerName: "Guildmaster Rurik" },
+    village: { name: "Ironmarch", x: -87, y: 37 },
+    isDemo: true,
+  },
+  {
+    id: "demo-order-food-wood",
+    type: "SELL",
+    offeringResource: "FOOD",
+    offeringAmount: 3200,
+    requestResource: "WOOD",
+    requestAmount: 2800,
+    player: { playerName: "Duchess Elys" },
+    village: { name: "Greenveil", x: 205, y: -146 },
+    isDemo: true,
+  },
+  {
+    id: "demo-order-stone-gold",
+    type: "BUY",
+    offeringResource: "STONE",
+    offeringAmount: 1500,
+    requestResource: "GOLD",
+    requestAmount: 90,
+    player: { playerName: "Baron Caldor" },
+    village: { name: "Frostgate", x: -342, y: 410 },
+    isDemo: true,
+  },
+]
+
+const FALLBACK_VILLAGES: Village[] = [
+  {
+    id: "demo-village-emberfall",
+    name: "Emberfall",
+    wood: 12800,
+    stone: 9100,
+    iron: 6400,
+    gold: 210,
+    food: 15800,
+    x: 74,
+    y: -112,
+    isDemo: true,
+  },
+  {
+    id: "demo-village-oakenshield",
+    name: "Oakenshield",
+    wood: 9800,
+    stone: 12200,
+    iron: 7100,
+    gold: 180,
+    food: 13400,
+    x: -256,
+    y: 89,
+    isDemo: true,
+  },
+  {
+    id: "demo-village-stormwatch",
+    name: "Stormwatch",
+    wood: 7600,
+    stone: 6800,
+    iron: 9400,
+    gold: 260,
+    food: 10100,
+    x: 342,
+    y: 233,
+    isDemo: true,
+  },
+]
 
 export default function MarketPage() {
   const [orders, setOrders] = useState<MarketOrder[]>([])
@@ -36,17 +124,27 @@ export default function MarketPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("orders")
+  const [usingMockOrders, setUsingMockOrders] = useState(false)
+  const [usingMockVillages, setUsingMockVillages] = useState(false)
+
+  const showingDemoData = usingMockOrders || usingMockVillages
 
   const fetchOrders = async () => {
     try {
       setLoading(true)
       const res = await fetch("/api/market/orders")
       const result = await res.json()
-      if (result.success && result.data) {
+      if (result.success && Array.isArray(result.data) && result.data.length > 0) {
         setOrders(result.data)
+        setUsingMockOrders(false)
+      } else {
+        setOrders(FALLBACK_MARKET_ORDERS)
+        setUsingMockOrders(true)
       }
     } catch (error) {
       console.error("Failed to fetch orders:", error)
+      setOrders(FALLBACK_MARKET_ORDERS)
+      setUsingMockOrders(true)
     } finally {
       setLoading(false)
     }
@@ -58,15 +156,28 @@ export default function MarketPage() {
       const playerRes = await fetch("/api/auth/player-data")
       const playerResult = await playerRes.json()
 
-      if (playerResult.success && playerResult.data) {
-        setVillages(playerResult.data.villages || [])
+      if (playerResult.success && Array.isArray(playerResult.data?.villages) && playerResult.data.villages.length > 0) {
+        setVillages(playerResult.data.villages)
+        setUsingMockVillages(false)
+      } else {
+        setVillages(FALLBACK_VILLAGES)
+        setUsingMockVillages(true)
       }
     } catch (error) {
       console.error("Failed to fetch villages:", error)
+      setVillages(FALLBACK_VILLAGES)
+      setUsingMockVillages(true)
     }
   }
 
   const handleAccept = async (orderId: string) => {
+    const targetOrder = orders.find(order => order.id === orderId)
+    if (targetOrder?.isDemo) {
+      setError("Demo orders are for display only. Connect to the live server to trade.")
+      setTimeout(() => setError(null), 5000)
+      return
+    }
+
     setLoading(true)
     setError(null)
     try {
@@ -124,6 +235,11 @@ export default function MarketPage() {
             </TabsList>
 
             <TabsContent value="orders" className="space-y-4">
+              {showingDemoData && (
+                <div className="rounded border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  Showing demo marketplace data. Connect the API to see live trades and enable interactions.
+                </div>
+              )}
               {error && <div className="bg-destructive/10 border border-destructive rounded p-3 text-sm text-destructive">{error}</div>}
               {loading && <div className="text-center py-4">Processing...</div>}
               {!loading && (
@@ -139,6 +255,8 @@ export default function MarketPage() {
                       key={order.id}
                       variant="outline"
                       size="sm"
+                      disabled={order.isDemo}
+                      title={order.isDemo ? "Demo orders cannot be accepted" : undefined}
                       onClick={() => handleAccept(order.id)}
                     >
                       Accept
@@ -151,6 +269,7 @@ export default function MarketPage() {
             <TabsContent value="management" className="space-y-4">
               <NpcMerchant
                 villages={villages}
+                readOnly={usingMockVillages}
                 onResourcesUpdated={handleResourcesUpdated}
               />
             </TabsContent>

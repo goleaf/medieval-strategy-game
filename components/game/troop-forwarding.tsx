@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,14 +41,7 @@ export function TroopForwarding({ villages, currentVillageId, playerId }: Forwar
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  // Get available troops for current village
-  useEffect(() => {
-    if (currentVillageId) {
-      fetchAvailableTroops();
-    }
-  }, [currentVillageId]);
-
-  const fetchAvailableTroops = async () => {
+  const fetchAvailableTroops = useCallback(async () => {
     try {
       const response = await fetch(`/api/game/villages/${currentVillageId}/troops`);
       if (response.ok) {
@@ -58,7 +51,14 @@ export function TroopForwarding({ villages, currentVillageId, playerId }: Forwar
     } catch (error) {
       console.error("Failed to fetch troops:", error);
     }
-  };
+  }, [currentVillageId]);
+
+  // Get available troops for current village
+  useEffect(() => {
+    if (currentVillageId) {
+      fetchAvailableTroops();
+    }
+  }, [currentVillageId, fetchAvailableTroops]);
 
   // Filter available destination villages (own villages + allies)
   const availableDestinations = villages.filter(village =>

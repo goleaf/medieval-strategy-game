@@ -1,4 +1,5 @@
 // Admin utility functions for tracking and logging
+import { authenticateAdmin } from "@/app/api/admin/middleware"
 
 // In-memory store for tracking actions (in production, use Redis or database)
 const actionCounts: Map<number, number> = new Map() // timestamp -> count
@@ -42,3 +43,6 @@ export function getActionCounts() {
 export function getErrorLogs() {
   return errorLogs
 }
+
+// Re-export admin authentication functions
+export { authenticateAdmin }

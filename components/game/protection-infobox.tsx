@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { X, Shield, AlertTriangle } from 'lucide-react'
@@ -13,7 +13,7 @@ export function ProtectionInfobox({ playerId, onClose }: ProtectionInfoboxProps)
   const [showExpirationWarning, setShowExpirationWarning] = useState(false)
   const [extending, setExtending] = useState(false)
 
-  const checkProtectionStatus = async () => {
+  const checkProtectionStatus = useCallback(async () => {
     try {
       const response = await fetch(`/api/protection?playerId=${playerId}`)
       if (response.ok) {
@@ -33,9 +33,9 @@ export function ProtectionInfobox({ playerId, onClose }: ProtectionInfoboxProps)
     } catch (error) {
       console.error('Failed to check protection status:', error)
     }
-  }
+  }, [playerId])
 
-  const extendProtection = async () => {
+  const extendProtection = useCallback(async () => {
     setExtending(true)
     try {
       const response = await fetch('/api/protection', {
@@ -57,7 +57,7 @@ export function ProtectionInfobox({ playerId, onClose }: ProtectionInfoboxProps)
     } finally {
       setExtending(false)
     }
-  }
+  }, [playerId, checkProtectionStatus])
 
   useEffect(() => {
     checkProtectionStatus()
@@ -65,7 +65,7 @@ export function ProtectionInfobox({ playerId, onClose }: ProtectionInfoboxProps)
     // Check every 5 minutes
     const interval = setInterval(checkProtectionStatus, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [playerId])
+  }, [checkProtectionStatus])
 
   if (!showExtensionOffer && !showExpirationWarning) {
     return null
@@ -117,4 +117,3 @@ export function ProtectionInfobox({ playerId, onClose }: ProtectionInfoboxProps)
     </div>
   )
 }
-

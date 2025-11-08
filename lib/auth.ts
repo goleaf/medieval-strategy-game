@@ -22,3 +22,29 @@ export async function getAuthUser(req: Request) {
   const token = authHeader.slice(7)
   return verifyAuth(token)
 }
+
+// NextAuth.js compatibility exports
+export const authOptions = {
+  providers: [],
+  secret: JWT_SECRET,
+  callbacks: {
+    async jwt({ token, user }: any) {
+      if (user) {
+        token.userId = user.id
+      }
+      return token
+    },
+    async session({ session, token }: any) {
+      if (token) {
+        session.userId = token.userId
+      }
+      return session
+    }
+  }
+}
+
+export const auth = {
+  verifyAuth,
+  generateToken,
+  getAuthUser
+}

@@ -1,16 +1,20 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Home } from "lucide-react"
 import { TroopTrainer } from "@/components/game/troop-trainer"
+import { RallyPoint } from "@/components/game/rally-point"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 // Types inferred from API responses
 type VillageWithTroops = {
   id: string
   name: string
+  isCapital: boolean
+  troopEvasionEnabled: boolean
   troops: Array<{ id: string; type: string; quantity: number; attack: number; defense: number; speed: number }>
 }
 
@@ -20,7 +24,7 @@ export default function TroopsPage() {
   const [village, setVillage] = useState<VillageWithTroops | null>(null)
   const [playerTribe, setPlayerTribe] = useState<string>("TEUTONS")
 
-  const fetchVillage = async () => {
+  const fetchVillage = useCallback(async () => {
     try {
       // Get player data to determine tribe
       const authToken = localStorage.getItem("authToken")
@@ -45,7 +49,7 @@ export default function TroopsPage() {
     } catch (error) {
       console.error("Failed to fetch village:", error)
     }
-  }
+  }, [villageId])
 
   useEffect(() => {
     fetchVillage()
@@ -59,7 +63,7 @@ export default function TroopsPage() {
         delete (window as any).__troopsPageFetchHandler
       }
     }
-  }, [villageId])
+  }, [fetchVillage])
 
   if (!village) {
     return (
@@ -106,43 +110,78 @@ export default function TroopsPage() {
 
       <main className="w-full p-4">
         <div x-show="loading" className="min-h-screen flex items-center justify-center">Loading...</div>
-        <div x-show="!loading" className="max-w-4xl mx-auto space-y-4">
-          <section>
-            <h2 className="text-lg font-bold mb-2">Current Troops</h2>
-            {village.troops.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No troops stationed</p>
-            ) : (
-              <TextTable
-                headers={["Type", "Quantity", "Attack", "Defense", "Speed"]}
-                rows={village.troops.map((troop) => [
-                  troop.type,
-                  troop.quantity.toLocaleString(),
-                  troop.attack.toString(),
-                  troop.defense.toString(),
-                  troop.speed.toString(),
-                ])}
-              />
-            )}
-          </section>
+        <div x-show="!loading" className="max-w-4xl mx-auto">
+          <Tabs defaultValue="troops" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="troops">Troop Management</TabsTrigger>
+              <TabsTrigger value="rally">Rally Point</TabsTrigger>
+            </TabsList>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">Train Troops</h2>
-            <TroopTrainer
-              villageId={villageId}
-              tribe={playerTribe as any}
-              onTrain={async () => {
-                const res = await fetch("/api/villages?playerId=temp-player-id")
-                const data = await res.json()
-                if (data.success && data.data) {
-                  const found = data.data.find((v: any) => v.id === villageId)
-                  setVillage(found || null)
-                }
-              }}
-            />
-          </section>
+            <TabsContent value="troops" className="space-y-4 mt-4">
+              <section>
+                <h2 className="text-lg font-bold mb-2">Current Troops</h2>
+                {village.troops.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No troops stationed</p>
+                ) : (
+                  <TextTable
+                    headers={["Type", "Quantity", "Attack", "Defense", "Speed"]}
+                    rows={village.troops.map((troop) => [
+                      troop.type,
+                      troop.quantity.toLocaleString(),
+                      troop.attack.toString(),
+                      troop.defense.toString(),
+                      troop.speed.toString(),
+                    ])}
+                  />
+                )}
+              </section>
+
+              <section>
+                <h2 className="text-lg font-bold mb-2">Train Troops</h2>
+                <TroopTrainer
+                  villageId={villageId}
+                  tribe={playerTribe as any}
+                  onTrain={async () => {
+                    const res = await fetch("/api/villages?playerId=temp-player-id")
+                    const data = await res.json()
+                    if (data.success && data.data) {
+                      const found = data.data.find((v: any) => v.id === villageId)
+                      setVillage(found || null)
+                    }
+                  }}
+                />
+              </section>
+            </TabsContent>
+
+            <TabsContent value="rally" className="mt-4">
+              <RallyPoint
+                villageId={villageId}
+                isCapital={village.isCapital}
+                troopEvasionEnabled={village.troopEvasionEnabled}
+                onEvasionToggle={async (enabled: boolean) => {
+                  const res = await fetch(`/api/villages/${villageId}/evasion`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled }),
+                  })
+
+                  if (res.ok) {
+                    // Refresh village data
+                    const villageRes = await fetch("/api/villages?playerId=temp-player-id")
+                    const data = await villageRes.json()
+                    if (data.success && data.data) {
+                      const found = data.data.find((v: any) => v.id === villageId)
+                      setVillage(found || null)
+                    }
+                  } else {
+                    throw new Error('Failed to update evasion settings')
+                  }
+                }}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>
   )
 }
-

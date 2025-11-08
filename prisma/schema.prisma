@@ -11,6 +11,33 @@ datasource db {
 }
 
 // ============================================================================
+// RESOURCE ENUMS
+// ============================================================================
+
+enum ResourceType {
+  WOOD
+  CLAY
+  IRON
+  CROP
+}
+
+enum ResourceModifierScope {
+  SINGLE_RESOURCE
+  ALL_RESOURCES
+  NET_CROP_CONSUMPTION
+}
+
+enum ResourceModifierSource {
+  OASIS
+  HERO
+  ARTIFACT
+  BUILDING
+  QUEST
+  ADMIN
+  DEBUG
+}
+
+// ============================================================================
 // GAME WORLDS & CONFIGURATIONS
 // ============================================================================
 
@@ -161,6 +188,8 @@ model Player {
   gameWorldId String?
   gameWorld   GameWorld? @relation(fields: [gameWorldId], references: [id])
 
+  gameTribe GameTribe?
+
   playerName   String   @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -172,26 +201,35 @@ model Player {
   wavesSurvived Int @default(0)
   troopsKilled  Int @default(0)
   troopsLost    Int @default(0)
+  culturePoints Int @default(0)
+  cpTotal       Int @default(0)
+  villagesAllowed Int @default(1)
+  villagesUsed    Int @default(1)
 
   // Status
   isDeleted               Boolean   @default(false)
   deletedAt               DateTime?
   banReason               String?
   beginnerProtectionUntil DateTime? // When beginner protection expires
+  hasGoldClubMembership   Boolean   @default(false)
+  goldClubExpiresAt       DateTime?
 
   // Relations
-  villages         Village[]
-  hero             Hero?
-  tribeId          String?
-  tribe            Tribe?           @relation("TribeMembers", fields: [tribeId], references: [id])
-  leadingTribe     Tribe?           @relation("TribeLeader")
-  tribeInvites     TribeInvite[]
-  messages         Message[]
-  marketOrders     MarketOrder[]
-  receivedMessages AdminMessage[]
-  materials        Material[]
-  craftingActions  CraftingAction[]
-  quicklinks       PlayerQuicklink[]
+  villages           Village[]
+  hero               Hero?
+  tribeId            String?
+  tribe              Tribe?            @relation("TribeMembers", fields: [tribeId], references: [id])
+  leadingTribe       Tribe?            @relation("TribeLeader")
+  tribeInvites       TribeInvite[]
+  messages           Message[]
+  receivedMessages   Message[]         @relation("MessageRecipient")
+  marketOrders       MarketOrder[]
+  adminMessages      AdminMessage[]
+  materials          Material[]
+  craftingActions    CraftingAction[]
+  quicklinks         PlayerQuicklink[]
+  culturePointAccount AccountCulturePoint?
+  attackPresets      AttackPreset[]
   controllingRegions Region[]
 
   @@index([userId])
@@ -256,29 +294,29 @@ model Continent {
 }
 
 model Region {
-  id              String    @id @default(cuid())
-  name            String
-  regionCode      String    @unique // e.g., "R01", "R02", etc.
+  id         String @id @default(cuid())
+  name       String
+  regionCode String @unique // e.g., "R01", "R02", etc.
 
   // Geographic bounds
-  centerX         Int
-  centerY         Int
-  radius          Int       // Region radius for boundary checking
+  centerX Int
+  centerY Int
+  radius  Int // Region radius for boundary checking
 
   // Victory Points
-  victoryPoints   Int       @default(0) // Current VP production rate
+  victoryPoints       Int     @default(0) // Current VP production rate
   controllingPlayerId String?
   controllingPlayer   Player? @relation(fields: [controllingPlayerId], references: [id])
 
   // Region type and bonuses
-  regionType      RegionType @default(NORMAL)
-  population      Int       @default(0) // Population density affects VP production
+  regionType RegionType @default(NORMAL)
+  population Int        @default(0) // Population density affects VP production
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  villages        Village[]
+  villages Village[]
 
   @@index([regionCode])
   @@index([controllingPlayerId])
@@ -298,7 +336,7 @@ model Barbarian {
   y         Int
   villageId String?
   village   Village? @relation(fields: [villageId], references: [id])
-  
+
   // Barbarian Troops
   warriors Int @default(100)
   spearmen Int @default(50)
@@ -307,7 +345,7 @@ model Barbarian {
 
   spawnedAt    DateTime  @default(now())
   lastAttackAt DateTime?
-  
+
   @@index([x, y])
   @@index([villageId])
 }
@@ -346,26 +384,58 @@ model Village {
   ironProduction  Int @default(5)
   goldProduction  Int @default(2)
   foodProduction  Int @default(15)
+  culturePointsPerHour Float @default(0)
 
   // Loyalty & Control
-  loyalty Int @default(100) // 0-100, affects production
+  loyalty        Int      @default(100) // 0-100, affects production
+  maxLoyalty     Int      @default(100)
+  loyaltyUpdatedAt DateTime @default(now())
+  lastLoyaltyAttackAt DateTime?
+
+  // Expansion graph
+  expansionSlotsUsed  Int     @default(0)
+  expansionSlotsTotal Int     @default(0)
+  foundedByVillageId  String?
+  foundedByVillage    Village? @relation("VillageFoundings", fields: [foundedByVillageId], references: [id])
+  foundedVillages     Village[] @relation("VillageFoundings")
+  conqueredFromPlayerId String?
+  conqueredFromPlayer   Player? @relation(fields: [conqueredFromPlayerId], references: [id])
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   lastTickAt DateTime @default(now())
 
   // Relations
-  buildings    Building[]
-  troops       Troop[]
-  attacksFrom       Attack[]         @relation("AttackFrom")
-  attacksTo         Attack[]         @relation("AttackTo")
-  reinforcementsFrom Reinforcement[] @relation("ReinforcementFrom")
-  reinforcementsTo   Reinforcement[] @relation("ReinforcementTo")
-  defenses          Defense[]
-  barbarians   Barbarian[]
-  marketOrders MarketOrder[]
-  messages     Message[]
-  quicklinks   VillageQuicklink[]
+  buildings          Building[]
+  troops             Troop[]
+  attacksFrom        Attack[]                     @relation("AttackFrom")
+  attacksTo          Attack[]                     @relation("AttackTo")
+  reinforcementsFrom Reinforcement[]              @relation("ReinforcementFrom")
+  reinforcementsTo   Reinforcement[]              @relation("ReinforcementTo")
+  defenses           Defense[]
+  barbarians         Barbarian[]
+  marketOrders       MarketOrder[]
+  messages           Message[]
+  quicklinks         VillageQuicklink[]
+  attackPresetsOwned AttackPreset[]               @relation("AttackPresetVillage")
+  attackPresetTargets AttackPreset[]              @relation("AttackPresetTargetVillage")
+  resourceFields     VillageResourceField[]
+  resourceLedgers    VillageResourceLedger[]
+  resourceModifiers  ResourceProductionModifier[]
+  shipmentsOut       Shipment[]                   @relation("ShipmentSource")
+  shipmentsIn        Shipment[]                   @relation("ShipmentTarget")
+  tradeRoutesFrom    TradeRoute[]                 @relation("TradeRouteSource")
+  tradeRoutesTo      TradeRoute[]                 @relation("TradeRouteTarget")
+  merchantState      MerchantState?
+  movementsFrom      Movement[]                   @relation("MovementFromVillage")
+  movementsTo        Movement[]                   @relation("MovementToVillage")
+  expansionOrigins   ExpansionLink[]              @relation("ExpansionSource")
+  expansionTargets   ExpansionLink[]              @relation("ExpansionTarget")
+  storageLedger      VillageStorageLedger[]
+  distanceCacheA     VillageDistanceCache[]       @relation("DistanceCacheA")
+  distanceCacheB     VillageDistanceCache[]       @relation("DistanceCacheB")
+  buildQueueTasks    BuildQueueTask[]
+  queueLimit         VillageQueueLimit?
 
   @@unique([x, y])
   @@index([playerId])
@@ -375,6 +445,8 @@ model Village {
   @@index([lastTickAt]) // For game tick processing
   @@index([playerId, isCapital]) // For capital village queries
   @@index([continentId, playerId]) // For continent-based village queries
+  @@index([foundedByVillageId])
+  @@index([conqueredFromPlayerId])
 }
 
 model Building {
@@ -383,6 +455,7 @@ model Building {
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
 
   type  BuildingType
+  slot  Int?
   level Int          @default(1)
 
   // Construction
@@ -403,8 +476,10 @@ model Building {
   // Relations
   troopProduction TroopProduction[]
   research        Research?
+  queueTasks      BuildQueueTask[]
 
   @@unique([villageId, type])
+  @@index([villageId, slot])
   @@index([villageId])
   @@index([villageId, queuePosition])
   @@index([isBuilding, completionAt]) // For construction completion processing
@@ -412,11 +487,221 @@ model Building {
   @@index([type, level]) // For building type/level queries
 }
 
+model BuildingBlueprint {
+  id           String            @id
+  displayName  String
+  category     BuildingCategory
+  maxLevel     Int
+  prerequisites Json
+  effects       Json
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  levels       BuildingLevel[]
+}
+
+model BuildingLevel {
+  id               Int               @id @default(autoincrement())
+  blueprintId      String
+  blueprint        BuildingBlueprint @relation(fields: [blueprintId], references: [id], onDelete: Cascade)
+  level            Int
+  costWood         Int
+  costClay         Int
+  costIron         Int
+  costCrop         Int
+  buildTimeSeconds Int
+  cpPerHour        Float             @default(0)
+  effects          Json
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([blueprintId, level])
+  @@index([blueprintId, level])
+}
+
+model VillageQueueLimit {
+  villageId          String @id
+  village            Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  maxWaiting         Int    @default(1)
+  parallelFieldSlots Int    @default(0)
+  parallelInnerSlots Int    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model BuildQueueTask {
+  id             String           @id @default(cuid())
+  villageId      String
+  village        Village          @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  buildingId     String?
+  building       Building?        @relation(fields: [buildingId], references: [id])
+  slot           Int?
+  entityKey      String
+  category       BuildingCategory
+  fromLevel      Int
+  toLevel        Int
+  status         BuildTaskStatus  @default(WAITING)
+  queuedAt       DateTime         @default(now())
+  startedAt      DateTime?
+  finishesAt     DateTime?
+  cancelledAt    DateTime?
+  completedAt    DateTime?
+  position       Int
+  speedSnapshot  Json
+  createdBy      BuildTaskSource  @default(PLAYER)
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([villageId, category, status, position])
+  @@index([status, finishesAt])
+}
+
+model AccountCulturePoint {
+  id             String   @id @default(cuid())
+  playerId       String   @unique
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  total          Float    @default(0)
+  perHour        Float    @default(0)
+  villagesAllowed Int     @default(1)
+  villagesUsed   Int      @default(1)
+  lastAccruedAt  DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model CulturePointThreshold {
+  villageNumber Int @id
+  cpRequired    Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============================================================================
+// STORAGE & LOGISTICS SUPPORT TABLES
+// ============================================================================
+
+model StorageCapacityCurve {
+  id           Int          @id @default(autoincrement())
+  buildingType BuildingType
+  level        Int
+  capacity     Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([buildingType, level])
+  @@index([buildingType, level])
+}
+
+model CrannyProtectionCurve {
+  level                Int   @id
+  protectedPerResource Int
+  gaulBonusMultiplier  Float @default(1.5)
+  teutonPenaltyPercent Float @default(0.8)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VillageStorageLedger {
+  id        String  @id @default(cuid())
+  villageId String
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  woodDelta  Int @default(0)
+  stoneDelta Int @default(0)
+  ironDelta  Int @default(0)
+  goldDelta  Int @default(0)
+  foodDelta  Int @default(0)
+
+  reason   StorageLedgerReason
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([villageId, createdAt])
+}
+
+// ============================================================================
+// RESOURCE FIELD SYSTEM
+// ============================================================================
+
+model VillageResourceField {
+  id        String  @id @default(cuid())
+  villageId String
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  resourceType       ResourceType
+  slot               Int // 0-9 per resource type
+  level              Int          @default(0)
+  isUpgrading        Boolean      @default(false)
+  upgradeCompletesAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([villageId, resourceType, slot])
+  @@index([villageId, resourceType])
+}
+
+model ResourceFieldLevel {
+  id               Int          @id @default(autoincrement())
+  resourceType     ResourceType
+  level            Int
+  outputPerHour    Float
+  woodCost         Int
+  clayCost         Int
+  ironCost         Int
+  cropCost         Int
+  buildTimeSeconds Int
+  createdAt        DateTime     @default(now())
+
+  @@unique([resourceType, level])
+  @@index([resourceType, level])
+}
+
+model VillageResourceLedger {
+  id        String  @id @default(cuid())
+  villageId String
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  resourceType         ResourceType
+  currentAmount        Int          @default(0)
+  productionPerHour    Float        @default(0)
+  storageCapacity      Int          @default(2000)
+  netProductionPerHour Float        @default(0)
+  lastTickAt           DateTime     @default(now())
+
+  @@unique([villageId, resourceType])
+  @@index([resourceType])
+}
+
+model ResourceProductionModifier {
+  id        String  @id @default(cuid())
+  villageId String
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  scope        ResourceModifierScope  @default(SINGLE_RESOURCE)
+  resourceType ResourceType?
+  percent      Float
+  sourceType   ResourceModifierSource
+  sourceId     String?
+  expiresAt    DateTime?
+  createdAt    DateTime               @default(now())
+
+  @@index([villageId])
+  @@index([resourceType])
+  @@index([expiresAt])
+}
+
 enum BuildingType {
   HEADQUARTER
   MARKETPLACE
   BARRACKS
   STABLES
+  RALLY_POINT
+  RESIDENCE
+  PALACE
   WALL
   WAREHOUSE
   GRANARY
@@ -427,14 +712,39 @@ enum BuildingType {
   ACADEMY
   TEMPLE
   HOSPITAL
+  SMITHY
+  BAKERY
   FARM
   SNOB
+  TOWNHALL
+  CRANNY
   // Reign of Fire buildings
   CITY
   WATCHTOWER
+  WATERWORKS
+  COMMAND_CENTER
   // Teutonic-specific buildings
   EARTH_WALL
   BREWERY
+}
+
+enum BuildingCategory {
+  INNER
+  FIELD
+}
+
+enum BuildTaskStatus {
+  WAITING
+  BUILDING
+  PAUSED
+  CANCELLED
+  DONE
+}
+
+enum BuildTaskSource {
+  PLAYER
+  QUEST
+  SYSTEM
 }
 
 // ============================================================================
@@ -448,7 +758,7 @@ model Troop {
 
   type     TroopType
   quantity Int       @default(0)
-  
+
   // Combat Stats
   health  Int @default(100)
   attack  Int @default(10)
@@ -457,13 +767,13 @@ model Troop {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // Relations
-  movements         Movement[]
-  attackUnits       AttackUnit[]
-  defenseUnits      DefenseUnit[]
+  movements          Movement[]
+  attackUnits        AttackUnit[]
+  defenseUnits       DefenseUnit[]
   reinforcementUnits ReinforcementUnit[]
-  
+
   @@unique([villageId, type])
   @@index([villageId])
 }
@@ -479,7 +789,21 @@ enum TroopType {
   CATAPULT
   KNIGHT
   NOBLEMAN
-  // Teutonic-specific units
+  BERSERKER
+  VALKYRIES_BLESSING
+  JARL
+  STEPPE_ARCHER
+  HUN_WARRIOR
+  LOGADES
+  LEGIONNAIRE
+  PRAETORIAN
+  IMPERIAN
+  SENATOR
+  NUBIAN
+  MUMMY
+  ANUBITE
+  PHARAOH
+  NOMARCH
   CLUBSWINGER
   SPEARMAN_TEUTONIC
   AXEMAN
@@ -487,6 +811,7 @@ enum TroopType {
   PALADIN_TEUTONIC
   TEUTONIC_KNIGHT
   CHIEF
+  SETTLER
 }
 
 model TroopProduction {
@@ -509,8 +834,15 @@ model TroopProduction {
 
 model Movement {
   id      String @id @default(cuid())
-  troopId String
-  troop   Troop  @relation(fields: [troopId], references: [id], onDelete: Cascade)
+  troopId String?
+  troop   Troop? @relation(fields: [troopId], references: [id], onDelete: Cascade)
+
+  kind MovementKind @default(TROOP)
+
+  fromVillageId String?
+  fromVillage   Village? @relation("MovementFromVillage", fields: [fromVillageId], references: [id], onDelete: SetNull)
+  toVillageId   String?
+  toVillage     Village? @relation("MovementToVillage", fields: [toVillageId], references: [id], onDelete: SetNull)
 
   fromX Int
   fromY Int
@@ -526,6 +858,8 @@ model Movement {
   startedAt DateTime @default(now())
   arrivalAt DateTime
 
+  payload Json?
+
   // Status
   status      MovementStatus @default(IN_PROGRESS)
   cancelledAt DateTime?
@@ -538,6 +872,38 @@ model Movement {
   @@index([arrivalAt])
   @@index([status]) // For movement status queries
   @@index([status, arrivalAt]) // For processing movements by status and time
+  @@index([kind])
+  @@index([fromVillageId])
+  @@index([toVillageId])
+}
+
+enum MovementKind {
+  TROOP
+  SETTLER_FOUND
+  SETTLER_RETURN
+  LOGISTICS
+}
+
+model ExpansionLink {
+  id String @id @default(cuid())
+
+  sourceVillageId String
+  sourceVillage   Village @relation("ExpansionSource", fields: [sourceVillageId], references: [id], onDelete: Cascade)
+
+  targetVillageId String
+  targetVillage   Village @relation("ExpansionTarget", fields: [targetVillageId], references: [id], onDelete: Cascade)
+
+  type      ExpansionLinkType
+  createdAt DateTime @default(now())
+
+  @@unique([targetVillageId])
+  @@index([sourceVillageId])
+  @@index([type])
+}
+
+enum ExpansionLinkType {
+  FOUND
+  CONQUER
 }
 
 enum MovementStatus {
@@ -629,7 +995,7 @@ model AttackUnit {
   troop   Troop  @relation(fields: [troopId], references: [id], onDelete: Cascade)
 
   quantity Int
-  
+
   @@index([attackId])
   @@index([troopId])
 }
@@ -643,7 +1009,7 @@ model DefenseUnit {
   troop   Troop  @relation(fields: [troopId], references: [id], onDelete: Cascade)
 
   quantity Int
-  
+
   @@index([attackId])
   @@index([troopId])
 }
@@ -652,16 +1018,16 @@ model Defense {
   id        String  @id @default(cuid())
   villageId String
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
-  
+
   // Defense Configuration
   wallLevel Int @default(0)
   archers   Int @default(0)
   catapults Int @default(0)
-  
+
   // Defensive Perks
   bonusAgainstRaid     Int @default(0)
   bonusAgainstConquest Int @default(0)
-  
+
   @@unique([villageId])
   @@index([villageId])
 }
@@ -860,6 +1226,121 @@ model MarketOrder {
   @@index([type, status]) // For order type and status queries
 }
 
+model MerchantState {
+  villageId String  @id
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  merchantsBusy     Int       @default(0)
+  merchantsReserved Int       @default(0)
+  lastReservationAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([updatedAt])
+}
+
+model Shipment {
+  id String @id @default(cuid())
+
+  sourceVillageId String
+  sourceVillage   Village @relation("ShipmentSource", fields: [sourceVillageId], references: [id], onDelete: Cascade)
+
+  targetVillageId String
+  targetVillage   Village @relation("ShipmentTarget", fields: [targetVillageId], references: [id], onDelete: Cascade)
+
+  wood  Int @default(0)
+  stone Int @default(0)
+  iron  Int @default(0)
+  gold  Int @default(0)
+  food  Int @default(0)
+
+  merchantsUsed Int
+  departAt      DateTime
+  arriveAt      DateTime
+  returnAt      DateTime
+
+  deliveredAt DateTime?
+  returnedAt  DateTime?
+
+  createdBy ShipmentCreatedBy @default(PLAYER)
+  status    ShipmentStatus    @default(SCHEDULED)
+
+  reportId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceVillageId])
+  @@index([targetVillageId])
+  @@index([status, arriveAt])
+  @@index([status, returnAt])
+}
+
+model TradeRoute {
+  id String @id @default(cuid())
+
+  sourceVillageId String
+  sourceVillage   Village @relation("TradeRouteSource", fields: [sourceVillageId], references: [id], onDelete: Cascade)
+
+  targetVillageId String
+  targetVillage   Village @relation("TradeRouteTarget", fields: [targetVillageId], references: [id], onDelete: Cascade)
+
+  wood  Int @default(0)
+  stone Int @default(0)
+  iron  Int @default(0)
+  gold  Int @default(0)
+  food  Int @default(0)
+
+  scheduleJson       Json
+  skipIfInsufficient Boolean          @default(true)
+  priority           Int              @default(0)
+  status             TradeRouteStatus @default(ACTIVE)
+  nextRunAt          DateTime?
+  lastRunAt          DateTime?
+  startsAt           DateTime?
+  endsAt             DateTime?
+
+  logs TradeRouteLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceVillageId])
+  @@index([targetVillageId])
+  @@index([status, nextRunAt])
+}
+
+model TradeRouteLog {
+  id String @id @default(cuid())
+
+  tradeRouteId String
+  tradeRoute   TradeRoute @relation(fields: [tradeRouteId], references: [id], onDelete: Cascade)
+
+  result  TradeRouteLogResult
+  details Json?
+
+  executedAt DateTime @default(now())
+
+  @@index([tradeRouteId, executedAt])
+}
+
+model VillageDistanceCache {
+  id String @id @default(cuid())
+
+  villageAId String
+  villageA   Village @relation("DistanceCacheA", fields: [villageAId], references: [id], onDelete: Cascade)
+
+  villageBId String
+  villageB   Village @relation("DistanceCacheB", fields: [villageBId], references: [id], onDelete: Cascade)
+
+  distance Float
+
+  calculatedAt DateTime @default(now())
+
+  @@unique([villageAId, villageBId])
+  @@index([villageBId, villageAId])
+}
+
 enum OrderType {
   SELL
   BUY
@@ -881,6 +1362,51 @@ enum OrderStatus {
   EXPIRED
 }
 
+enum ShipmentStatus {
+  SCHEDULED
+  EN_ROUTE
+  DELIVERED
+  RETURNING
+  RETURNED
+  CANCELLED
+  FAILED
+}
+
+enum ShipmentCreatedBy {
+  PLAYER
+  ROUTE
+  OFFER_MATCH
+  ADMIN
+}
+
+enum TradeRouteStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum TradeRouteLogResult {
+  SUCCESS
+  SKIPPED_INSUFFICIENT_RESOURCES
+  SKIPPED_NO_MERCHANTS
+  SKIPPED_DISABLED
+  ERROR
+}
+
+enum StorageLedgerReason {
+  PRODUCTION
+  CONSUMPTION
+  TRADE_IN
+  TRADE_OUT
+  RAID_LOSS
+  QUEST_REWARD
+  BUILD_COST
+  NPC_CONVERT
+  ADMIN
+  OTHER
+}
+
 // ============================================================================
 // MESSAGING & COMMUNICATION
 // ============================================================================
@@ -891,8 +1417,13 @@ model Message {
   senderId String
   sender   Player @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
+  recipientId String?
+  recipient   Player? @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
   villageId String?
   village   Village? @relation(fields: [villageId], references: [id], onDelete: SetNull)
+
+  allianceRole String? // "ally", "def", "off" for alliance messaging
 
   type    MessageType
   subject String
@@ -919,6 +1450,7 @@ enum MessageType {
   TRADE_OFFER
   SYSTEM
   ALLIANCE_ATTACK
+  PLAYER
 }
 
 // ============================================================================
@@ -1122,10 +1654,11 @@ model TroopBalance {
   costFood  Int @default(0)
 
   // Combat stats
-  health  Int @default(100)
-  attack  Int @default(10)
-  defense Int @default(5)
-  speed   Int @default(5)
+  health     Int @default(100)
+  attack     Int @default(10)
+  defense    Int @default(5)
+  speed      Int @default(5)
+  cropUpkeep Int @default(1)
 
   // Metadata
   createdAt DateTime @default(now())
@@ -1208,6 +1741,13 @@ model Hero {
   defense Int @default(5)
   speed   Int @default(5)
 
+  // Resource bonuses
+  woodBonusPercent Float @default(0)
+  clayBonusPercent Float @default(0)
+  ironBonusPercent Float @default(0)
+  cropBonusPercent Float @default(0)
+  allResourceBonus Float @default(0)
+
   // Adventure tracking
   adventuresCompleted Int       @default(0)
   lastAdventureAt     DateTime?
@@ -1255,6 +1795,7 @@ model HeroItem {
   equipment       HeroEquipment[]
   craftingActions CraftingAction[] // Items being crafted
   resultOfActions CraftingAction[] @relation("CraftingResult") // Items created by crafting
+
   @@index([heroId])
   @@index([templateId])
   @@index([slot])
@@ -1434,24 +1975,24 @@ enum QuickLinkType {
 model QuickLinkOption {
   id String @id @default(cuid())
 
-  type QuickLinkType @unique
-  name String // Display name
-  description String?
-  icon String? // Icon identifier
-  requiresPremium Boolean @default(false) // Requires Travian Plus equivalent
+  type            QuickLinkType @unique
+  name            String // Display name
+  description     String?
+  icon            String? // Icon identifier
+  requiresPremium Boolean       @default(false) // Requires Travian Plus equivalent
 
   // Requirements
-  requiredBuildingType BuildingType? // Building must exist in village
+  requiredBuildingType  BuildingType? // Building must exist in village
   requiredBuildingLevel Int? // Minimum building level required
 
   // Metadata
-  isActive Boolean @default(true)
-  sortOrder Int @default(0)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  playerQuicklinks PlayerQuicklink[]
+  playerQuicklinks  PlayerQuicklink[]
   villageQuicklinks VillageQuicklink[]
 
   @@index([type])
@@ -1464,11 +2005,11 @@ model PlayerQuicklink {
   id String @id @default(cuid())
 
   playerId String
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
-  slotNumber Int // 1-4 for village list quicklinks
+  slotNumber        Int // 1-4 for village list quicklinks
   quickLinkOptionId String
-  quickLinkOption QuickLinkOption @relation(fields: [quickLinkOptionId], references: [id], onDelete: Cascade)
+  quickLinkOption   QuickLinkOption @relation(fields: [quickLinkOptionId], references: [id], onDelete: Cascade)
 
   // Metadata
   createdAt DateTime @default(now())
@@ -1483,11 +2024,11 @@ model VillageQuicklink {
   id String @id @default(cuid())
 
   villageId String
-  village Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
 
-  slotNumber Int // 1-5 for village details quicklinks
+  slotNumber        Int // 1-5 for village details quicklinks
   quickLinkOptionId String
-  quickLinkOption QuickLinkOption @relation(fields: [quickLinkOptionId], references: [id], onDelete: Cascade)
+  quickLinkOption   QuickLinkOption @relation(fields: [quickLinkOptionId], references: [id], onDelete: Cascade)
 
   // Metadata
   createdAt DateTime @default(now())
@@ -1496,6 +2037,52 @@ model VillageQuicklink {
   @@unique([villageId, slotNumber])
   @@index([villageId])
   @@index([quickLinkOptionId])
+}
+
+// ============================================================================
+// ATTACK PRESETS
+// ============================================================================
+
+model AttackPreset {
+  id        String   @id @default(cuid())
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  villageId String?
+  village   Village? @relation("AttackPresetVillage", fields: [villageId], references: [id], onDelete: SetNull)
+
+  name       String
+  type       AttackType
+  requiresGoldClub Boolean @default(false)
+
+  targetVillageId String?
+  targetVillage   Village? @relation("AttackPresetTargetVillage", fields: [targetVillageId], references: [id], onDelete: SetNull)
+  targetX         Int?
+  targetY         Int?
+
+  preferredArrival DateTime?
+  waveWindowMs     Int?
+  catapultTargets  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  units AttackPresetUnit[]
+
+  @@index([playerId])
+  @@index([villageId])
+  @@index([targetVillageId])
+  @@index([type])
+}
+
+model AttackPresetUnit {
+  id        String @id @default(cuid())
+  presetId  String
+  preset    AttackPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
+  troopType TroopType
+  quantity  Int
+
+  @@index([presetId])
+  @@index([troopType])
 }
 
 // ============================================================================

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Settings, User, RotateCcw, AlertTriangle, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -48,7 +48,7 @@ export default function SettingsPage() {
   const [newPlayerName, setNewPlayerName] = useState("")
   const [respawning, setRespawning] = useState(false)
 
-  const fetchPlayerData = async () => {
+  const fetchPlayerData = useCallback(async () => {
     try {
       const authToken = localStorage.getItem("authToken")
       const playerId = localStorage.getItem("playerId")
@@ -75,7 +75,7 @@ export default function SettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router])
 
   const checkRespawnConditions = (player: PlayerData, gameWorld: GameWorldData) => {
     const reasons: string[] = []
@@ -163,7 +163,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchPlayerData()
-  }, [])
+  }, [fetchPlayerData])
 
   if (loading) {
     return (

@@ -1,0 +1,41 @@
+{
+  "walls": {
+    "city_wall": { "def_pct_per_level": 4.0, "ram_resistance_multiplier": 0.9 },
+    "palisade": { "def_pct_per_level": 2.5, "ram_resistance_multiplier": 1.0 },
+    "earth_wall": { "def_pct_per_level": 1.67, "ram_resistance_multiplier": 1.2 }
+  },
+  "rams": {
+    "tech_pct_per_level": 0.03,
+    "alpha": 3.2,
+    "beta": 6.0,
+    "gamma": 0.8
+  },
+  "residence": {
+    "max_loyalty": 100,
+    "slots_levels": [10, 20]
+  },
+  "palace": {
+    "max_loyalty": 125,
+    "slots_levels": [10, 15, 20],
+    "capital_only": true,
+    "capital_field_hardcap_level": 10,
+    "min_level_destroyable": 0
+  },
+  "cranny": {
+    "protects_crop": true,
+    "village_cap": null,
+    "tribe_defender_mult": { "romans": 1.0, "gauls": 2.0, "teutons": 1.0 },
+    "tribe_attacker_penetration_mult": { "romans": 1.0, "gauls": 1.0, "teutons": 0.67 }
+  },
+  "hero": {
+    "eco_pct_per_point": 0.005,
+    "flat_prod_per_level": 0,
+    "attack_aura_pct_per_point": 0.01,
+    "defense_aura_pct_per_point": 0.01,
+    "upkeep_crop_per_hour": 6
+  },
+  "oasis": {
+    "annex_radius_tiles": 3,
+    "mansion_slots": { "10": 1, "15": 2, "20": 3 }
+  }
+}

@@ -20,6 +20,10 @@ docs/
 │   └── action-tracking.md
 ├── features/              # Game features
 │   ├── beginner-protection.md
+│   ├── resource-system.md
+│   ├── subsystem-effects.md
+│   ├── troop-system.md
+│   ├── ui-ux-tools.md
 ├── api/                   # API documentation (future)
 └── development/           # Development guides (future)
 ```
@@ -32,6 +36,7 @@ Medieval Strategy Game is a real-time strategy game featuring:
 - Multiplayer interactions and alliances
 - Real-time game mechanics with configurable speed
 - Beginner protection system for new players
+- Config-driven troop, siege, and loyalty system (`docs/features/troop-system.md`)
 
 ## 👨‍💼 Administration
 

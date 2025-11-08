@@ -373,3 +373,4 @@ const { isConnected, stats } = useAdminWebSocket({
 - File transfer capabilities
 - Voice/video integration (future)
 
+

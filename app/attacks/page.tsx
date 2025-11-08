@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { ArrowLeft, Eye, X, Clock } from "lucide-react"
 import { AttackPlanner } from "@/components/game/attack-planner"
@@ -33,14 +33,14 @@ export default function AttacksPage() {
   const [attacks, setAttacks] = useState<Attack[]>([])
   const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
       const villagesData = await villagesRes.json()
       if (villagesData.success && villagesData.data) {
         setVillages(villagesData.data)
-        if (villagesData.data.length > 0 && !selectedVillageId) {
-          setSelectedVillageId(villagesData.data[0].id)
+        if (villagesData.data.length > 0) {
+          setSelectedVillageId(prev => prev ?? villagesData.data[0].id)
         }
       }
 
@@ -53,7 +53,7 @@ export default function AttacksPage() {
     } catch (error) {
       console.error("Failed to fetch data:", error)
     }
-  }
+  }, [])
 
   const handleCancelAttack = async (attackId: string) => {
     if (!confirm("Are you sure you want to cancel this attack?")) return
@@ -93,7 +93,7 @@ export default function AttacksPage() {
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
 
   const currentVillage = villages.find(v => v.id === selectedVillageId)
 

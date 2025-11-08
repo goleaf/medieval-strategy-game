@@ -211,3 +211,4 @@ function getRefineDuration(currentRarity: ItemRarity, targetRarity: ItemRarity):
   return Math.max(1, jumps * 2) // Minimum 1 hour, 2 hours per rarity jump
 }
 
+

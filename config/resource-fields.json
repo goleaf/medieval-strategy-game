@@ -1,0 +1,907 @@
+{
+  "version": 1,
+  "generatedAt": "2025-11-08T19:03:23.837Z",
+  "notes": "Travian-style exponential curves (base=5/h, growth=1.23, cost growth=1.28, time growth=1.22)",
+  "resources": {
+    "wood": {
+      "name": "Woodcutter",
+      "levels": [
+        {
+          "level": 1,
+          "outputPerHour": 5,
+          "cost": {
+            "wood": 50,
+            "clay": 60,
+            "iron": 40,
+            "crop": 20
+          },
+          "buildTimeSeconds": 120
+        },
+        {
+          "level": 2,
+          "outputPerHour": 6.15,
+          "cost": {
+            "wood": 64,
+            "clay": 77,
+            "iron": 51,
+            "crop": 26
+          },
+          "buildTimeSeconds": 146
+        },
+        {
+          "level": 3,
+          "outputPerHour": 7.56,
+          "cost": {
+            "wood": 82,
+            "clay": 98,
+            "iron": 66,
+            "crop": 33
+          },
+          "buildTimeSeconds": 179
+        },
+        {
+          "level": 4,
+          "outputPerHour": 9.3,
+          "cost": {
+            "wood": 105,
+            "clay": 126,
+            "iron": 84,
+            "crop": 42
+          },
+          "buildTimeSeconds": 218
+        },
+        {
+          "level": 5,
+          "outputPerHour": 11.44,
+          "cost": {
+            "wood": 134,
+            "clay": 161,
+            "iron": 107,
+            "crop": 54
+          },
+          "buildTimeSeconds": 266
+        },
+        {
+          "level": 6,
+          "outputPerHour": 14.08,
+          "cost": {
+            "wood": 172,
+            "clay": 206,
+            "iron": 137,
+            "crop": 69
+          },
+          "buildTimeSeconds": 324
+        },
+        {
+          "level": 7,
+          "outputPerHour": 17.31,
+          "cost": {
+            "wood": 220,
+            "clay": 264,
+            "iron": 176,
+            "crop": 88
+          },
+          "buildTimeSeconds": 396
+        },
+        {
+          "level": 8,
+          "outputPerHour": 21.3,
+          "cost": {
+            "wood": 281,
+            "clay": 338,
+            "iron": 225,
+            "crop": 113
+          },
+          "buildTimeSeconds": 483
+        },
+        {
+          "level": 9,
+          "outputPerHour": 26.19,
+          "cost": {
+            "wood": 360,
+            "clay": 432,
+            "iron": 288,
+            "crop": 144
+          },
+          "buildTimeSeconds": 589
+        },
+        {
+          "level": 10,
+          "outputPerHour": 32.22,
+          "cost": {
+            "wood": 461,
+            "clay": 553,
+            "iron": 369,
+            "crop": 184
+          },
+          "buildTimeSeconds": 718
+        },
+        {
+          "level": 11,
+          "outputPerHour": 39.63,
+          "cost": {
+            "wood": 590,
+            "clay": 708,
+            "iron": 472,
+            "crop": 236
+          },
+          "buildTimeSeconds": 877
+        },
+        {
+          "level": 12,
+          "outputPerHour": 48.74,
+          "cost": {
+            "wood": 756,
+            "clay": 907,
+            "iron": 604,
+            "crop": 302
+          },
+          "buildTimeSeconds": 1069
+        },
+        {
+          "level": 13,
+          "outputPerHour": 59.96,
+          "cost": {
+            "wood": 967,
+            "clay": 1161,
+            "iron": 774,
+            "crop": 387
+          },
+          "buildTimeSeconds": 1305
+        },
+        {
+          "level": 14,
+          "outputPerHour": 73.75,
+          "cost": {
+            "wood": 1238,
+            "clay": 1486,
+            "iron": 990,
+            "crop": 495
+          },
+          "buildTimeSeconds": 1592
+        },
+        {
+          "level": 15,
+          "outputPerHour": 90.71,
+          "cost": {
+            "wood": 1585,
+            "clay": 1901,
+            "iron": 1268,
+            "crop": 634
+          },
+          "buildTimeSeconds": 1942
+        },
+        {
+          "level": 16,
+          "outputPerHour": 111.57,
+          "cost": {
+            "wood": 2028,
+            "clay": 2434,
+            "iron": 1623,
+            "crop": 811
+          },
+          "buildTimeSeconds": 2369
+        },
+        {
+          "level": 17,
+          "outputPerHour": 137.23,
+          "cost": {
+            "wood": 2596,
+            "clay": 3115,
+            "iron": 2077,
+            "crop": 1038
+          },
+          "buildTimeSeconds": 2890
+        },
+        {
+          "level": 18,
+          "outputPerHour": 168.79,
+          "cost": {
+            "wood": 3323,
+            "clay": 3988,
+            "iron": 2658,
+            "crop": 1329
+          },
+          "buildTimeSeconds": 3526
+        },
+        {
+          "level": 19,
+          "outputPerHour": 207.62,
+          "cost": {
+            "wood": 4254,
+            "clay": 5104,
+            "iron": 3403,
+            "crop": 1701
+          },
+          "buildTimeSeconds": 4302
+        },
+        {
+          "level": 20,
+          "outputPerHour": 255.37,
+          "cost": {
+            "wood": 5445,
+            "clay": 6533,
+            "iron": 4356,
+            "crop": 2178
+          },
+          "buildTimeSeconds": 5248
+        }
+      ]
+    },
+    "clay": {
+      "name": "Clay Pit",
+      "levels": [
+        {
+          "level": 1,
+          "outputPerHour": 5,
+          "cost": {
+            "wood": 60,
+            "clay": 50,
+            "iron": 40,
+            "crop": 20
+          },
+          "buildTimeSeconds": 130
+        },
+        {
+          "level": 2,
+          "outputPerHour": 6.15,
+          "cost": {
+            "wood": 77,
+            "clay": 64,
+            "iron": 51,
+            "crop": 26
+          },
+          "buildTimeSeconds": 159
+        },
+        {
+          "level": 3,
+          "outputPerHour": 7.56,
+          "cost": {
+            "wood": 98,
+            "clay": 82,
+            "iron": 66,
+            "crop": 33
+          },
+          "buildTimeSeconds": 193
+        },
+        {
+          "level": 4,
+          "outputPerHour": 9.3,
+          "cost": {
+            "wood": 126,
+            "clay": 105,
+            "iron": 84,
+            "crop": 42
+          },
+          "buildTimeSeconds": 236
+        },
+        {
+          "level": 5,
+          "outputPerHour": 11.44,
+          "cost": {
+            "wood": 161,
+            "clay": 134,
+            "iron": 107,
+            "crop": 54
+          },
+          "buildTimeSeconds": 288
+        },
+        {
+          "level": 6,
+          "outputPerHour": 14.08,
+          "cost": {
+            "wood": 206,
+            "clay": 172,
+            "iron": 137,
+            "crop": 69
+          },
+          "buildTimeSeconds": 351
+        },
+        {
+          "level": 7,
+          "outputPerHour": 17.31,
+          "cost": {
+            "wood": 264,
+            "clay": 220,
+            "iron": 176,
+            "crop": 88
+          },
+          "buildTimeSeconds": 429
+        },
+        {
+          "level": 8,
+          "outputPerHour": 21.3,
+          "cost": {
+            "wood": 338,
+            "clay": 281,
+            "iron": 225,
+            "crop": 113
+          },
+          "buildTimeSeconds": 523
+        },
+        {
+          "level": 9,
+          "outputPerHour": 26.19,
+          "cost": {
+            "wood": 432,
+            "clay": 360,
+            "iron": 288,
+            "crop": 144
+          },
+          "buildTimeSeconds": 638
+        },
+        {
+          "level": 10,
+          "outputPerHour": 32.22,
+          "cost": {
+            "wood": 553,
+            "clay": 461,
+            "iron": 369,
+            "crop": 184
+          },
+          "buildTimeSeconds": 778
+        },
+        {
+          "level": 11,
+          "outputPerHour": 39.63,
+          "cost": {
+            "wood": 708,
+            "clay": 590,
+            "iron": 472,
+            "crop": 236
+          },
+          "buildTimeSeconds": 950
+        },
+        {
+          "level": 12,
+          "outputPerHour": 48.74,
+          "cost": {
+            "wood": 907,
+            "clay": 756,
+            "iron": 604,
+            "crop": 302
+          },
+          "buildTimeSeconds": 1159
+        },
+        {
+          "level": 13,
+          "outputPerHour": 59.96,
+          "cost": {
+            "wood": 1161,
+            "clay": 967,
+            "iron": 774,
+            "crop": 387
+          },
+          "buildTimeSeconds": 1413
+        },
+        {
+          "level": 14,
+          "outputPerHour": 73.75,
+          "cost": {
+            "wood": 1486,
+            "clay": 1238,
+            "iron": 990,
+            "crop": 495
+          },
+          "buildTimeSeconds": 1724
+        },
+        {
+          "level": 15,
+          "outputPerHour": 90.71,
+          "cost": {
+            "wood": 1901,
+            "clay": 1585,
+            "iron": 1268,
+            "crop": 634
+          },
+          "buildTimeSeconds": 2104
+        },
+        {
+          "level": 16,
+          "outputPerHour": 111.57,
+          "cost": {
+            "wood": 2434,
+            "clay": 2028,
+            "iron": 1623,
+            "crop": 811
+          },
+          "buildTimeSeconds": 2566
+        },
+        {
+          "level": 17,
+          "outputPerHour": 137.23,
+          "cost": {
+            "wood": 3115,
+            "clay": 2596,
+            "iron": 2077,
+            "crop": 1038
+          },
+          "buildTimeSeconds": 3131
+        },
+        {
+          "level": 18,
+          "outputPerHour": 168.79,
+          "cost": {
+            "wood": 3988,
+            "clay": 3323,
+            "iron": 2658,
+            "crop": 1329
+          },
+          "buildTimeSeconds": 3820
+        },
+        {
+          "level": 19,
+          "outputPerHour": 207.62,
+          "cost": {
+            "wood": 5104,
+            "clay": 4254,
+            "iron": 3403,
+            "crop": 1701
+          },
+          "buildTimeSeconds": 4660
+        },
+        {
+          "level": 20,
+          "outputPerHour": 255.37,
+          "cost": {
+            "wood": 6533,
+            "clay": 5445,
+            "iron": 4356,
+            "crop": 2178
+          },
+          "buildTimeSeconds": 5686
+        }
+      ]
+    },
+    "iron": {
+      "name": "Iron Mine",
+      "levels": [
+        {
+          "level": 1,
+          "outputPerHour": 4,
+          "cost": {
+            "wood": 80,
+            "clay": 70,
+            "iron": 60,
+            "crop": 30
+          },
+          "buildTimeSeconds": 150
+        },
+        {
+          "level": 2,
+          "outputPerHour": 4.96,
+          "cost": {
+            "wood": 103,
+            "clay": 90,
+            "iron": 77,
+            "crop": 39
+          },
+          "buildTimeSeconds": 185
+        },
+        {
+          "level": 3,
+          "outputPerHour": 6.15,
+          "cost": {
+            "wood": 133,
+            "clay": 116,
+            "iron": 100,
+            "crop": 50
+          },
+          "buildTimeSeconds": 227
+        },
+        {
+          "level": 4,
+          "outputPerHour": 7.63,
+          "cost": {
+            "wood": 172,
+            "clay": 150,
+            "iron": 129,
+            "crop": 64
+          },
+          "buildTimeSeconds": 279
+        },
+        {
+          "level": 5,
+          "outputPerHour": 9.46,
+          "cost": {
+            "wood": 222,
+            "clay": 194,
+            "iron": 166,
+            "crop": 83
+          },
+          "buildTimeSeconds": 343
+        },
+        {
+          "level": 6,
+          "outputPerHour": 11.73,
+          "cost": {
+            "wood": 286,
+            "clay": 250,
+            "iron": 214,
+            "crop": 107
+          },
+          "buildTimeSeconds": 422
+        },
+        {
+          "level": 7,
+          "outputPerHour": 14.54,
+          "cost": {
+            "wood": 369,
+            "clay": 323,
+            "iron": 276,
+            "crop": 138
+          },
+          "buildTimeSeconds": 519
+        },
+        {
+          "level": 8,
+          "outputPerHour": 18.03,
+          "cost": {
+            "wood": 476,
+            "clay": 416,
+            "iron": 357,
+            "crop": 178
+          },
+          "buildTimeSeconds": 639
+        },
+        {
+          "level": 9,
+          "outputPerHour": 22.36,
+          "cost": {
+            "wood": 613,
+            "clay": 537,
+            "iron": 460,
+            "crop": 230
+          },
+          "buildTimeSeconds": 786
+        },
+        {
+          "level": 10,
+          "outputPerHour": 27.72,
+          "cost": {
+            "wood": 791,
+            "clay": 692,
+            "iron": 594,
+            "crop": 297
+          },
+          "buildTimeSeconds": 967
+        },
+        {
+          "level": 11,
+          "outputPerHour": 34.38,
+          "cost": {
+            "wood": 1021,
+            "clay": 893,
+            "iron": 766,
+            "crop": 383
+          },
+          "buildTimeSeconds": 1189
+        },
+        {
+          "level": 12,
+          "outputPerHour": 42.63,
+          "cost": {
+            "wood": 1317,
+            "clay": 1152,
+            "iron": 988,
+            "crop": 494
+          },
+          "buildTimeSeconds": 1462
+        },
+        {
+          "level": 13,
+          "outputPerHour": 52.86,
+          "cost": {
+            "wood": 1699,
+            "clay": 1487,
+            "iron": 1274,
+            "crop": 637
+          },
+          "buildTimeSeconds": 1799
+        },
+        {
+          "level": 14,
+          "outputPerHour": 65.55,
+          "cost": {
+            "wood": 2192,
+            "clay": 1918,
+            "iron": 1644,
+            "crop": 822
+          },
+          "buildTimeSeconds": 2212
+        },
+        {
+          "level": 15,
+          "outputPerHour": 81.28,
+          "cost": {
+            "wood": 2827,
+            "clay": 2474,
+            "iron": 2120,
+            "crop": 1060
+          },
+          "buildTimeSeconds": 2721
+        },
+        {
+          "level": 16,
+          "outputPerHour": 100.78,
+          "cost": {
+            "wood": 3647,
+            "clay": 3191,
+            "iron": 2735,
+            "crop": 1368
+          },
+          "buildTimeSeconds": 3347
+        },
+        {
+          "level": 17,
+          "outputPerHour": 124.97,
+          "cost": {
+            "wood": 4705,
+            "clay": 4117,
+            "iron": 3528,
+            "crop": 1764
+          },
+          "buildTimeSeconds": 4117
+        },
+        {
+          "level": 18,
+          "outputPerHour": 154.96,
+          "cost": {
+            "wood": 6069,
+            "clay": 5310,
+            "iron": 4552,
+            "crop": 2276
+          },
+          "buildTimeSeconds": 5064
+        },
+        {
+          "level": 19,
+          "outputPerHour": 192.15,
+          "cost": {
+            "wood": 7829,
+            "clay": 6850,
+            "iron": 5872,
+            "crop": 2936
+          },
+          "buildTimeSeconds": 6228
+        },
+        {
+          "level": 20,
+          "outputPerHour": 238.27,
+          "cost": {
+            "wood": 10099,
+            "clay": 8837,
+            "iron": 7575,
+            "crop": 3787
+          },
+          "buildTimeSeconds": 7661
+        }
+      ]
+    },
+    "crop": {
+      "name": "Grain Field",
+      "levels": [
+        {
+          "level": 1,
+          "outputPerHour": 4,
+          "cost": {
+            "wood": 70,
+            "clay": 90,
+            "iron": 70,
+            "crop": 40
+          },
+          "buildTimeSeconds": 180
+        },
+        {
+          "level": 2,
+          "outputPerHour": 5,
+          "cost": {
+            "wood": 89,
+            "clay": 114,
+            "iron": 89,
+            "crop": 51
+          },
+          "buildTimeSeconds": 218
+        },
+        {
+          "level": 3,
+          "outputPerHour": 6.25,
+          "cost": {
+            "wood": 113,
+            "clay": 145,
+            "iron": 113,
+            "crop": 65
+          },
+          "buildTimeSeconds": 264
+        },
+        {
+          "level": 4,
+          "outputPerHour": 7.81,
+          "cost": {
+            "wood": 143,
+            "clay": 184,
+            "iron": 143,
+            "crop": 82
+          },
+          "buildTimeSeconds": 319
+        },
+        {
+          "level": 5,
+          "outputPerHour": 9.77,
+          "cost": {
+            "wood": 182,
+            "clay": 234,
+            "iron": 182,
+            "crop": 104
+          },
+          "buildTimeSeconds": 386
+        },
+        {
+          "level": 6,
+          "outputPerHour": 12.21,
+          "cost": {
+            "wood": 231,
+            "clay": 297,
+            "iron": 231,
+            "crop": 132
+          },
+          "buildTimeSeconds": 467
+        },
+        {
+          "level": 7,
+          "outputPerHour": 15.26,
+          "cost": {
+            "wood": 294,
+            "clay": 378,
+            "iron": 294,
+            "crop": 168
+          },
+          "buildTimeSeconds": 565
+        },
+        {
+          "level": 8,
+          "outputPerHour": 19.07,
+          "cost": {
+            "wood": 373,
+            "clay": 480,
+            "iron": 373,
+            "crop": 213
+          },
+          "buildTimeSeconds": 684
+        },
+        {
+          "level": 9,
+          "outputPerHour": 23.84,
+          "cost": {
+            "wood": 474,
+            "clay": 609,
+            "iron": 474,
+            "crop": 271
+          },
+          "buildTimeSeconds": 827
+        },
+        {
+          "level": 10,
+          "outputPerHour": 29.8,
+          "cost": {
+            "wood": 602,
+            "clay": 774,
+            "iron": 602,
+            "crop": 344
+          },
+          "buildTimeSeconds": 1001
+        },
+        {
+          "level": 11,
+          "outputPerHour": 37.25,
+          "cost": {
+            "wood": 764,
+            "clay": 982,
+            "iron": 764,
+            "crop": 437
+          },
+          "buildTimeSeconds": 1211
+        },
+        {
+          "level": 12,
+          "outputPerHour": 46.57,
+          "cost": {
+            "wood": 970,
+            "clay": 1248,
+            "iron": 970,
+            "crop": 554
+          },
+          "buildTimeSeconds": 1465
+        },
+        {
+          "level": 13,
+          "outputPerHour": 58.21,
+          "cost": {
+            "wood": 1232,
+            "clay": 1584,
+            "iron": 1232,
+            "crop": 704
+          },
+          "buildTimeSeconds": 1773
+        },
+        {
+          "level": 14,
+          "outputPerHour": 72.76,
+          "cost": {
+            "wood": 1565,
+            "clay": 2012,
+            "iron": 1565,
+            "crop": 894
+          },
+          "buildTimeSeconds": 2145
+        },
+        {
+          "level": 15,
+          "outputPerHour": 90.95,
+          "cost": {
+            "wood": 1988,
+            "clay": 2556,
+            "iron": 1988,
+            "crop": 1136
+          },
+          "buildTimeSeconds": 2596
+        },
+        {
+          "level": 16,
+          "outputPerHour": 113.69,
+          "cost": {
+            "wood": 2524,
+            "clay": 3246,
+            "iron": 2524,
+            "crop": 1442
+          },
+          "buildTimeSeconds": 3141
+        },
+        {
+          "level": 17,
+          "outputPerHour": 142.11,
+          "cost": {
+            "wood": 3206,
+            "clay": 4122,
+            "iron": 3206,
+            "crop": 1832
+          },
+          "buildTimeSeconds": 3800
+        },
+        {
+          "level": 18,
+          "outputPerHour": 177.64,
+          "cost": {
+            "wood": 4072,
+            "clay": 5235,
+            "iron": 4072,
+            "crop": 2327
+          },
+          "buildTimeSeconds": 4599
+        },
+        {
+          "level": 19,
+          "outputPerHour": 222.04,
+          "cost": {
+            "wood": 5171,
+            "clay": 6648,
+            "iron": 5171,
+            "crop": 2955
+          },
+          "buildTimeSeconds": 5564
+        },
+        {
+          "level": 20,
+          "outputPerHour": 277.56,
+          "cost": {
+            "wood": 6567,
+            "clay": 8443,
+            "iron": 6567,
+            "crop": 3753
+          },
+          "buildTimeSeconds": 6733
+        }
+      ]
+    }
+  }
+}

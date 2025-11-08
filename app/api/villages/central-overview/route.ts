@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
-import { TribeService } from "@/lib/game-services/tribe-service"
+import { CapacityService } from "@/lib/game-services/capacity-service"
+import { MerchantService } from "@/lib/game-services/merchant-service"
+import { StorageService, type StorageSnapshot } from "@/lib/game-services/storage-service"
 
 interface VillageOverviewData {
   id: string
@@ -45,6 +47,7 @@ interface VillageOverviewData {
   expansionSlots: number
   // Merchant availability
   merchants: { free: number; total: number }
+  timeToFull: { wood: number | null; stone: number | null; iron: number | null; gold: number | null; food: number | null }
 }
 
 export async function GET(req: NextRequest) {
@@ -99,15 +102,34 @@ export async function GET(req: NextRequest) {
     // Transform data for each village
     const overviewData: VillageOverviewData[] = await Promise.all(
       villages.map(async (village) => {
-        // Calculate warehouse capacity from WAREHOUSE building
-        const warehouseBuilding = village.buildings.find(b => b.type === "WAREHOUSE")
-        const warehouseLevel = warehouseBuilding?.level || 0
-        const warehouseCapacity = warehouseLevel * 10000 + 10000 // Base 10000 + 10000 per level
+        const [capacitySummary, merchantSnapshot] = await Promise.all([
+          CapacityService.getVillageCapacitySummary(village.id),
+          MerchantService.getSnapshot(village.id),
+        ])
 
-        // Calculate granary capacity from GRANARY building
-        const granaryBuilding = village.buildings.find(b => b.type === "GRANARY")
-        const granaryLevel = granaryBuilding?.level || 0
-        const granaryCapacity = granaryLevel * 10000 + 10000 // Base 10000 + 10000 per level
+        const warehouseCapacity = capacitySummary.totals.wood
+        const granaryCapacity = capacitySummary.totals.food
+
+        const productionPerHour = {
+          wood: village.woodProduction,
+          stone: village.stoneProduction,
+          iron: village.ironProduction,
+          gold: village.goldProduction,
+          food: village.foodProduction,
+        }
+
+        const storageSnapshot: StorageSnapshot = {
+          resources: {
+            wood: village.wood,
+            stone: village.stone,
+            iron: village.iron,
+            gold: village.gold,
+            food: village.food,
+          },
+          capacities: capacitySummary.totals,
+        }
+
+        const timeToFull = StorageService.calculateTimeToFull(storageSnapshot, productionPerHour)
 
         // Count building activity
         const activeConstructions = village.buildings.filter(b => b.isBuilding).length
@@ -136,11 +158,10 @@ export async function GET(req: NextRequest) {
           quantity: troop.quantity,
         }))
 
-        // Calculate merchant availability (simplified - assuming 1 merchant per marketplace level)
-        const marketplaceBuilding = village.buildings.find(b => b.type === "MARKETPLACE")
-        const marketplaceLevel = marketplaceBuilding?.level || 0
-        const totalMerchants = marketplaceLevel * 2 + 2 // Base 2 + 2 per level
-        const freeMerchants = totalMerchants // Simplified - no market orders tracked yet
+        const merchants = {
+          free: merchantSnapshot.availableMerchants,
+          total: merchantSnapshot.totalMerchants,
+        }
 
         // Placeholder values for culture points (will be implemented later)
         // For now, calculate based on townhall level
@@ -182,10 +203,8 @@ export async function GET(req: NextRequest) {
           settlers: 0, // Placeholder
           administrators: 0, // Placeholder
           expansionSlots: 1, // Placeholder
-          merchants: {
-            free: freeMerchants,
-            total: totalMerchants,
-          },
+          merchants,
+          timeToFull,
         }
       })
     )

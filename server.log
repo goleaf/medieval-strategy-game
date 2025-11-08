@@ -1,0 +1,7 @@
+
+> medieval-strategy-game@1.0.0 dev /Users/andrejprus/Library/CloudStorage/Dropbox/projects/medieval-strategy-game
+> ts-node server.js
+
+ ⨯ Unable to acquire lock at /Users/andrejprus/Library/CloudStorage/Dropbox/projects/medieval-strategy-game/.next/dev/lock, is another instance of next dev running?
+   Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+ ELIFECYCLE  Command failed with exit code 1.

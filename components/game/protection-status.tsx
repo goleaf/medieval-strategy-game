@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,7 +20,7 @@ export function ProtectionStatus({ playerId }: ProtectionStatusProps) {
   const [loading, setLoading] = useState(true)
   const [extending, setExtending] = useState(false)
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const response = await fetch(`/api/protection?playerId=${playerId}`)
       if (response.ok) {
@@ -32,9 +32,9 @@ export function ProtectionStatus({ playerId }: ProtectionStatusProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [playerId])
 
-  const extendProtection = async () => {
+  const extendProtection = useCallback(async () => {
     setExtending(true)
     try {
       const response = await fetch('/api/protection', {
@@ -55,11 +55,11 @@ export function ProtectionStatus({ playerId }: ProtectionStatusProps) {
     } finally {
       setExtending(false)
     }
-  }
+  }, [playerId, fetchStatus])
 
   useEffect(() => {
     fetchStatus()
-  }, [playerId])
+  }, [fetchStatus])
 
   if (loading) {
     return (
@@ -147,4 +147,3 @@ export function ProtectionStatus({ playerId }: ProtectionStatusProps) {
     </Card>
   )
 }
-

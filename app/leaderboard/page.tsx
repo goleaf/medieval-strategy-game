@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,7 @@ export default function LeaderboardPage() {
   const [type, setType] = useState<LeaderboardType>("players")
   const [loading, setLoading] = useState(false)
 
-  const fetchLeaderboard = async (newType: LeaderboardType) => {
+  const fetchLeaderboard = useCallback(async (newType: LeaderboardType) => {
     try {
       setLoading(true)
       const res = await fetch(`/api/leaderboard?type=${newType}`)
@@ -25,16 +25,16 @@ export default function LeaderboardPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const switchType = async (newType: LeaderboardType) => {
+  const switchType = useCallback(async (newType: LeaderboardType) => {
     setType(newType)
     await fetchLeaderboard(newType)
-  }
+  }, [fetchLeaderboard])
 
   useEffect(() => {
     switchType("players")
-  }, [])
+  }, [switchType])
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">

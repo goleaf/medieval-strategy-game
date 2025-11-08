@@ -1,22 +1,22 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-interface WebSocketMessage {
+interface SSEMessage {
   type: string
   data?: any
   timestamp: string
   [key: string]: any
 }
 
-interface UseAdminWebSocketOptions {
+interface UseAdminSSEOptions {
   url?: string
   enabled?: boolean
   reconnectInterval?: number
   maxReconnectAttempts?: number
 }
 
-export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
+export function useAdminSSE(options: UseAdminSSEOptions = {}) {
   const {
-    url = 'ws://localhost:8080',
+    url = '/api/admin/sse/stats',
     enabled = true,
     reconnectInterval = 5000,
     maxReconnectAttempts = 5
@@ -24,11 +24,11 @@ export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
 
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
-  const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null)
+  const [lastMessage, setLastMessage] = useState<SSEMessage | null>(null)
   const [stats, setStats] = useState<any>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
-  const wsRef = useRef<WebSocket | null>(null)
+  const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
 
@@ -37,7 +37,7 @@ export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
   }, [])
 
   const connect = useCallback(() => {
-    if (!enabled || wsRef.current?.readyState === WebSocket.OPEN) {
+    if (!enabled || eventSourceRef.current?.readyState === EventSource.OPEN) {
       return
     }
 
@@ -52,27 +52,21 @@ export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
         return
       }
 
-      const wsUrl = `${url}?token=${encodeURIComponent(token)}`
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
+      const sseUrl = `${url}?token=${encodeURIComponent(token)}`
+      const eventSource = new EventSource(sseUrl)
+      eventSourceRef.current = eventSource
 
-      ws.onopen = () => {
-        console.log('[WebSocket] Connected to admin WebSocket server')
+      eventSource.onopen = () => {
+        console.log('[SSE] Connected to admin SSE server')
         setIsConnected(true)
         setIsConnecting(false)
         setConnectionError(null)
         reconnectAttemptsRef.current = 0
-
-        // Send initial subscription
-        ws.send(JSON.stringify({
-          type: 'subscribe',
-          subscriptions: ['stats', 'notifications']
-        }))
       }
 
-      ws.onmessage = (event) => {
+      eventSource.onmessage = (event) => {
         try {
-          const message: WebSocketMessage = JSON.parse(event.data)
+          const message: SSEMessage = JSON.parse(event.data)
           setLastMessage(message)
 
           // Handle different message types
@@ -82,57 +76,42 @@ export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
               break
 
             case 'connected':
-              console.log('[WebSocket] Connection confirmed:', message.message)
-              break
-
-            case 'subscribed':
-              console.log('[WebSocket] Subscribed to:', message.subscriptions)
-              break
-
-            case 'pong':
-              // Heartbeat response - ignore
+              console.log('[SSE] Connection confirmed:', message.message)
               break
 
             case 'broadcast':
-              console.log('[WebSocket] Broadcast received:', message)
+              console.log('[SSE] Broadcast received:', message)
               break
 
             default:
-              console.log('[WebSocket] Received message:', message.type, message)
+              console.log('[SSE] Received message:', message.type, message)
           }
         } catch (error) {
-          console.error('[WebSocket] Error parsing message:', error)
+          console.error('[SSE] Error parsing message:', error)
         }
       }
 
-      ws.onclose = (event) => {
-        console.log('[WebSocket] Connection closed:', event.code, event.reason)
+      eventSource.onerror = (event) => {
+        console.error('[SSE] Connection error:', event)
         setIsConnected(false)
         setIsConnecting(false)
-        wsRef.current = null
 
-        // Attempt to reconnect if not a clean close
-        if (event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
+        // Attempt to reconnect
+        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++
-          console.log(`[WebSocket] Attempting to reconnect (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`)
+          console.log(`[SSE] Attempting to reconnect (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`)
 
           reconnectTimeoutRef.current = setTimeout(() => {
             connect()
           }, reconnectInterval)
-        } else if (event.code !== 1000) {
+        } else {
           setConnectionError(`Connection failed after ${maxReconnectAttempts} attempts`)
         }
       }
 
-      ws.onerror = (error) => {
-        console.error('[WebSocket] Connection error:', error)
-        setConnectionError('WebSocket connection error')
-        setIsConnecting(false)
-      }
-
     } catch (error) {
-      console.error('[WebSocket] Failed to create WebSocket connection:', error)
-      setConnectionError('Failed to create WebSocket connection')
+      console.error('[SSE] Failed to create SSE connection:', error)
+      setConnectionError('Failed to create SSE connection')
       setIsConnecting(false)
     }
   }, [url, enabled, getAuthToken, reconnectInterval, maxReconnectAttempts])
@@ -143,21 +122,13 @@ export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
       reconnectTimeoutRef.current = null
     }
 
-    if (wsRef.current) {
-      wsRef.current.close(1000, 'Client disconnecting')
-      wsRef.current = null
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
     }
 
     setIsConnected(false)
     setIsConnecting(false)
-  }, [])
-
-  const sendMessage = useCallback((message: any) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message))
-    } else {
-      console.warn('[WebSocket] Cannot send message: WebSocket not connected')
-    }
   }, [])
 
   // Auto-connect on mount if enabled
@@ -177,8 +148,8 @@ export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
-      if (wsRef.current) {
-        wsRef.current.close()
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
       }
     }
   }, [])
@@ -188,7 +159,7 @@ export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
     if (enabled && isConnected) {
       const currentToken = getAuthToken()
       // If token changed, reconnect
-      if (currentToken && wsRef.current) {
+      if (currentToken && eventSourceRef.current) {
         disconnect()
         connect()
       }
@@ -202,8 +173,7 @@ export function useAdminWebSocket(options: UseAdminWebSocketOptions = {}) {
     stats,
     connectionError,
     connect,
-    disconnect,
-    sendMessage
+    disconnect
   }
 }
 

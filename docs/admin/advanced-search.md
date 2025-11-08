@@ -291,3 +291,4 @@ Authorization: Bearer <admin-jwt-token>
 - **Scheduled Reports**: Automated periodic search reports
 - **Data Visualization**: Charts and graphs for search results
 
+

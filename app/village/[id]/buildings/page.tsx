@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -77,7 +77,7 @@ export default function BuildingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const fetchVillage = async () => {
+  const fetchVillage = useCallback(async () => {
     try {
       const res = await fetch("/api/villages?playerId=temp-player-id")
       const data = await res.json()
@@ -88,7 +88,7 @@ export default function BuildingsPage() {
     } catch (error) {
       console.error("Failed to fetch village:", error)
     }
-  }
+  }, [villageId])
 
   const handleUpgrade = async (buildingId: string) => {
     setError(null)
@@ -201,7 +201,7 @@ export default function BuildingsPage() {
     return () => {
       clearInterval(interval)
     }
-  }, [villageId])
+  }, [fetchVillage])
 
   if (!village) {
     return (

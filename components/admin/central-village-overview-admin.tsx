@@ -395,9 +395,9 @@ export function CentralVillageOverviewAdmin() {
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Real-time Updates</Label>
+                    <Label>Auto Refresh</Label>
                     <p className="text-sm text-muted-foreground">
-                      Enable live data updates via WebSocket
+                      Enable background updates without manual refresh
                     </p>
                   </div>
                   <Switch

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Home, Hammer, Shield, Eye } from "lucide-react"
@@ -26,7 +26,7 @@ export default function VillageDetailPage() {
   const villageId = params.id as string
   const [village, setVillage] = useState<VillageWithRelations | null>(null)
 
-  const fetchVillage = async () => {
+  const fetchVillage = useCallback(async () => {
     try {
       const res = await fetch("/api/villages?playerId=temp-player-id")
       const data = await res.json()
@@ -37,7 +37,7 @@ export default function VillageDetailPage() {
     } catch (error) {
       console.error("Failed to fetch village:", error)
     }
-  }
+  }, [villageId])
 
   useEffect(() => {
     fetchVillage()
@@ -51,7 +51,7 @@ export default function VillageDetailPage() {
         delete (window as any).__villageDetailFetchHandler
       }
     }
-  }, [villageId])
+  }, [fetchVillage])
 
   if (!village) {
     return (
@@ -183,4 +183,3 @@ export default function VillageDetailPage() {
     </div>
   )
 }
-

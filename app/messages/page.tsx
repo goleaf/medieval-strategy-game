@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
@@ -27,7 +27,7 @@ export default function MessagesPage() {
   })
   const [composing, setComposing] = useState(false)
 
-  const fetchMessages = async (messageFilter: string | null) => {
+  const fetchMessages = useCallback(async (messageFilter: string | null) => {
     try {
       setLoading(true)
       const authToken = localStorage.getItem("authToken")
@@ -58,14 +58,14 @@ export default function MessagesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const switchFilter = async (newFilter: string | null) => {
+  const switchFilter = useCallback(async (newFilter: string | null) => {
     setFilter(newFilter)
     await fetchMessages(newFilter)
-  }
+  }, [fetchMessages])
 
-  const markAsRead = async (messageId: string) => {
+  const markAsRead = useCallback(async (messageId: string) => {
     try {
       const authToken = localStorage.getItem("authToken")
       if (!authToken) {
@@ -87,7 +87,7 @@ export default function MessagesPage() {
       console.error("Failed to mark as read:", error)
       return { success: false }
     }
-  }
+  }, [fetchMessages, filter])
 
   const sendMessage = async () => {
     if (!composeForm.subject.trim() || !composeForm.content.trim()) {
@@ -143,7 +143,7 @@ export default function MessagesPage() {
 
   useEffect(() => {
     switchFilter(null)
-  }, [])
+  }, [switchFilter])
 
   return (
     <div className="min-h-screen bg-background text-foreground">

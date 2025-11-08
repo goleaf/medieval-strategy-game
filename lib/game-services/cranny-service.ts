@@ -1,72 +1,59 @@
 import { prisma } from "@/lib/db"
 import type { Building, GameTribe } from "@prisma/client"
 
+type CurveEntry = {
+  protectedPerResource: number
+  gaulBonusMultiplier: number
+  teutonPenaltyPercent: number
+}
+
+const RESOURCE_KEYS = ["wood", "stone", "iron", "gold", "food"] as const
+
 export class CrannyService {
+  private static curveCache: Map<number, CurveEntry> | null = null
+
+  static async refreshCurve() {
+    this.curveCache = null
+    await this.ensureCurveLoaded()
+  }
+
   /**
-   * Calculate the protection capacity of a single cranny at a given level
+   * Calculate the protection capacity of a single cranny at a given level.
+   * This synchronous helper is used by UI components that cannot await Prisma.
    */
   static calculateCrannyCapacity(level: number): number {
     if (level <= 0) return 0
-
-    // Level 1: 200, Level 10: 2000
-    // Linear scaling: 200 + (level-1) * 200
     return 200 + (level - 1) * 200
   }
 
   /**
-   * Calculate total cranny protection for a village, including tribe bonuses
+   * Calculate total cranny protection for a village.
    */
-  static async calculateTotalProtection(villageId: string, attackerTribe?: GameTribe): Promise<{
-    wood: number
-    stone: number
-    iron: number
-    gold: number
-    food: number
-  }> {
+  static async calculateTotalProtection(villageId: string, attackerTribe?: GameTribe) {
     const village = await prisma.village.findUnique({
       where: { id: villageId },
       include: {
         buildings: {
-          where: { type: "CRANNY" as const }
+          where: { type: "CRANNY" },
+          select: { id: true, level: true },
         },
         player: {
-          include: {
-            tribe: true
-          }
-        }
-      }
+          select: { gameTribe: true },
+        },
+      },
     })
 
     if (!village) {
-      return { wood: 0, stone: 0, iron: 0, gold: 0, food: 0 }
+      return this.zeroProtection()
     }
 
-    const crannies = village.buildings.filter(b => b.type === ("CRANNY" as const))
-    const defenderTribe = village.player.tribe?.name
-
-    let totalCapacity = 0
-
-    for (const cranny of crannies) {
-      let capacity = this.calculateCrannyCapacity(cranny.level)
-
-      // Gaul bonus: 1.5x capacity
-      if (defenderTribe === "GAULS") {
-        capacity = Math.floor(capacity * 1.5)
-      }
-
-      // Teutonic hero plunder bonus: reduce enemy cranny effectiveness by 80% when hero joins raid
-      // This represents the +20% cranny dip bonus - Teutons can plunder more from enemy crannies
-      if (attackerTribe === "TEUTONS") {
-        // TODO: Check if attacker has a hero that participated in this specific attack
-        // For now, apply the bonus when the attacker tribe is Teutons
-        // In a full implementation, this would check if the hero was included in the attack
-        capacity = Math.floor(capacity * 0.2) // 80% reduction = +20% plunder bonus
-      }
-
-      totalCapacity += capacity
+    const crannies = village.buildings as Pick<Building, "level">[]
+    if (crannies.length === 0) {
+      return this.zeroProtection()
     }
 
-    // Protection is applied equally to all resource types
+    const totalCapacity = await this.computeProtection(crannies, village.player?.gameTribe ?? null, attackerTribe)
+
     return {
       wood: totalCapacity,
       stone: totalCapacity,
@@ -77,12 +64,12 @@ export class CrannyService {
   }
 
   /**
-   * Calculate effective lootable resources after cranny protection
+   * Calculate effective lootable resources after cranny protection.
    */
   static calculateEffectiveLoot(
     defenderStorage: { wood: number; stone: number; iron: number; gold: number; food: number },
-    crannyProtection: { wood: number; stone: number; iron: number; gold: number; food: number }
-  ): { wood: number; stone: number; iron: number; gold: number; food: number } {
+    crannyProtection: { wood: number; stone: number; iron: number; gold: number; food: number },
+  ) {
     return {
       wood: Math.max(0, defenderStorage.wood - crannyProtection.wood),
       stone: Math.max(0, defenderStorage.stone - crannyProtection.stone),
@@ -93,70 +80,95 @@ export class CrannyService {
   }
 
   /**
-   * Get cranny information for scouting reports
+   * Provide scouting data for UI/reporting.
    */
-  static async getCrannyInfo(villageId: string): Promise<{
-    crannyCount: number
-    totalCapacity: number
-    tribeBonus: string | null
-  }> {
+  static async getCrannyInfo(villageId: string) {
     const village = await prisma.village.findUnique({
       where: { id: villageId },
       include: {
         buildings: {
-          where: { type: "CRANNY" as const }
+          where: { type: "CRANNY" },
+          select: { id: true, level: true },
         },
         player: {
-          include: {
-            tribe: true
-          }
-        }
-      }
+          select: { gameTribe: true },
+        },
+      },
     })
 
     if (!village) {
       return { crannyCount: 0, totalCapacity: 0, tribeBonus: null }
     }
 
-    const crannies = village.buildings.filter(b => b.type === ("CRANNY" as const))
-    const crannyCount = crannies.length
-    const defenderTribe = village.player.tribe?.name
-
-    let totalCapacity = 0
-    for (const cranny of crannies) {
-      let capacity = this.calculateCrannyCapacity(cranny.level)
-      if (defenderTribe === "GAULS") {
-        capacity = Math.floor(capacity * 1.5)
-      }
-      totalCapacity += capacity
-    }
-
-    let tribeBonus = null
-    if (defenderTribe === "GAULS") {
-      tribeBonus = "1.5x capacity bonus"
-    }
+    const crannies = village.buildings as Pick<Building, "level">[]
+    const totalCapacity = await this.computeProtection(crannies, village.player?.gameTribe ?? null)
 
     return {
-      crannyCount,
+      crannyCount: crannies.length,
       totalCapacity,
-      tribeBonus,
+      tribeBonus: village.player?.gameTribe === "GAULS" ? "1.5x capacity bonus" : null,
     }
   }
 
-  /**
-   * Get maximum number of crannies allowed per village
-   * In Travian, there's no limit to how many crannies you can build
-   */
   static getMaxCrannies(): number {
-    return Infinity // No limit
+    return Infinity
   }
 
-  /**
-   * Check if a village can build more crannies
-   */
-  static canBuildMoreCrannies(villageId: string): Promise<boolean> {
-    // Since there's no limit, always return true
-    // But we could add logic here for game balance if needed
+  static canBuildMoreCrannies(_villageId: string): Promise<boolean> {
     return Promise.resolve(true)
+  }
+
+  private static zeroProtection() {
+    return RESOURCE_KEYS.reduce(
+      (acc, key) => {
+        acc[key] = 0
+        return acc
+      },
+      {} as Record<(typeof RESOURCE_KEYS)[number], number>,
+    )
+  }
+
+  private static async ensureCurveLoaded() {
+    if (this.curveCache) return
+    const entries = await prisma.crannyProtectionCurve.findMany()
+    this.curveCache = new Map()
+    for (const entry of entries) {
+      this.curveCache.set(entry.level, {
+        protectedPerResource: entry.protectedPerResource,
+        gaulBonusMultiplier: entry.gaulBonusMultiplier,
+        teutonPenaltyPercent: entry.teutonPenaltyPercent,
+      })
+    }
+  }
+
+  private static async computeProtection(crannies: Pick<Building, "level">[], defenderTribe: GameTribe | null, attackerTribe?: GameTribe) {
+    await this.ensureCurveLoaded()
+    let total = 0
+
+    for (const cranny of crannies) {
+      const entry = this.curveCache?.get(cranny.level) ?? null
+      let capacity = entry?.protectedPerResource ?? this.calculateCrannyCapacity(cranny.level)
+      capacity = this.applyDefenderBonus(capacity, defenderTribe, entry)
+      capacity = this.applyAttackerPenalty(capacity, attackerTribe, entry)
+      total += capacity
+    }
+
+    return total
+  }
+
+  private static applyDefenderBonus(base: number, defenderTribe: GameTribe | null, entry: CurveEntry | null) {
+    if (defenderTribe === "GAULS") {
+      const multiplier = entry?.gaulBonusMultiplier ?? 1.5
+      return Math.floor(base * multiplier)
+    }
+    return base
+  }
+
+  private static applyAttackerPenalty(base: number, attackerTribe: GameTribe | undefined, entry: CurveEntry | null) {
+    if (attackerTribe === "TEUTONS") {
+      const penetration = Math.min(0.95, Math.max(0, entry?.teutonPenaltyPercent ?? 0.8))
+      return Math.floor(base * (1 - penetration))
+    }
+    return base
   }
 }

@@ -1,51 +1,29 @@
-import type { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { authenticateRequest } from "../middleware"
 import { prisma } from "@/lib/db"
-import { verify } from "jsonwebtoken"
 
-export async function authenticateAdmin(req: NextRequest): Promise<{ userId: string; adminId: string; admin: any } | null> {
+export async function adminAuthMiddleware(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization")
-    if (!authHeader?.startsWith("Bearer ")) {
-      return null
+    const auth = await authenticateRequest(req)
+    if (!auth || !auth.playerId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const token = authHeader.slice(7)
-    const decoded = verify(token, process.env.JWT_SECRET || "secret") as any
-
-    // Find user and check if they have admin role
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      include: { admin: true },
+    // Check if user is admin
+    const admin = await prisma.admin.findUnique({
+      where: { userId: auth.userId }
     })
 
-    if (!user || !user.admin) {
-      return null
+    if (!admin) {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
     }
 
-    return {
-      userId: user.id,
-      adminId: user.admin.id,
-      admin: user.admin,
-    }
+    return null // Continue to next handler
   } catch (error) {
-    return null
+    return NextResponse.json({ error: "Authentication error" }, { status: 500 })
   }
 }
 
-export async function requireAdminAuth(handler: (req: NextRequest, context: { admin: any }) => Promise<NextResponse>) {
-  return async (req: NextRequest) => {
-    const adminAuth = await authenticateAdmin(req)
-
-    if (!adminAuth) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "Admin authentication required"
-      }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" }
-      })
-    }
-
-    return handler(req, { admin: adminAuth })
-  }
-}
+// Alias for backward compatibility
+export const authenticateAdmin = adminAuthMiddleware
+export const requireAdmin = adminAuthMiddleware

@@ -175,3 +175,4 @@ function getCraftingDuration(itemRarity: ItemRarity, materialRarity: ItemRarity)
   return Math.ceil(baseDuration[itemRarity] * rarityMultiplier[materialRarity])
 }
 
+

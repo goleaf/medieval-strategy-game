@@ -17,14 +17,15 @@ interface NavbarProps {
 export function Navbar({ villages, currentVillageId, onVillageChange, notificationCount = 0, playerId }: NavbarProps) {
   const [showCentralOverview, setShowCentralOverview] = useState(false)
   const [showSitterLogin, setShowSitterLogin] = useState(false)
+  const [selectedVillageId, setSelectedVillageId] = useState(currentVillageId || '')
   const currentVillage = villages.find((v) => v.id === currentVillageId)
-  
+
   // Calculate farm capacity from FARM building level
   const farmBuilding = currentVillage?.buildings.find((b) => b.type === "FARM")
   const farmLevel = farmBuilding?.level || 0
   const farmCapacity = farmLevel * 240 + 240 // Base 240 + 240 per level
   const farmUsed = currentVillage?.population || 0
-  
+
   // Calculate warehouse capacity from WAREHOUSE building level
   const warehouseBuilding = currentVillage?.buildings.find((b) => b.type === "WAREHOUSE")
   const warehouseLevel = warehouseBuilding?.level || 0
@@ -32,37 +33,23 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
   const warehouseUsed = (currentVillage?.wood || 0) + (currentVillage?.stone || 0) + (currentVillage?.iron || 0)
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      (window as any).__navbarVillageChangeHandler = onVillageChange
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        delete (window as any).__navbarVillageChangeHandler
-      }
-    }
-  }, [onVillageChange])
+    setSelectedVillageId(currentVillageId || '')
+  }, [currentVillageId])
   
   return (
     <nav className="w-full border-b border-border bg-card">
       <div className="w-full p-2 space-y-2">
         {/* Village Switcher */}
         <div className="flex gap-2 w-full">
-          <div
-            x-data={`{
-              selectedVillageId: '${currentVillageId || ''}',
-              handleChange() {
-                if (window.__navbarVillageChangeHandler) {
-                  window.__navbarVillageChangeHandler(this.selectedVillageId);
-                }
-              }
-            }`}
-            className="flex-1"
-          >
+          <div className="flex-1">
             <label htmlFor="village-select" className="sr-only">Select Village</label>
             <select
               id="village-select"
-              x-model="selectedVillageId"
-              x-on:change="handleChange()"
+              value={selectedVillageId}
+              onChange={(e) => {
+                setSelectedVillageId(e.target.value)
+                onVillageChange(e.target.value)
+              }}
               className="w-full p-2 border border-border rounded bg-background text-foreground"
             >
               {villages.map((village) => (

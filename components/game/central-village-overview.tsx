@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -124,11 +124,7 @@ export function CentralVillageOverview({ playerId, onVillageSelect }: CentralVil
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
 
-  useEffect(() => {
-    fetchOverviewData()
-  }, [playerId])
-
-  const fetchOverviewData = async () => {
+  const fetchOverviewData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -158,7 +154,11 @@ export function CentralVillageOverview({ playerId, onVillageSelect }: CentralVil
     } finally {
       setLoading(false)
     }
-  }
+  }, [playerId])
+
+  useEffect(() => {
+    fetchOverviewData()
+  }, [fetchOverviewData])
 
   const formatTime = (minutes: number | null): string => {
     if (!minutes) return "N/A"

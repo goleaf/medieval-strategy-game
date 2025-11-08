@@ -1,10 +1,13 @@
 import { prisma } from "@/lib/db"
 import { VillageService } from "@/lib/game-services/village-service"
+import { ResourceProductionService } from "@/lib/game-services/resource-production-service"
 import { CombatService } from "@/lib/game-services/combat-service"
 import { BuildingService } from "@/lib/game-services/building-service"
 import { TroopService } from "@/lib/game-services/troop-service"
 import { ReinforcementService } from "@/lib/game-services/reinforcement-service"
 import { MovementService } from "@/lib/game-services/movement-service"
+import { ShipmentService } from "@/lib/game-services/shipment-service"
+import { TradeRouteService } from "@/lib/game-services/trade-route-service"
 
 /**
  * Main game tick job
@@ -23,15 +26,30 @@ export async function processGameTick() {
 
     const now = new Date()
 
-    // Process production ticks for all villages
+    // Process logistics (shipments + trade routes) before resource ticks
+    console.log("[v0] Resolving shipments and trade routes")
+    try {
+      await ShipmentService.processDueArrivals(now)
+      await ShipmentService.processDueReturns(now)
+      await TradeRouteService.runDueRoutes(now)
+    } catch (logisticsError) {
+      console.error("[v0] Logistics processing error:", logisticsError)
+    }
+
+    // Process legacy + new resource production ticks for all villages
     const villages = await prisma.village.findMany({
       where: { player: { isDeleted: false } },
     })
 
-    console.log(`[v0] Processing production for ${villages.length} villages`)
+    console.log(`[v0] Processing legacy production for ${villages.length} villages`)
     for (const village of villages) {
       await VillageService.processProductionTick(village.id)
     }
+
+    console.log("[v0] Processing Travian-style resource system")
+    await ResourceProductionService.processAllVillages({
+      tickMinutes: config.tickIntervalMinutes,
+    })
 
     // Process completed buildings
     const completedBuildings = await prisma.building.findMany({

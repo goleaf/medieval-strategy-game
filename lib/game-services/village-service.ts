@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db"
 import { VillageDestructionService } from "./village-destruction-service"
 import { createTasksForVillage } from "./task-service"
-import type { Village } from "@prisma/client"
+import { CapacityService } from "./capacity-service"
+import { StorageService } from "./storage-service"
+import type { StorageLedgerReason, Village } from "@prisma/client"
 
 export class VillageService {
   /**
@@ -128,56 +130,22 @@ export class VillageService {
     gold: number
     food: number
   }> {
-    const village = await prisma.village.findUnique({
-      where: { id: villageId },
-      include: { buildings: true },
-    })
-
-    if (!village) {
-      return { wood: 10000, stone: 10000, iron: 10000, gold: 10000, food: 10000 }
-    }
-
-    const warehouse = village.buildings.find((b) => b.type === "WAREHOUSE")
-    const granary = village.buildings.find((b) => b.type === "GRANARY")
-
-    const warehouseLevel = warehouse?.level || 0
-    const granaryLevel = granary?.level || 0
-
-    // Base 10000 + 10000 per level for warehouse (wood, stone, iron, gold)
-    const materialCapacity = 10000 + warehouseLevel * 10000
-    // Base 10000 + 10000 per level for granary (food)
-    const foodCapacity = 10000 + granaryLevel * 10000
-
-    return {
-      wood: materialCapacity,
-      stone: materialCapacity,
-      iron: materialCapacity,
-      gold: materialCapacity,
-      food: foodCapacity,
-    }
+    const { totals } = await CapacityService.getVillageCapacitySummary(villageId)
+    return totals
   }
 
   /**
    * Check if storage is >95% full and should show upgrade hint
    */
   static async shouldShowUpgradeHint(villageId: string): Promise<boolean> {
-    const village = await prisma.village.findUnique({
-      where: { id: villageId },
+    const snapshot = await StorageService.getSnapshot(villageId)
+    if (!snapshot) return false
+
+    return CapacityService.resourceKeys.some((key) => {
+      const capacity = snapshot.capacities[key]
+      if (capacity <= 0) return false
+      return snapshot.resources[key] / capacity > 0.95
     })
-
-    if (!village) return false
-
-    const capacities = await this.getStorageCapacity(villageId)
-    const usage = {
-      wood: village.wood / capacities.wood,
-      stone: village.stone / capacities.stone,
-      iron: village.iron / capacities.iron,
-      gold: village.gold / capacities.gold,
-      food: village.food / capacities.food,
-    }
-
-    // Show hint if any resource is >95% full
-    return Object.values(usage).some((ratio) => ratio > 0.95)
   }
 
   /**
@@ -224,22 +192,25 @@ export class VillageService {
       food: Math.floor(baseProduction.food * (1 + heroBonus)),
     }
 
-    // Get storage capacities
-    const capacities = await this.getStorageCapacity(villageId)
+    const now = new Date()
+    await prisma.$transaction(async (tx) => {
+      await StorageService.addResources(
+        village.id,
+        production,
+        StorageLedgerReason.PRODUCTION,
+        {
+          client: tx,
+          metadata: {
+            loyaltyMultiplier,
+            heroBonus,
+          },
+        },
+      )
 
-    // Clamp resources to storage capacity
-    const updates = {
-      wood: Math.min(village.wood + production.wood, capacities.wood),
-      stone: Math.min(village.stone + production.stone, capacities.stone),
-      iron: Math.min(village.iron + production.iron, capacities.iron),
-      gold: Math.min(village.gold + production.gold, capacities.gold),
-      food: Math.min(village.food + production.food, capacities.food),
-      lastTickAt: new Date(),
-    }
-
-    await prisma.village.update({
-      where: { id: villageId },
-      data: updates,
+      await tx.village.update({
+        where: { id: villageId },
+        data: { lastTickAt: now },
+      })
     })
   }
 

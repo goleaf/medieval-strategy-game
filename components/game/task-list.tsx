@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,11 +36,7 @@ export function TaskList({ villageId, category = 'VILLAGE_SPECIFIC' }: TaskListP
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
-  useEffect(() => {
-    fetchTasks();
-  }, [villageId, category]);
-
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       if (villageId) params.append('villageId', villageId);
@@ -57,7 +53,11 @@ export function TaskList({ villageId, category = 'VILLAGE_SPECIFIC' }: TaskListP
     } finally {
       setLoading(false);
     }
-  };
+  }, [villageId, category]);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
 
   const updateTaskProgress = async () => {
     setUpdating(true);

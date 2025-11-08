@@ -25,6 +25,7 @@ interface Village {
 interface NpcMerchantProps {
   villages: Village[]
   onResourcesUpdated: () => void
+  readOnly?: boolean
 }
 
 const RESOURCE_TYPES = [
@@ -37,7 +38,7 @@ const RESOURCE_TYPES = [
 
 const NPC_MERCHANT_GOLD_COST = 3
 
-export function NpcMerchant({ villages, onResourcesUpdated }: NpcMerchantProps) {
+export function NpcMerchant({ villages, onResourcesUpdated, readOnly = false }: NpcMerchantProps) {
   const [selectedVillage, setSelectedVillage] = useState<Village | null>(null)
   const [fromResource, setFromResource] = useState<string>("")
   const [toResource, setToResource] = useState<string>("")
@@ -53,6 +54,10 @@ export function NpcMerchant({ villages, onResourcesUpdated }: NpcMerchantProps) 
   }, [fromResource, toResource, amount, selectedVillage])
 
   const handleExchange = async () => {
+    if (readOnly) {
+      return
+    }
+
     if (!selectedVillage || !fromResource || !toResource || !amount) {
       setError("Please fill in all fields")
       return
@@ -116,6 +121,10 @@ export function NpcMerchant({ villages, onResourcesUpdated }: NpcMerchantProps) 
   }
 
   const handleBalanceResources = async () => {
+    if (readOnly) {
+      return
+    }
+
     if (!selectedVillage) {
       setError("Please select a village")
       return
@@ -157,6 +166,8 @@ export function NpcMerchant({ villages, onResourcesUpdated }: NpcMerchantProps) 
   const maxExchangeAmount = selectedVillage && fromResource
     ? selectedVillage[fromResource.toLowerCase() as keyof Village] as number
     : 0
+  const exchangeDisabled = loading || readOnly || !selectedVillage || !fromResource || !toResource || !amount
+  const balanceDisabled = loading || readOnly || !selectedVillage
 
   return (
     <div className="space-y-6">
@@ -169,6 +180,11 @@ export function NpcMerchant({ villages, onResourcesUpdated }: NpcMerchantProps) 
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {readOnly && (
+            <div className="rounded border border-dashed border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Demo villages are shown for preview purposes. NPC Merchant actions are disabled until you connect to a live account.
+            </div>
+          )}
           {/* Village Selection */}
           <div>
             <Label htmlFor="village">Select Village</Label>
@@ -274,7 +290,7 @@ export function NpcMerchant({ villages, onResourcesUpdated }: NpcMerchantProps) 
               <div className="flex gap-2">
                 <Button
                   onClick={handleExchange}
-                  disabled={loading || !selectedVillage || !fromResource || !toResource || !amount}
+                  disabled={exchangeDisabled}
                   className="flex-1"
                 >
                   {loading ? <LoadingSpinner /> : "Exchange Resources"}
@@ -283,7 +299,7 @@ export function NpcMerchant({ villages, onResourcesUpdated }: NpcMerchantProps) 
                 <Button
                   variant="outline"
                   onClick={handleBalanceResources}
-                  disabled={loading || !selectedVillage}
+                  disabled={balanceDisabled}
                 >
                   {loading ? <LoadingSpinner /> : "Balance Resources"}
                 </Button>

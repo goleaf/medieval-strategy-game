@@ -14,13 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Map tools (spawn barbarians, relocate tiles, wipe empty villages) ✅
 - Error logging and monitoring system ✅
 - World configuration management ✅
-- **Database-backed unit balance system** ✅
+- **Database-backed unit balance system with TroopBalance model, transaction-safe updates, and live editor** ✅
 - **Map visualization dashboard with interactive world overview** ✅
-- **Admin notifications system with severity levels and types** ✅
-- **Player analytics and reporting dashboard with comprehensive insights** ✅
-- **WebSocket real-time statistics system with live updates** ✅
-- **System maintenance and server health monitoring** ✅
-- **Admin messaging system for direct player communication** ✅
+- **Admin notifications system with severity levels, types, and read/unread tracking** ✅
+- **Player analytics and reporting dashboard backed by a dedicated analytics API** ✅
+- **WebSocket real-time statistics system with dedicated server and React hook** ✅
+- **System maintenance and server health monitoring backed by Maintenance models and cleanup API** ✅
+- **Admin messaging system for direct player communication using AdminMessage models** ✅
 - **Advanced player search with powerful filtering capabilities** ✅
 - Real-time statistics dashboard ✅
 - Admin authentication system with JWT tokens ✅
@@ -34,44 +34,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Browser testing and verification of all admin features ✅
 - Proper file organization and structure ✅
 
-### Technical Improvements
-- Fixed admin authentication middleware implementation
-- Resolved JWT token authentication issues
-- Updated all admin API routes with proper authentication
-- Enhanced error handling and response consistency
-- Implemented real-time action tracking and statistics
-- Added comprehensive audit logging for security
-- Created modular admin component architecture
-- Established consistent API response formats
-- **Added TroopBalance database model for persistent unit configuration**
-- **Implemented transaction-safe unit balance updates**
-- **Added live unit balance editing interface**
-- **Enhanced validation system for unit statistics**
-- **Created AdminNotification system with severity-based alerts**
-- **Built comprehensive map visualization with village and barbarian data**
-- **Added notification management with read/unread status tracking**
-- **Implemented WebSocket server for real-time statistics broadcasting**
-- **Created player analytics API with comprehensive game insights**
-- **Added React WebSocket hook for real-time admin dashboard updates**
-- **Implemented connection health monitoring and automatic reconnection**
-- **Added Maintenance and AdminMessage database models**
-- **Created system maintenance API with cleanup operations**
-- **Implemented advanced player search with multi-criteria filtering**
-- **Added admin messaging system with player communication**
-- **Enhanced admin dashboard with 5 additional feature tabs**
-
 ### Changed
 - Reorganized project structure with proper documentation
 - Moved admin features documentation to `/docs/admin/`
 - Updated file organization for better maintainability
 - Enhanced UI components with shadcn/ui
-
-### Technical Improvements
+- Updated all admin API routes with proper authentication
+- Hardened error handling and response consistency across the stack
+- Created modular admin component architecture
+- Established consistent API response formats
+- Implemented real-time action tracking and statistics processing
+- Expanded audit logging coverage for security and compliance
+- Enhanced validation system for unit statistics
+- Implemented connection health monitoring and automatic reconnection
+- Enhanced admin dashboard with 5 additional feature tabs
 - Added TypeScript interfaces for better type safety
-- Implemented proper error handling throughout the application
-- Added audit logging for all admin actions
 - Enhanced input validation and security measures
 - Improved database query optimization
+
+### Fixed
+- Fixed admin authentication middleware implementation
+- Resolved JWT token authentication issues
 
 ## [1.0.0] - 2025-01-04
 

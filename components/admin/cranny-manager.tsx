@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -53,7 +53,7 @@ export function CrannyManager() {
 
   const { toast } = useToast()
 
-  const fetchCrannies = async () => {
+  const fetchCrannies = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -77,11 +77,11 @@ export function CrannyManager() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filters, toast])
 
   useEffect(() => {
     fetchCrannies()
-  }, [filters])
+  }, [fetchCrannies])
 
   const updateCrannyLevel = async (buildingId: string, newLevel: number, isBulk = false) => {
     try {

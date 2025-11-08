@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -26,12 +26,7 @@ export function RallyPoint({ villageId, isCapital, troopEvasionEnabled, onEvasio
   const [loading, setLoading] = useState(false)
   const [hasGoldClub, setHasGoldClub] = useState(false) // TODO: Check from player data
 
-  useEffect(() => {
-    fetchIncomingAttacks()
-    checkGoldClubStatus()
-  }, [villageId])
-
-  const fetchIncomingAttacks = async () => {
+  const fetchIncomingAttacks = useCallback(async () => {
     try {
       const res = await fetch(`/api/villages/${villageId}/attacks?type=incoming`)
       if (res.ok) {
@@ -41,12 +36,17 @@ export function RallyPoint({ villageId, isCapital, troopEvasionEnabled, onEvasio
     } catch (error) {
       console.error("Failed to fetch incoming attacks:", error)
     }
-  }
+  }, [villageId])
 
-  const checkGoldClubStatus = async () => {
+  const checkGoldClubStatus = useCallback(async () => {
     // TODO: Implement gold club check
     setHasGoldClub(true) // For now, assume all players have gold club
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchIncomingAttacks()
+    checkGoldClubStatus()
+  }, [fetchIncomingAttacks, checkGoldClubStatus])
 
   const handleEvasionToggle = async (checked: boolean) => {
     setLoading(true)

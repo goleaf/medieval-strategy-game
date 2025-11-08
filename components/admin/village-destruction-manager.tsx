@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -59,7 +59,7 @@ export function VillageDestructionManager() {
   const [actionLoading, setActionLoading] = useState(false)
   const { toast } = useToast()
 
-  const loadVillages = async () => {
+  const loadVillages = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -90,11 +90,11 @@ export function VillageDestructionManager() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, statusFilter, searchTerm, toast])
 
   useEffect(() => {
     loadVillages()
-  }, [currentPage, statusFilter, searchTerm])
+  }, [loadVillages])
 
   const handleDestroyVillage = async () => {
     if (!selectedVillage) return

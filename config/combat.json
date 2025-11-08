@@ -1,0 +1,38 @@
+{
+  "version": "2024-11-combat-alpha",
+  "notes": [
+    "Travian-style combat resolver defaults",
+    "Values can be overridden per-world via DB or env wiring"
+  ],
+  "curvature_k": 1.7,
+  "raid_lethality_factor": 0.6,
+  "size_floor": 50,
+  "smithy": {
+    "attack_pct_per_level": 1.5,
+    "defense_pct_per_level": 1.5
+  },
+  "morale": {
+    "exponent": 0.2,
+    "min_def_mult": 1.0,
+    "max_def_mult": 1.5
+  },
+  "luck": {
+    "range": 0.05,
+    "distribution": "triangular_zero_sum"
+  },
+  "night": {
+    "enabled": true,
+    "def_mult": 1.25,
+    "hours": [0, 6]
+  },
+  "walls": {
+    "city_wall": { "def_pct_per_level": 4.0 },
+    "palisade": { "def_pct_per_level": 2.5 },
+    "earth_wall": { "def_pct_per_level": 1.67 }
+  },
+  "rounding": {
+    "mode": "bankers",
+    "loser_min_loss": 1.0,
+    "winner_min_loss": 0.0
+  }
+}

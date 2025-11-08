@@ -1,0 +1,180 @@
+{
+  "globals": {
+    "serverSpeed": 1,
+    "raidLethalityFactor": 0.6,
+    "lossCurvature": {
+      "attack": 1.6,
+      "siege": 1.6,
+      "raid": 1.3
+    },
+    "smithy": {
+      "perLevelPct": 1.5,
+      "maxLevel": 20
+    },
+    "wallTypes": {
+      "city_wall": { "defPctPerLevel": 4, "ramResistance": 0.9 },
+      "palisade": { "defPctPerLevel": 2.5, "ramResistance": 1 },
+      "earth_wall": { "defPctPerLevel": 1.67, "ramResistance": 1.2 }
+    },
+    "buildingSpeedMultipliers": {
+      "barracks": [0, 1, 1.13, 1.28, 1.45, 1.65, 1.87, 2.12, 2.4, 2.7, 3.04],
+      "stable": [0, 1, 1.11, 1.23, 1.37, 1.53, 1.7, 1.89, 2.11, 2.35, 2.62],
+      "workshop": [0, 1, 1.09, 1.19, 1.31, 1.45, 1.6, 1.77, 1.96, 2.17, 2.4],
+      "residence": [0, 1, 1.05, 1.12, 1.2, 1.29, 1.39, 1.5, 1.62, 1.75, 1.9],
+      "palace": [0, 1, 1.05, 1.11, 1.18, 1.26, 1.35, 1.45, 1.56, 1.68, 1.81]
+    },
+    "culturePointsPerVillage": 3,
+    "cranny": {
+      "basePerLevel": 200,
+      "tribeMultiplier": {
+        "GAULS": 2,
+        "DEFAULT": 1
+      },
+      "attackerPenetrationPct": 100
+    }
+  },
+  "training": {
+    "queues": {
+      "barracks": ["inf", "scout"],
+      "stable": ["cav"],
+      "workshop": ["ram", "catapult"],
+      "residence": ["settler", "admin"],
+      "palace": ["settler", "admin"]
+    },
+    "costPolicy": "deduct_on_queue",
+    "starvationPolicy": "oldest_first"
+  },
+  "missions": {
+    "combat": ["attack", "raid", "siege", "admin_attack"],
+    "nonCombat": ["scout", "reinforce", "return", "settler_found"],
+    "raidLethalityFactor": 0.6,
+    "defaultLootOrder": ["wood", "clay", "iron", "crop"]
+  },
+  "siege": {
+    "ram": {
+      "techPct": 3,
+      "alpha": 1.2,
+      "beta": 8,
+      "gamma": 1.5,
+      "raidScaling": 0.3
+    },
+    "catapult": {
+      "techPct": 3,
+      "shotDivisor": 1,
+      "levelDivisor": 8,
+      "minShots": 1
+    }
+  },
+  "settlement": {
+    "settlersPerVillage": 3,
+    "requiredCulturePoints": 2000,
+    "loyaltyMax": 100,
+    "loyaltyRegenPerHour": 1,
+    "foundingResourceCost": {
+      "wood": 750,
+      "clay": 750,
+      "iron": 750,
+      "crop": 750
+    }
+  },
+  "administration": {
+    "loyaltyHit": {
+      "min": 18,
+      "max": 30
+    },
+    "blockedFloor": 1,
+    "captureFloor": 25
+  },
+  "loot": {
+    "fallbackPriority": ["wood", "clay", "iron", "crop"],
+    "crannyTolerance": 0
+  },
+  "units": {
+    "inf_sword": {
+      "role": "inf",
+      "attack": 65,
+      "defInf": 35,
+      "defCav": 20,
+      "speedTilesPerHour": 6,
+      "carry": 45,
+      "upkeepCropPerHour": 1,
+      "popCost": 1,
+      "trainTimeSec": 190,
+      "cost": { "wood": 140, "clay": 150, "iron": 185, "crop": 60 },
+      "buildingReq": { "barracks": 1 },
+      "researchReq": { "academy": 2 }
+    },
+    "cav_light": {
+      "role": "cav",
+      "attack": 90,
+      "defInf": 25,
+      "defCav": 40,
+      "speedTilesPerHour": 19,
+      "carry": 75,
+      "upkeepCropPerHour": 2,
+      "popCost": 2,
+      "trainTimeSec": 420,
+      "cost": { "wood": 350, "clay": 400, "iron": 210, "crop": 80 },
+      "buildingReq": { "stable": 1 },
+      "researchReq": { "academy": 3 }
+    },
+    "ram": {
+      "role": "ram",
+      "attack": 65,
+      "defInf": 30,
+      "defCav": 10,
+      "speedTilesPerHour": 7,
+      "carry": 0,
+      "upkeepCropPerHour": 3,
+      "popCost": 3,
+      "trainTimeSec": 900,
+      "cost": { "wood": 500, "clay": 620, "iron": 675, "crop": 155 },
+      "buildingReq": { "workshop": 1 },
+      "researchReq": {}
+    },
+    "catapult": {
+      "role": "catapult",
+      "attack": 50,
+      "defInf": 60,
+      "defCav": 10,
+      "speedTilesPerHour": 6,
+      "carry": 0,
+      "upkeepCropPerHour": 6,
+      "popCost": 6,
+      "trainTimeSec": 1200,
+      "cost": { "wood": 900, "clay": 1200, "iron": 1200, "crop": 200 },
+      "buildingReq": { "workshop": 5 },
+      "researchReq": { "academy": 5 }
+    },
+    "settler": {
+      "role": "settler",
+      "attack": 10,
+      "defInf": 10,
+      "defCav": 10,
+      "speedTilesPerHour": 5,
+      "carry": 3000,
+      "upkeepCropPerHour": 1,
+      "popCost": 1,
+      "trainTimeSec": 1800,
+      "cost": { "wood": 4500, "clay": 4200, "iron": 5100, "crop": 1200 },
+      "buildingReq": { "residence": 10 },
+      "researchReq": {}
+    },
+    "admin": {
+      "role": "admin",
+      "attack": 45,
+      "defInf": 50,
+      "defCav": 50,
+      "speedTilesPerHour": 9,
+      "carry": 0,
+      "upkeepCropPerHour": 5,
+      "popCost": 5,
+      "trainTimeSec": 1200,
+      "cost": { "wood": 30750, "clay": 27200, "iron": 45000, "crop": 37500 },
+      "buildingReq": { "residence": 20 },
+      "researchReq": { "academy": 10 },
+      "loyaltyHit": { "min": 18, "max": 30 },
+      "defAdminMult": 1
+    }
+  }
+}

@@ -1,13 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { useAdminWebSocket } from "@/lib/hooks/use-admin-websocket"
 import { NpcMerchantAdmin } from "@/components/admin/npc-merchant-admin"
 import { CancelStats } from "@/components/admin/cancel-stats"
 import { GameWorldManager } from "@/components/admin/game-world-manager"
@@ -34,12 +33,7 @@ export default function AdminDashboard() {
   const [errorLogs, setErrorLogs] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState("stats")
   const [loading, setLoading] = useState(false)
-
-  // WebSocket for real-time updates
-  const { isConnected: wsConnected, stats: wsStats, connectionError: wsError } = useAdminWebSocket({
-    enabled: true,
-    url: 'ws://localhost:8080'
-  })
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [editingWorldConfig, setEditingWorldConfig] = useState(false)
   const [worldConfigForm, setWorldConfigForm] = useState<any>({})
   const [mapToolsForm, setMapToolsForm] = useState({
@@ -72,7 +66,7 @@ export default function AdminDashboard() {
     isDeleted: ''
   })
 
-  const fetchData = async (tab: string) => {
+  const fetchData = useCallback(async (tab: string) => {
     try {
       setLoading(true)
       if (tab === "stats") {
@@ -80,6 +74,7 @@ export default function AdminDashboard() {
         const data = await res.json()
         if (data.success && data.data) {
           setStats(data.data)
+          setErrorLogs(data.data.errorLogs || [])
         }
       } else if (tab === "players") {
         const res = await fetch("/api/admin/players")
@@ -193,22 +188,25 @@ export default function AdminDashboard() {
           setExportData(data.data)
         }
       } else if (tab === "errors") {
-        // Error logs are included in stats API
-        if (stats?.errorLogs) {
-          setErrorLogs(stats.errorLogs)
+        const res = await fetch("/api/admin/stats")
+        const data = await res.json()
+        if (data.success && data.data) {
+          setStats(data.data)
+          setErrorLogs(data.data.errorLogs || [])
         }
       }
     } catch (error) {
       console.error("Failed to fetch admin data:", error)
     } finally {
       setLoading(false)
+      setLastUpdated(new Date())
     }
-  }
+  }, [])
 
-  const switchTab = async (tab: string) => {
+  const switchTab = useCallback(async (tab: string) => {
     setActiveTab(tab)
     await fetchData(tab)
-  }
+  }, [fetchData])
 
   const handleEditWorldConfig = () => {
     setWorldConfigForm({
@@ -515,7 +513,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     switchTab("stats")
-  }, [])
+  }, [switchTab])
 
   // Handler functions for new features
   const handleMaintenanceAction = async (action: string) => {
@@ -648,15 +646,21 @@ export default function AdminDashboard() {
             ← Back to Game
           </Link>
           <h1 className="text-xl font-bold">⚙️ Admin Dashboard</h1>
-          <div className="flex items-center gap-2 text-sm">
-            <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-            <span className={wsConnected ? 'text-green-600' : 'text-red-600'}>
-              {wsConnected ? 'Live' : 'Offline'}
-            </span>
-            {wsError && (
-              <span className="text-red-500 text-xs max-w-32 truncate" title={wsError}>
-                ({wsError})
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchData(activeTab)}
+              disabled={loading}
+            >
+              {loading ? 'Refreshing...' : 'Refresh Data'}
+            </Button>
+            {lastUpdated ? (
+              <span className="text-xs">
+                Updated {lastUpdated.toLocaleTimeString()}
               </span>
+            ) : (
+              <span className="text-xs">Load a tab to fetch data</span>
             )}
           </div>
         </div>
@@ -796,8 +800,8 @@ export default function AdminDashboard() {
                   <TextTable
                     headers={["Metric", "Value"]}
                     rows={[
-                      ["Online Users", (wsStats?.online?.users ?? stats.onlineUsers)?.toString() || "0"],
-                      ["Online Players", (wsStats?.online?.players ?? stats.onlinePlayers)?.toString() || "0"],
+                      ["Online Users", stats?.onlineUsers?.toString() || "0"],
+                      ["Online Players", stats?.onlinePlayers?.toString() || "0"],
                       ["Total Players", stats.totalPlayers?.toString() || "0"],
                       ["Total Villages", stats.totalVillages?.toString() || "0"],
                       ["Active Attacks", stats.activeAttacks?.toString() || "0"],

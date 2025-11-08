@@ -38,16 +38,22 @@ export default function MapPage() {
         setLoading(true)
         const authToken = localStorage.getItem("authToken")
         const playerId = localStorage.getItem("playerId")
-
-        if (!authToken || !playerId) {
-          console.error("No auth token or player ID found")
-          return
+        const params = new URLSearchParams()
+        if (playerId) {
+          params.set("playerId", playerId)
         }
 
-        const res = await fetch("/api/world/map", {
-          headers: {
-            "Authorization": `Bearer ${authToken}`,
-          },
+        const headers: HeadersInit = {}
+        if (authToken) {
+          headers["Authorization"] = `Bearer ${authToken}`
+        }
+
+        const mapUrl = params.toString()
+          ? `/api/world/map?${params.toString()}`
+          : "/api/world/map"
+
+        const res = await fetch(mapUrl, {
+          headers,
         })
 
         const data = await res.json()

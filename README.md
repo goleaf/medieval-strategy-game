@@ -17,6 +17,7 @@ Key documentation areas:
 - **Village Management** - Build and expand multiple villages with resource production
 - **Military System** - Train 10+ troop types with unique stats and recruitment costs
 - **Combat Engine** - Real-time combat resolution with casualties and loot mechanics
+- **Troop System** - Config-driven units, missions, siege, and loyalty logic (see `docs/features/troop-system.md`)
 - **Marketplace** - Buy and sell resources with other players
 - **Tribes & Diplomacy** - Form alliances, declare wars, and collaborate with other players
 - **Pathfinding** - A* algorithm for realistic troop movement
