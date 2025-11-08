@@ -237,7 +237,7 @@ export async function GET() {
       data: SPEED_TEMPLATES,
     })
   } catch (error) {
-    console.error("[v0] Get speed templates error:", error)
+    console.error("Get speed templates error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -345,7 +345,7 @@ export async function POST(req: NextRequest) {
     }, { status: 200 })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
-    console.error("[v0] Apply speed template error:", error)
+    console.error("Apply speed template error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to apply speed template: " + errorMessage

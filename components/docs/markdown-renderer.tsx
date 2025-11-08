@@ -66,12 +66,10 @@ const markdownComponents: Components = {
 
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
-    <ReactMarkdown
-      className={clsx("space-y-4 leading-relaxed [&_strong]:font-semibold", className)}
-      remarkPlugins={[remarkGfm]}
-      components={markdownComponents}
-    >
-      {content}
-    </ReactMarkdown>
+    <div className={clsx("space-y-4 leading-relaxed [&_strong]:font-semibold", className)}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {content}
+      </ReactMarkdown>
+    </div>
   )
 }

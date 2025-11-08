@@ -926,7 +926,7 @@ export class CombatService {
       })
     }
 
-    console.log(`[v0] Troop evasion triggered for village ${village.name} (${villageId})`)
+    console.log(`Troop evasion triggered for village ${village.name} (${villageId})`)
   }
 
   /**
@@ -980,6 +980,6 @@ export class CombatService {
       })
     }
 
-    console.log(`[v0] Troops returned to village ${villageId} after evasion`)
+    console.log(`Troops returned to village ${villageId} after evasion`)
   }
 }

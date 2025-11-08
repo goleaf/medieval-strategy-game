@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       message: "Hero attributes updated successfully!"
     })
   } catch (error) {
-    console.error("[v0] Hero attributes POST error:", error)
+    console.error("Hero attributes POST error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

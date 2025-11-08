@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Game tick processed" }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Game tick error:", error)
+    console.error("Game tick error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

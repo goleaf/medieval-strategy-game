@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error("[v0] Get export types error:", error)
+    console.error("Get export types error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to retrieve export options"
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Export data failed", errorMessage)
-    console.error("[v0] Export data error:", error)
+    console.error("Export data error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to export data"

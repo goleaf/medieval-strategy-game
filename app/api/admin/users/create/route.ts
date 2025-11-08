@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       message: `User ${username} created successfully`,
     })
   } catch (error) {
-    console.error("[v0] Create user error:", error)
+    console.error("Create user error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to create user"

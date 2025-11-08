@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     return NextResponse.json({ success: true, message: "Resources adjusted" }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Adjust resources error:", error)
+    console.error("Adjust resources error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

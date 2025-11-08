@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
       })),
     }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Get players error:", error)
+    console.error("Get players error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

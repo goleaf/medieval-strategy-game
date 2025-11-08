@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error("[v0] Get content error:", error)
+    console.error("Get content error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to retrieve content"
@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Create content failed", errorMessage)
-    console.error("[v0] Create content error:", error)
+    console.error("Create content error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to create content"

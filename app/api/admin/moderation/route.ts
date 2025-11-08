@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error("[v0] Get moderation reports error:", error)
+    console.error("Get moderation reports error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to retrieve moderation reports"
@@ -220,7 +220,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Resolve moderation report failed", errorMessage)
-    console.error("[v0] Resolve moderation report error:", error)
+    console.error("Resolve moderation report error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to resolve moderation report"

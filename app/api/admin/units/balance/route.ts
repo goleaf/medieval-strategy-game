@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
       source: 'fallback'
     }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Get troop balances error:", error)
+    console.error("Get troop balances error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to retrieve troop balances"
@@ -256,7 +256,7 @@ export async function PUT(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Update troop balance failed", errorMessage)
-    console.error("[v0] Update troop balance error:", error)
+    console.error("Update troop balance error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to update troop balances"

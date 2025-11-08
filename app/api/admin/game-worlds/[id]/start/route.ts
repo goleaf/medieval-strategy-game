@@ -120,7 +120,7 @@ export async function POST(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Start game world failed", errorMessage)
-    console.error("[v0] Start game world error:", error)
+    console.error("Start game world error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to start game world"

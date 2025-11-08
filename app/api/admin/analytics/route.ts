@@ -249,7 +249,7 @@ export async function GET(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error("[v0] Analytics error:", error)
+    console.error("Analytics error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to retrieve analytics data"

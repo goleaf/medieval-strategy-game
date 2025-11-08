@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
       { status: 200 },
     )
   } catch (error) {
-    console.error("[v0] Get stats error:", error)
+    console.error("Get stats error:", error)
     trackError("Failed to get stats", String(error))
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

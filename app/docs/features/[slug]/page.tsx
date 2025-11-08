@@ -4,18 +4,13 @@ import { notFound } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 
 import { MarkdownRenderer } from "@/components/docs/markdown-renderer"
-import { getFeatureDoc, getFeatureDocSlugs } from "@/lib/docs/features"
+import { getFeatureDoc } from "@/lib/docs/features"
 
 const formatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
   month: "short",
   day: "numeric",
 })
-
-export async function generateStaticParams() {
-  const slugs = await getFeatureDocSlugs()
-  return slugs.map(slug => ({ slug }))
-}
 
 interface FeatureDocPageProps {
   params: {

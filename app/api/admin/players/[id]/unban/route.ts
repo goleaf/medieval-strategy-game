@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Unban player failed", errorMessage)
-    console.error("[v0] Unban player error:", error)
+    console.error("Unban player error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

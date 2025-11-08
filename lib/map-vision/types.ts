@@ -1,4 +1,8 @@
-import type { MapTileType } from "@prisma/client"
+import type {
+  MapTileType,
+  VisionSharingScope as PrismaVisionSharingScope,
+  VisionSourceType as PrismaVisionSourceType,
+} from "@prisma/client"
 
 export type Coordinate = {
   x: number
@@ -28,7 +32,23 @@ export enum FogState {
   FRESH = "FRESH",
 }
 
-export type AttributeFreshnessMap = Partial<Record<"owner" | "population" | "wall" | "oasis" | "special", string>>
+export type AttributeKey = "owner" | "population" | "wall" | "oasis" | "special"
+
+export interface AttributeFreshnessEntry<T = unknown> {
+  seenAt: string
+  value?: T
+  source?: string
+}
+
+export type AttributeFreshnessMap = Partial<Record<AttributeKey, AttributeFreshnessEntry>>
+
+export interface CoverageHit {
+  sourceId?: string
+  sourceType: VisionSourceType
+  sharingScope: VisionSharingScope
+  expiresAt?: string | null
+  sourceClass: string
+}
 
 export interface TileState {
   tileId?: string
@@ -43,17 +63,8 @@ export interface TileState {
   metadata?: Record<string, unknown>
 }
 
-export type VisionSourceType =
-  | "VILLAGE"
-  | "WATCHTOWER"
-  | "OASIS"
-  | "REINFORCEMENT"
-  | "PATROL"
-  | "PROBE"
-  | "BEACON"
-  | "HERO"
-
-export type VisionSharingScope = "PERSONAL" | "ALLIANCE" | "TREATY" | "WORLD"
+export type VisionSourceType = PrismaVisionSourceType
+export type VisionSharingScope = PrismaVisionSharingScope
 
 export interface VisionSourceInput {
   id?: string

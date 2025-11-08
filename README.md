@@ -5,6 +5,7 @@ A full-stack browser-based strategy game built with Next.js, Prisma, and SQLite.
 ## 📚 Documentation
 
 📖 **[Complete Documentation](./docs/README.md)** - Comprehensive guides for development, administration, and deployment
+🛠️ **[Contributor Guide](./AGENTS.md)** - Project structure, workflows, and coding standards for new contributors
 
 Key documentation areas:
 - **Admin Features**: Complete admin dashboard with player management, world configuration, and monitoring

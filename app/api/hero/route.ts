@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       }
     })
   } catch (error) {
-    console.error("[v0] Hero GET error:", error)
+    console.error("Hero GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
       message: "Hero created successfully!"
     })
   } catch (error) {
-    console.error("[v0] Hero POST error:", error)
+    console.error("Hero POST error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -62,7 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Ban player failed", errorMessage)
-    console.error("[v0] Ban player error:", error)
+    console.error("Ban player error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to ban player"

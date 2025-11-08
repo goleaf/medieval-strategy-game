@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db"
 import bcrypt from "bcryptjs"
 
 async function createAdmin() {
-  console.log("[v0] Creating admin user...")
+  console.log("Creating admin user...")
 
   try {
     // Check if admin user already exists
@@ -12,14 +12,14 @@ async function createAdmin() {
     })
 
     if (existingAdmin?.admin) {
-      console.log("[v0] Admin user already exists, updating password...")
+      console.log("Admin user already exists, updating password...")
       // Force update password
       const hashedPassword = await bcrypt.hash("admin123", 12)
       await prisma.user.update({
         where: { id: existingAdmin.id },
         data: { password: hashedPassword }
       })
-      console.log("[v0] Admin password updated")
+      console.log("Admin password updated")
       return
     }
 
@@ -40,7 +40,7 @@ async function createAdmin() {
           data: { password: hashedPassword },
           include: { admin: true }
         })
-        console.log(`[v0] Updated admin password`)
+        console.log(`Updated admin password`)
       }
     } else {
       user = await prisma.user.create({
@@ -63,15 +63,15 @@ async function createAdmin() {
           role: "SUPERADMIN",
         },
       })
-      console.log(`[v0] Created admin role`)
+      console.log(`Created admin role`)
     }
 
-    console.log(`[v0] Admin user ready: ${user.username}`)
-    console.log(`[v0] Admin ID: ${admin.id}`)
-    console.log(`[v0] Login credentials: admin / admin123`)
+    console.log(`Admin user ready: ${user.username}`)
+    console.log(`Admin ID: ${admin.id}`)
+    console.log(`Login credentials: admin / admin123`)
 
   } catch (error) {
-    console.error("[v0] Error creating admin:", error)
+    console.error("Error creating admin:", error)
   } finally {
     await prisma.$disconnect()
   }

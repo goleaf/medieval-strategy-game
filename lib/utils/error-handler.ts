@@ -30,7 +30,7 @@ export function handleGameError(error: unknown) {
     }
   }
 
-  console.error("[v0] Unexpected error:", error)
+  console.error("Unexpected error:", error)
   return {
     code: "INTERNAL_ERROR",
     message: "An unexpected error occurred",

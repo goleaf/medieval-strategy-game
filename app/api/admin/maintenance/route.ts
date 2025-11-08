@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error("[v0] Maintenance status error:", error)
+    console.error("Maintenance status error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to retrieve maintenance status"
@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Maintenance action failed", errorMessage)
-    console.error("[v0] Maintenance action error:", error)
+    console.error("Maintenance action error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to perform maintenance action"
@@ -268,7 +268,7 @@ async function performCleanup(adminId: string) {
     })
 
   } catch (error) {
-    console.error("[v0] Cleanup error:", error)
+    console.error("Cleanup error:", error)
     throw error
   }
 

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       message: `Hero leveled up to level ${updatedHero.level}!`
     })
   } catch (error) {
-    console.error("[v0] Hero level-up POST error:", error)
+    console.error("Hero level-up POST error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

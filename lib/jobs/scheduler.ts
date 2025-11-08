@@ -9,7 +9,7 @@ let inactivityAllowanceInterval: NodeJS.Timeout | null = null
  * Start the game scheduler
  */
 export async function startScheduler() {
-  console.log("[v0] Starting game scheduler...")
+  console.log("Starting game scheduler...")
 
   // Get tick interval from config (default 5 minutes)
   const { prisma } = await import("@/lib/db")
@@ -20,7 +20,7 @@ export async function startScheduler() {
   // Run game tick at configured interval
   gameTickInterval = setInterval(() => {
     processGameTick().catch((error) => {
-      console.error("[v0] Game tick error:", error)
+      console.error("Game tick error:", error)
     })
   }, tickIntervalMs)
 
@@ -28,7 +28,7 @@ export async function startScheduler() {
   barbarianSpawnInterval = setInterval(
     () => {
       spawnBarbainians().catch((error) => {
-        console.error("[v0] Barbarian spawn error:", error)
+        console.error("Barbarian spawn error:", error)
       })
     },
     5 * 60 * 1000,
@@ -38,7 +38,7 @@ export async function startScheduler() {
   inactivityAllowanceInterval = setInterval(
     () => {
       updateInactivityAllowance().catch((error) => {
-        console.error("[v0] Inactivity allowance update error:", error)
+        console.error("Inactivity allowance update error:", error)
       })
     },
     24 * 60 * 60 * 1000,
@@ -47,7 +47,7 @@ export async function startScheduler() {
   // Run once immediately
   processGameTick().catch(console.error)
 
-  console.log(`[v0] Game scheduler started (tick interval: ${tickIntervalMinutes} minutes)`)
+  console.log(`Game scheduler started (tick interval: ${tickIntervalMinutes} minutes)`)
 }
 
 /**
@@ -57,5 +57,5 @@ export function stopScheduler() {
   if (gameTickInterval) clearInterval(gameTickInterval)
   if (barbarianSpawnInterval) clearInterval(barbarianSpawnInterval)
   if (inactivityAllowanceInterval) clearInterval(inactivityAllowanceInterval)
-  console.log("[v0] Game scheduler stopped")
+  console.log("Game scheduler stopped")
 }

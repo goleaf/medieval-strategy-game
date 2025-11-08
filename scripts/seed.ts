@@ -1,94 +1,173 @@
+import "dotenv/config"
 import { prisma } from "@/lib/db"
+import { ensureDemoEnvironment } from "@/lib/setup/demo-data"
+import { ProtectionService } from "@/lib/game-services/protection-service"
+import { hash } from "bcryptjs"
+import type { Continent, Player, Village } from "@prisma/client"
 
-async function main() {
-  console.log("[v0] Starting database seed...")
+const SAMPLE_PLAYER_COUNT = Number(process.env.SEED_PLAYER_COUNT ?? 5)
+const DEFAULT_PASSWORD = process.env.SEED_PLAYER_PASSWORD ?? "pass123"
 
-  // Create world config
-  const worldConfig = await prisma.worldConfig.create({
-    data: {
-      worldName: "Medieval World",
-      maxX: 200,
-      maxY: 200,
-      speed: 1,
-      isRunning: true,
-      tickIntervalMinutes: 5,
-      constructionQueueLimit: 3,
-      unitSpeed: 1.0,
-      nightBonusMultiplier: 1.2,
-      beginnerProtectionHours: 72,
-      beginnerProtectionEnabled: true,
-    },
+const occupiedCoordinates = new Set<string>()
+
+function coordinateKey(x: number, y: number) {
+  return `${x}:${y}`
+}
+
+async function bootstrapOccupiedCoordinates() {
+  const existingVillages = await prisma.village.findMany({
+    select: { x: true, y: true },
   })
 
-  console.log("[v0] Created world config:", worldConfig.id)
+  for (const { x, y } of existingVillages) {
+    occupiedCoordinates.add(coordinateKey(x, y))
+  }
+}
 
-  // Create continents
-  const continents = []
-  for (let i = 0; i < 4; i++) {
-    for (let j = 0; j < 4; j++) {
-      const continent = await prisma.continent.create({
-        data: {
-          name: `Continent-${i}-${j}`,
-          x: i * 50,
-          y: j * 50,
-          size: 10,
-        },
-      })
-      continents.push(continent)
+function computeCoordinate(continent: Continent, slot: number) {
+  const gridWidth = Math.max(4, Math.floor(Math.sqrt(Math.max(1, continent.size))))
+  const spacing = Math.max(2, Math.floor(continent.size / gridWidth))
+  const column = slot % gridWidth
+  const row = Math.floor(slot / gridWidth)
+
+  return {
+    x: continent.x + column * spacing,
+    y: continent.y + row * spacing,
+  }
+}
+
+function reserveCoordinate(continent: Continent, slot: number) {
+  const ATTEMPTS = 64
+
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    const coords = computeCoordinate(continent, slot + attempt)
+    const key = coordinateKey(coords.x, coords.y)
+
+    if (!occupiedCoordinates.has(key)) {
+      occupiedCoordinates.add(key)
+      return coords
     }
   }
 
-  console.log(`[v0] Created ${continents.length} continents`)
+  throw new Error(`Unable to allocate coordinates for continent ${continent.name}`)
+}
 
-  // Create sample users and players
-  for (let i = 0; i < 5; i++) {
-    const user = await prisma.user.create({
-      data: {
-        email: `player${i}@game.local`,
-        username: `player${i}`,
-        password: "hashed_password", // In production, hash this
-        displayName: `Player ${i}`,
-      },
-    })
+async function ensureVillage(player: Player, continent: Continent, slot: number): Promise<Village> {
+  const existing = await prisma.village.findFirst({
+    where: { playerId: player.id },
+    orderBy: { createdAt: "asc" },
+  })
 
-    const continent = continents[i % continents.length]
-    const player = await prisma.player.create({
-      data: {
-        userId: user.id,
-        playerName: `player${i}`,
-      },
-    })
-
-    // Initialize beginner protection
-    const { ProtectionService } = await import("../lib/game-services/protection-service")
-    await ProtectionService.initializeProtection(player.id)
-
-    // Create village for player
-    const village = await prisma.village.create({
-      data: {
-        playerId: player.id,
-        continentId: continent.id,
-        name: `${player.playerName}'s Village`,
-        x: continent.x + Math.random() * continent.size * 10,
-        y: continent.y + Math.random() * continent.size * 10,
-        isCapital: true,
-        wood: 5000,
-        stone: 5000,
-        iron: 2500,
-        gold: 1000,
-        food: 10000,
-      },
-    })
-
-    console.log(`[v0] Created player ${player.playerName} with village at (${village.x}, ${village.y})`)
+  if (existing) {
+    return existing
   }
 
-  console.log("[v0] Database seed completed successfully")
+  const coords = reserveCoordinate(continent, slot)
+
+  return prisma.village.create({
+    data: {
+      playerId: player.id,
+      continentId: continent.id,
+      name: `${player.playerName}'s Village`,
+      isCapital: true,
+      x: coords.x,
+      y: coords.y,
+      wood: 5000,
+      stone: 5000,
+      iron: 2500,
+      gold: 1000,
+      food: 10000,
+      population: 120,
+      woodProduction: 12,
+      stoneProduction: 10,
+      ironProduction: 7,
+      goldProduction: 3,
+      foodProduction: 18,
+    },
+  })
+}
+
+async function ensureSamplePlayer(
+  index: number,
+  worldId: string,
+  continent: Continent,
+  passwordHash: string,
+) {
+  const username = `player${index}`
+  const email = `${username}@game.local`
+
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: {
+      username,
+      displayName: `Player ${index}`,
+      password: passwordHash,
+    },
+    create: {
+      email,
+      username,
+      displayName: `Player ${index}`,
+      password: passwordHash,
+    },
+  })
+
+  const player = await prisma.player.upsert({
+    where: { playerName: username },
+    update: {
+      userId: user.id,
+      gameWorldId: worldId,
+    },
+    create: {
+      userId: user.id,
+      playerName: username,
+      gameWorldId: worldId,
+    },
+  })
+
+  await ProtectionService.initializeProtection(player.id).catch((error) => {
+    console.warn(`Failed to initialize protection for ${player.playerName}:`, error)
+  })
+
+  const village = await ensureVillage(player, continent, index)
+  console.log(
+    `Ensured player ${player.playerName} with village at (${village.x}, ${village.y})`,
+  )
+}
+
+async function main() {
+  console.log("Starting database seed...")
+  await ensureDemoEnvironment()
+
+  const world = await prisma.gameWorld.findFirst({
+    orderBy: { createdAt: "asc" },
+  })
+
+  if (!world) {
+    throw new Error("No game world exists after ensureDemoEnvironment()")
+  }
+
+  const continents = await prisma.continent.findMany({
+    orderBy: { createdAt: "asc" },
+  })
+
+  if (continents.length === 0) {
+    throw new Error("No continents available for seeding")
+  }
+
+  await bootstrapOccupiedCoordinates()
+  const passwordHash = await hash(DEFAULT_PASSWORD, 10)
+
+  for (let i = 0; i < SAMPLE_PLAYER_COUNT; i++) {
+    const continent = continents[i % continents.length]
+    await ensureSamplePlayer(i, world.id, continent, passwordHash)
+  }
+
+  console.log("Database seed completed successfully")
 }
 
 main()
   .catch((e) => {
-    console.error("[v0] Seed error:", e)
+    console.error("Seed error:", e)
     process.exit(1)
   })
   .finally(async () => {

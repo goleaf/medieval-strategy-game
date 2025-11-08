@@ -70,7 +70,7 @@ export async function GET(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Get game world failed", errorMessage)
-    console.error("[v0] Get game world error:", error)
+    console.error("Get game world error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to fetch game world"
@@ -165,7 +165,7 @@ export async function PUT(
 
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Update game world failed", errorMessage)
-    console.error("[v0] Update game world error:", error)
+    console.error("Update game world error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to update game world"
@@ -240,7 +240,7 @@ export async function DELETE(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Delete game world failed", errorMessage)
-    console.error("[v0] Delete game world error:", error)
+    console.error("Delete game world error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to delete game world"

@@ -18,26 +18,26 @@ import { getRallyPointEngine } from "@/lib/rally-point/server"
  * Called periodically based on tickIntervalMinutes config (default 5 minutes)
  */
 export async function processGameTick() {
-  console.log("[v0] Processing game tick...")
+  console.log("Processing game tick...")
 
   try {
     // Get world config
     const config = await prisma.worldConfig.findFirst()
     if (!config || !config.isRunning) {
-      console.log("[v0] Game is paused or not initialized")
+      console.log("Game is paused or not initialized")
       return
     }
 
     const now = new Date()
 
     // Process logistics (shipments + trade routes) before resource ticks
-    console.log("[v0] Resolving shipments and trade routes")
+    console.log("Resolving shipments and trade routes")
     try {
       await ShipmentService.processDueArrivals(now)
       await ShipmentService.processDueReturns(now)
       await TradeRouteService.runDueRoutes(now)
     } catch (logisticsError) {
-      console.error("[v0] Logistics processing error:", logisticsError)
+      console.error("Logistics processing error:", logisticsError)
     }
 
     // Process legacy + new resource production ticks for all villages
@@ -45,12 +45,12 @@ export async function processGameTick() {
       where: { player: { isDeleted: false } },
     })
 
-    console.log(`[v0] Processing legacy production for ${villages.length} villages`)
+    console.log(`Processing legacy production for ${villages.length} villages`)
     for (const village of villages) {
       await VillageService.processProductionTick(village.id)
     }
 
-    console.log("[v0] Processing Travian-style resource system")
+    console.log("Processing Travian-style resource system")
     await ResourceProductionService.processAllVillages({
       tickMinutes: config.tickIntervalMinutes,
     })
@@ -63,7 +63,7 @@ export async function processGameTick() {
       },
     })
 
-    console.log(`[v0] Completing ${completedBuildings.length} buildings`)
+    console.log(`Completing ${completedBuildings.length} buildings`)
     for (const building of completedBuildings) {
       await BuildingService.completeBuilding(building.id)
     }
@@ -76,7 +76,7 @@ export async function processGameTick() {
       },
     })
 
-    console.log(`[v0] Completing ${completedDemolitions.length} demolitions`)
+    console.log(`Completing ${completedDemolitions.length} demolitions`)
     for (const building of completedDemolitions) {
       await BuildingService.completeDemolition(building.id)
     }
@@ -88,18 +88,18 @@ export async function processGameTick() {
       },
     })
 
-    console.log(`[v0] Completing ${completedTraining.length} troop productions`)
+    console.log(`Completing ${completedTraining.length} troop productions`)
     for (const production of completedTraining) {
       await TroopService.completeTroopTraining(production.id)
     }
 
     const modernTrainingCompleted = await UnitSystemService.completeFinishedTraining(now)
     if (modernTrainingCompleted > 0) {
-      console.log(`[v0] Completed ${modernTrainingCompleted} unit-system training jobs`)
+      console.log(`Completed ${modernTrainingCompleted} unit-system training jobs`)
     }
 
     // Process new rally point movements
-    console.log("[v0] Resolving rally point movements")
+    console.log("Resolving rally point movements")
     await processRallyPointMovements(now)
 
     // Process arrived movements
@@ -111,7 +111,7 @@ export async function processGameTick() {
       include: { attack: true, reinforcement: true },
     })
 
-    console.log(`[v0] Processing ${arrivedMovements.length} arrived movements`)
+    console.log(`Processing ${arrivedMovements.length} arrived movements`)
     for (const movement of arrivedMovements) {
       // Mark movement as arrived
       await prisma.movement.update({
@@ -154,21 +154,21 @@ export async function processGameTick() {
       },
     })
 
-    console.log(`[v0] Resolving ${arrivedAttacks.length} attacks`)
+    console.log(`Resolving ${arrivedAttacks.length} attacks`)
     for (const attack of arrivedAttacks) {
       try {
         await CombatService.processAttackResolution(attack.id)
       } catch (error) {
-        console.error(`[v0] Error resolving attack ${attack.id}:`, error)
+        console.error(`Error resolving attack ${attack.id}:`, error)
       }
     }
 
     // Process arrived reinforcements
-    console.log(`[v0] Processing arrived reinforcements`)
+    console.log(`Processing arrived reinforcements`)
     try {
       await ReinforcementService.processArrivedReinforcements()
     } catch (error) {
-      console.error(`[v0] Error processing reinforcements:`, error)
+      console.error(`Error processing reinforcements:`, error)
     }
 
     // Process expired market orders
@@ -179,7 +179,7 @@ export async function processGameTick() {
       },
     })
 
-    console.log(`[v0] Expiring ${expiredOrders.length} market orders`)
+    console.log(`Expiring ${expiredOrders.length} market orders`)
     for (const order of expiredOrders) {
       // If it was a sell order, return resources to seller
       if (order.type === "SELL") {
@@ -207,9 +207,9 @@ export async function processGameTick() {
 
     await LoyaltyService.processRegenTick(now)
 
-    console.log("[v0] Game tick completed successfully")
+    console.log("Game tick completed successfully")
   } catch (error) {
-    console.error("[v0] Error processing game tick:", error)
+    console.error("Error processing game tick:", error)
   }
 }
 
@@ -265,7 +265,7 @@ async function updatePlayerRankings() {
     },
   })
 
-  console.log(`[v0] Updated rankings for ${sortedPlayers.length} players`)
+  console.log(`Updated rankings for ${sortedPlayers.length} players`)
 }
 
 async function processRallyPointMovements(now: Date) {
@@ -273,10 +273,10 @@ async function processRallyPointMovements(now: Date) {
     const engine = getRallyPointEngine()
     const resolved = await engine.resolveDueMovements()
     if (resolved.length > 0) {
-      console.log(`[v0] Processed ${resolved.length} rally point movements due by ${now.toISOString()}`)
+      console.log(`Processed ${resolved.length} rally point movements due by ${now.toISOString()}`)
     }
   } catch (error) {
-    console.error("[v0] Rally point movement resolution error:", error)
+    console.error("Rally point movement resolution error:", error)
   }
 }
 
@@ -298,7 +298,7 @@ async function processTroopEvasionReturns(now: Date) {
       },
     })
 
-    console.log(`[v0] Processing ${evasionMessages.length} troop evasion returns`)
+    console.log(`Processing ${evasionMessages.length} troop evasion returns`)
 
     for (const message of evasionMessages) {
       try {
@@ -325,11 +325,11 @@ async function processTroopEvasionReturns(now: Date) {
           }
         }
       } catch (error) {
-        console.error(`[v0] Error processing evasion message ${message.id}:`, error)
+        console.error(`Error processing evasion message ${message.id}:`, error)
       }
     }
   } catch (error) {
-    console.error("[v0] Error processing troop evasion returns:", error)
+    console.error("Error processing troop evasion returns:", error)
   }
 }
 
@@ -338,12 +338,12 @@ async function processTroopEvasionReturns(now: Date) {
  * Called less frequently (e.g., every 5 minutes)
  */
 export async function spawnBarbainians() {
-  console.log("[v0] Spawning barbarians...")
+  console.log("Spawning barbarians...")
 
   try {
     const continents = await prisma.continent.findMany()
     if (continents.length === 0) {
-      console.log("[v0] No continents found")
+      console.log("No continents found")
       return
     }
 
@@ -399,8 +399,8 @@ export async function spawnBarbainians() {
       }
     }
 
-    console.log("[v0] Barbarian spawning completed")
+    console.log("Barbarian spawning completed")
   } catch (error) {
-    console.error("[v0] Error spawning barbarians:", error)
+    console.error("Error spawning barbarians:", error)
   }
 }

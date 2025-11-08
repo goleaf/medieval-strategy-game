@@ -84,7 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Move village failed", errorMessage)
-    console.error("[v0] Move village error:", error)
+    console.error("Move village error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

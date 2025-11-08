@@ -228,7 +228,7 @@ export async function GET(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error("[v0] Advanced search error:", error)
+    console.error("Advanced search error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to perform advanced search"

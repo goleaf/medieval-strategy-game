@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Get game worlds failed", errorMessage)
-    console.error("[v0] Get game worlds error:", error)
+    console.error("Get game worlds error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to fetch game worlds"
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
 
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Create game world failed", errorMessage)
-    console.error("[v0] Create game world error:", error)
+    console.error("Create game world error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to create game world"

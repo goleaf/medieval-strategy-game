@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     })
 
   } catch (error) {
-    console.error("[v0] Get messages error:", error)
+    console.error("Get messages error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to retrieve messages"
@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Send message failed", errorMessage)
-    console.error("[v0] Send message error:", error)
+    console.error("Send message error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to send message"

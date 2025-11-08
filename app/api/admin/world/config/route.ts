@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(config, { status: 200 })
   } catch (error) {
-    console.error("[v0] Get world config error:", error)
+    console.error("Get world config error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -104,7 +104,7 @@ export async function PUT(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Update world config failed", errorMessage)
-    console.error("[v0] Update world config error:", error)
+    console.error("Update world config error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -28,7 +28,7 @@ const shouldStartScheduler =
 
 if (shouldStartScheduler) {
   startScheduler().catch((error) => {
-    console.error("[v0] Failed to initialize scheduler:", error)
+    console.error("Failed to initialize scheduler:", error)
   })
 }
 

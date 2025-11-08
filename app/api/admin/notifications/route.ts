@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
       }
     })
   } catch (error) {
-    console.error("[v0] Get notifications error:", error)
+    console.error("Get notifications error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to retrieve notifications"
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Create notification failed", errorMessage)
-    console.error("[v0] Create notification error:", error)
+    console.error("Create notification error:", error)
     return NextResponse.json({
       success: false,
       error: "Failed to create notification"

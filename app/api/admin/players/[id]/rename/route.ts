@@ -62,7 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     trackError("Rename player failed", errorMessage)
-    console.error("[v0] Rename player error:", error)
+    console.error("Rename player error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

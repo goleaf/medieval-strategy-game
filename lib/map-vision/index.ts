@@ -1,3 +1,6 @@
 export * from "./types"
 export * from "./coordinate-service"
 export * from "./vision-aggregator"
+export * from "./config"
+export * from "./passive-source-builder"
+export * from "./vision-state-store"
