@@ -123,6 +123,71 @@ export class MerchantService {
     })
   }
 
+  static async reserveMerchantsForOffer(
+    villageId: string,
+    amount: number,
+    client: PrismaCtx = prisma,
+  ) {
+    // Reserve idle merchants without marking them busy so offer listings hold capacity.
+    if (amount <= 0) return this.getSnapshot(villageId, client)
+
+    return this.runWithClient(client, async (tx) => {
+      const snapshot = await this.getSnapshot(villageId, tx)
+      if (snapshot.availableMerchants < amount) {
+        throw new Error(`Village ${villageId} does not have ${amount} merchants for offers`)
+      }
+
+      await tx.merchantState.upsert({
+        where: { villageId },
+        update: {
+          merchantsReserved: { increment: amount },
+          lastReservationAt: new Date(),
+        },
+        create: {
+          villageId,
+          merchantsBusy: 0,
+          merchantsReserved: amount,
+          lastReservationAt: new Date(),
+        },
+      })
+
+      return {
+        ...snapshot,
+        reservedMerchants: snapshot.reservedMerchants + amount,
+        availableMerchants: snapshot.availableMerchants - amount,
+      }
+    })
+  }
+
+  static async releaseReservedMerchants(
+    villageId: string,
+    amount: number,
+    client: PrismaCtx = prisma,
+  ) {
+    // Release merchants locked to an offer so they can resume normal duties.
+    if (amount <= 0) return this.getSnapshot(villageId, client)
+
+    return this.runWithClient(client, async (tx) => {
+      const state = await tx.merchantState.findUnique({
+        where: { villageId },
+      })
+
+      if (!state || state.merchantsReserved <= 0) {
+        return this.getSnapshot(villageId, tx)
+      }
+
+      const releaseAmount = Math.min(amount, state.merchantsReserved)
+      await tx.merchantState.update({
+        where: { villageId },
+        data: {
+          merchantsReserved: state.merchantsReserved - releaseAmount,
+        },
+      })
+
+      return this.getSnapshot(villageId, tx)
+    })
+  }
+
   static async releaseMerchants(villageId: string, amount: number, client: PrismaCtx = prisma) {
     if (amount <= 0) return this.getSnapshot(villageId, client)
 

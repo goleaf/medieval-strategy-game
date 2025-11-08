@@ -1,23 +1,61 @@
+import { authenticateRequest } from "@/app/api/auth/middleware"
 import { prisma } from "@/lib/db"
+import { MerchantService } from "@/lib/game-services/merchant-service"
 import { ProtectionService } from "@/lib/game-services/protection-service"
-import { type NextRequest } from "next/server"
+import { ShipmentService } from "@/lib/game-services/shipment-service"
+import { StorageService, type ResourceBundle } from "@/lib/game-services/storage-service"
 import { marketOrderSchema } from "@/lib/utils/validation"
-import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
-import type { OrderType, Resource } from "@prisma/client"
+import {
+  errorResponse,
+  handleValidationError,
+  notFoundResponse,
+  serverErrorResponse,
+  successResponse,
+  unauthorizedResponse,
+} from "@/lib/utils/api-response"
+import {
+  OrderStatus,
+  type OrderType,
+  Resource,
+  ShipmentCreatedBy,
+  StorageLedgerReason,
+} from "@prisma/client"
+import type { NextRequest } from "next/server"
+import { z } from "zod"
+
+const ORDER_ACTION_SCHEMA = z.object({
+  orderId: z.string().min(1, "Order ID required"),
+  action: z.enum(["ACCEPT", "CANCEL"]),
+  acceptingVillageId: z.string().optional(),
+})
+
+const DEFAULT_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000
 
 export async function GET(req: NextRequest) {
   try {
-    const resource = req.nextUrl.searchParams.get("resource") as Resource | null
-    const status = req.nextUrl.searchParams.get("status")
+    const now = new Date()
+    // Mark outdated offers as expired before returning results so clients never see stale trades.
+    await prisma.marketOrder.updateMany({
+      where: { status: OrderStatus.OPEN, expiresAt: { lt: now } },
+      data: { status: OrderStatus.EXPIRED },
+    })
 
-    const where: any = {}
-    if (resource) where.offeringResource = resource
-    if (status) where.status = status
-    else where.status = "OPEN"
+    const resource = req.nextUrl.searchParams.get("resource") as Resource | null
+    const statusParam = req.nextUrl.searchParams.get("status")
+    const desiredStatus = statusParam ? (statusParam as OrderStatus) : OrderStatus.OPEN
+
+    const where = {
+      ...(resource ? { offeringResource: resource } : {}),
+      status: desiredStatus,
+      ...(desiredStatus === OrderStatus.OPEN ? { expiresAt: { gte: now } } : {}),
+    }
 
     const orders = await prisma.marketOrder.findMany({
       where,
-      include: { player: { select: { playerName: true } }, village: { select: { name: true, x: true, y: true } } },
+      include: {
+        player: { select: { playerName: true } },
+        village: { select: { name: true, x: true, y: true } },
+      },
       orderBy: { createdAt: "desc" },
       take: 100,
     })
@@ -30,6 +68,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await authenticateRequest(req)
+    if (!auth?.playerId) {
+      return unauthorizedResponse()
+    }
+
     const body = await req.json()
     const validated = marketOrderSchema.parse(body)
 
@@ -38,53 +81,68 @@ export async function POST(req: NextRequest) {
       include: { player: true },
     })
 
-    if (!village) {
-      return notFoundResponse()
+    if (!village || village.playerId !== auth.playerId) {
+      return errorResponse("Village not found or unauthorized", 403)
     }
 
-    // Check beginner protection restrictions
     const isPlayerProtected = await ProtectionService.isPlayerProtected(village.playerId)
-
-    if (validated.type === "SELL") {
-      // Protected players cannot send resources
-      if (isPlayerProtected) {
-        return errorResponse("Players under beginner protection cannot send resources in trades", 403)
-      }
-
-      // Check if village has resources
-      const resourceKey = validated.offeringResource.toLowerCase() as keyof typeof village
-      if ((village[resourceKey] as number) < validated.offeringAmount) {
-        return errorResponse("Insufficient resources", 400)
-      }
-
-      // Deduct resources
-      await prisma.village.update({
-        where: { id: validated.villageId },
-        data: {
-          [resourceKey]: {
-            decrement: validated.offeringAmount,
-          },
-        },
-      })
+    if (isPlayerProtected && validated.type === "SELL") {
+      // Protected players cannot move resources off account freely.
+      return errorResponse("Players under beginner protection cannot create sell offers", 403)
     }
 
-    const expiresAt = validated.expiresAt ? new Date(validated.expiresAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    const bundle = toBundle(validated.offeringResource, validated.offeringAmount)
 
-    const order = await prisma.marketOrder.create({
-      data: {
-        villageId: validated.villageId,
-        playerId: validated.villageId, // TODO: Get from auth
-        type: validated.type as OrderType,
-        offeringResource: validated.offeringResource,
-        offeringAmount: validated.offeringAmount,
-        requestResource: validated.requestResource,
-        requestAmount: validated.requestAmount,
-        expiresAt,
-      },
-      include: { player: { select: { playerName: true } }, village: { select: { name: true } } },
-    })
+    try {
+      const order = await prisma.$transaction(async (tx) => {
+        // Snapshot ensures we respect tribe-specific merchant capacity.
+        const snapshot = await MerchantService.getSnapshot(validated.villageId, tx)
+        if (snapshot.marketplaceLevel <= 0) {
+          throw new Error("Marketplace required to create offers")
+        }
 
-    return successResponse(order, 201)
+        const merchantsNeeded = MerchantService.calculateRequiredMerchants(
+          bundle,
+          snapshot.capacityPerMerchant,
+        )
+        if (merchantsNeeded <= 0) {
+          throw new Error("Offer must reserve at least one merchant")
+        }
+
+        await MerchantService.reserveMerchantsForOffer(validated.villageId, merchantsNeeded, tx)
+        await StorageService.deductResources(validated.villageId, bundle, StorageLedgerReason.TRADE_OUT, {
+          client: tx,
+          metadata: { intent: "market_offer_hold" },
+        })
+
+        const expiresAt = validated.expiresAt
+          ? new Date(validated.expiresAt)
+          : new Date(Date.now() + DEFAULT_EXPIRATION_MS)
+
+        return tx.marketOrder.create({
+          data: {
+            villageId: validated.villageId,
+            playerId: village.playerId,
+            type: validated.type as OrderType,
+            offeringResource: validated.offeringResource,
+            offeringAmount: validated.offeringAmount,
+            requestResource: validated.requestResource,
+            requestAmount: validated.requestAmount,
+            expiresAt,
+            merchantsRequired: merchantsNeeded,
+          },
+          include: {
+            player: { select: { playerName: true } },
+            village: { select: { name: true } },
+          },
+        })
+      })
+
+      return successResponse(order, 201)
+    } catch (innerError) {
+      // Translate transactional failures into friendly validation errors.
+      return errorResponse((innerError as Error).message, 400)
+    }
   } catch (error) {
     const validationError = handleValidationError(error)
     if (validationError) return validationError
@@ -94,95 +152,162 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { orderId, action } = await req.json()
-
-    if (!orderId || !action) {
-      return errorResponse("Order ID and action required", 400)
+    const auth = await authenticateRequest(req)
+    if (!auth?.playerId) {
+      return unauthorizedResponse()
     }
 
-    const order = await prisma.marketOrder.findUnique({
-      where: { id: orderId },
-      include: { village: true },
-    })
+    const payload = ORDER_ACTION_SCHEMA.parse(await req.json())
+    const now = new Date()
 
-    if (!order) {
-      return notFoundResponse()
-    }
-
-    if (action === "ACCEPT") {
-      // Get the accepting village (need to get from auth context or request)
-      // For now, assume we have the accepting village ID from somewhere
-      // This would need to be updated based on your auth system
-
-      const acceptingVillage = await prisma.village.findUnique({
-        where: { id: order.villageId }, // This should be the accepting village
-        include: { player: true },
+    return await prisma.$transaction(async (tx) => {
+      const order = await tx.marketOrder.findUnique({
+        where: { id: payload.orderId },
+        include: {
+          village: { include: { player: true } },
+        },
       })
 
-      if (!acceptingVillage) {
+      if (!order) {
         return notFoundResponse()
       }
 
-      // Check marketplace restrictions for protected players
-      const isPlayerProtected = await ProtectionService.isPlayerProtected(acceptingVillage.playerId)
+      if (order.status !== OrderStatus.OPEN) {
+        return errorResponse("Order is no longer available", 400)
+      }
+
+      if (order.expiresAt < now) {
+        await tx.marketOrder.update({
+          where: { id: order.id },
+          data: { status: OrderStatus.EXPIRED },
+        })
+        return errorResponse("Order expired", 400)
+      }
+
+      if (payload.action === "CANCEL") {
+        if (order.playerId !== auth.playerId) {
+          return errorResponse("Only the offer owner can cancel", 403)
+        }
+
+        await MerchantService.releaseReservedMerchants(order.villageId, order.merchantsRequired, tx)
+        await StorageService.addResources(
+          order.villageId,
+          toBundle(order.offeringResource, order.offeringAmount),
+          StorageLedgerReason.TRADE_IN,
+          {
+            client: tx,
+            metadata: { intent: "market_offer_cancel", orderId: order.id },
+          },
+        )
+
+        const updated = await tx.marketOrder.update({
+          where: { id: order.id },
+          data: { status: OrderStatus.CANCELLED },
+        })
+
+        return successResponse(updated)
+      }
+
+      const acceptingVillageId = payload.acceptingVillageId
+      if (!acceptingVillageId) {
+        return errorResponse("Accepting village ID required", 400)
+      }
+
+      const acceptingVillage = await tx.village.findUnique({
+        where: { id: acceptingVillageId },
+        include: { player: true },
+      })
+
+      if (!acceptingVillage || acceptingVillage.playerId !== auth.playerId) {
+        return errorResponse("Accepting village not found or unauthorized", 403)
+      }
+
+      const acceptingBundle = toBundle(order.requestResource, order.requestAmount)
+      const tradeRatio = order.offeringAmount / Math.max(1, order.requestAmount)
+
+      const isProtected = await ProtectionService.isPlayerProtected(acceptingVillage.playerId)
       const hasLowPopulation = acceptingVillage.population < 200
 
-      if (isPlayerProtected || hasLowPopulation) {
-        // Calculate trade ratio: offeringAmount / requestAmount
-        const tradeRatio = order.offeringAmount / order.requestAmount
-
-        // Must be 1:1 or better (tradeRatio >= 1.0)
-        if (tradeRatio < 1.0) {
-          return errorResponse("Players with beginner protection or under 200 population can only accept 1:1 or better trades", 403)
-        }
+      if ((isProtected || hasLowPopulation) && tradeRatio < 1) {
+        return errorResponse("Protected players can only accept 1:1 or better trades", 403)
       }
 
-      // Check if accepting player has resources
-      const resourceKey = order.requestResource.toLowerCase() as keyof typeof acceptingVillage
-      if ((acceptingVillage[resourceKey] as number) < order.requestAmount) {
-        return errorResponse("Insufficient resources to accept order", 400)
+      const snapshotSeller = await MerchantService.getSnapshot(order.villageId, tx)
+      const snapshotBuyer = await MerchantService.getSnapshot(acceptingVillageId, tx)
+
+      if (snapshotSeller.reservedMerchants < order.merchantsRequired) {
+        return errorResponse("Offer is missing reserved merchants", 409)
       }
 
-      // Complete the trade
-      await prisma.$transaction(async (tx) => {
-        // Transfer resources
-        await tx.village.update({
-          where: { id: order.villageId },
-          data: {
-            [order.offeringResource.toLowerCase()]: { increment: order.offeringAmount },
-            [order.requestResource.toLowerCase()]: { decrement: order.requestAmount },
-          },
-        })
+      const buyerMerchantsNeeded = MerchantService.calculateRequiredMerchants(
+        acceptingBundle,
+        snapshotBuyer.capacityPerMerchant,
+      )
 
-        // Update order status
-        await tx.marketOrder.update({
-          where: { id: orderId },
-          data: { status: "ACCEPTED", acceptedAt: new Date() },
-        })
+      if (snapshotBuyer.availableMerchants < buyerMerchantsNeeded) {
+        return errorResponse("Accepting village lacks free merchants", 409)
+      }
+
+      await StorageService.deductResources(acceptingVillageId, acceptingBundle, StorageLedgerReason.TRADE_OUT, {
+        client: tx,
+        metadata: { intent: "market_offer_accept", orderId: order.id },
       })
-    } else if (action === "CANCEL") {
-      // Return resources if it was a sell order
-      if (order.type === "SELL") {
-        await prisma.village.update({
-          where: { id: order.villageId },
-          data: {
-            [order.offeringResource.toLowerCase()]: { increment: order.offeringAmount },
-          },
-        })
-      }
 
-      await prisma.marketOrder.update({
-        where: { id: orderId },
-        data: { status: "CANCELLED" },
+      await MerchantService.releaseReservedMerchants(order.villageId, order.merchantsRequired, tx)
+      await MerchantService.reserveMerchants(order.villageId, order.merchantsRequired, tx)
+      await MerchantService.reserveMerchants(acceptingVillageId, buyerMerchantsNeeded, tx)
+
+      await ShipmentService.createDirectShipment({
+        sourceVillageId: order.villageId,
+        targetVillageId: acceptingVillageId,
+        bundle: toBundle(order.offeringResource, order.offeringAmount),
+        createdBy: ShipmentCreatedBy.OFFER_MATCH,
+        ledgerReason: StorageLedgerReason.TRADE_OUT,
+        metadata: { intent: "market_offer_delivery", orderId: order.id },
+        client: tx,
+        reserveMerchants: false,
+        deductResources: false,
+        merchantsToUse: order.merchantsRequired,
       })
-    }
 
-    const updatedOrder = await prisma.marketOrder.findUnique({
-      where: { id: orderId },
+      await ShipmentService.createDirectShipment({
+        sourceVillageId: acceptingVillageId,
+        targetVillageId: order.villageId,
+        bundle: acceptingBundle,
+        createdBy: ShipmentCreatedBy.OFFER_MATCH,
+        ledgerReason: StorageLedgerReason.TRADE_OUT,
+        metadata: { intent: "market_offer_payment", orderId: order.id },
+        client: tx,
+        reserveMerchants: false,
+        deductResources: false,
+        merchantsToUse: buyerMerchantsNeeded,
+      })
+
+      const updated = await tx.marketOrder.update({
+        where: { id: order.id },
+        data: {
+          status: OrderStatus.ACCEPTED,
+          acceptedAt: now,
+          acceptedById: acceptingVillage.playerId,
+        },
+      })
+
+      return successResponse(updated)
     })
-
-    return successResponse(updatedOrder)
   } catch (error) {
+    const validationError = handleValidationError(error)
+    if (validationError) return validationError
     return serverErrorResponse(error)
+  }
+}
+
+function toBundle(resource: Resource, amount: number): ResourceBundle {
+  // Helper converts enum resource to the ledger bundle format used across services.
+  return {
+    wood: resource === Resource.WOOD ? amount : 0,
+    stone: resource === Resource.STONE ? amount : 0,
+    iron: resource === Resource.IRON ? amount : 0,
+    gold: resource === Resource.GOLD ? amount : 0,
+    food: resource === Resource.FOOD ? amount : 0,
   }
 }
