@@ -3,9 +3,12 @@ import { compare } from "bcryptjs"
 import { type NextRequest, NextResponse } from "next/server"
 import { generateToken } from "@/lib/auth"
 import { VillageService } from "@/lib/game-services/village-service"
+import { ensureDemoEnvironment } from "@/lib/setup/demo-data"
 
 export async function POST(req: NextRequest) {
   try {
+    await ensureDemoEnvironment()
+
     const { email, password } = await req.json()
 
     if (!email || !password) {
