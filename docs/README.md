@@ -7,6 +7,7 @@ Welcome to the Medieval Strategy Game documentation. This comprehensive guide co
 ```
 docs/
 ├── README.md              # This file
+├── ../AGENTS.md           # Contributor onboarding and workflow guide
 ├── CHANGELOG.md           # Version history and changes
 ├── admin/                 # Administrative features
 │   ├── overview.md        # Admin features overview
@@ -34,6 +35,8 @@ docs/
     ├── map-vision.md      # Vision backend notes
     └── reserved-names.md
 ```
+
+For onboarding, start with `AGENTS.md` at the repository root, then dive into the relevant folders above.
 
 ## 🎮 Game Overview
 

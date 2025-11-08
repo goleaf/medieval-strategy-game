@@ -1,45 +1,35 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `app/` hosts the Next.js App Router UI and API handlers; keep handlers thin and push combat, economy, and auth logic into `lib/`.
-- `components/` splits into `ui`, `game`, and `admin`; colocate feature files and re-export from each folder’s `index.ts`.
-- `hooks/` stores shared state and client utilities, while `scripts/` reuses `lib/` helpers for seeding, data repair, or simulation tooling.
-- `prisma/` owns the schema, migrations, and seeds—update `docs/` in tandem so gameplay/admin expectations match the database.
+- `app/` holds the Next.js App Router UI and API entry points; keep controllers thin and move combat, economy, and auth logic into `lib/`.
+- `components/` splits into `ui`, `game`, and `admin` folders that each re-export via `index.ts`; colocate assets per feature.
+- Shared hooks sit in `hooks/`, reusable tooling in `scripts/`, while building blueprints and construction helpers live in `lib/config` and `lib/game-services`.
+- `prisma/` owns schema, migrations, and seeds; mirror gameplay expectations in `docs/` whenever schema or building rules shift.
 
 ## Build, Test, and Development Commands
-- `npm run dev`: start the dev server on `http://localhost:3000`.
-- `npm run build` / `npm start`: compile and serve the production bundle.
-- `npm run lint`: enforce ESLint + Next.js rules; fix issues before committing.
-- `npx prisma migrate dev --name <label>`: create and apply schema changes.
-- `npm run prisma:seed` or `npx tsx scripts/seed-fake-tribes.ts`: reseed deterministic worlds.
+- `npm run dev` — start the Next.js dev server on `http://localhost:3000`.
+- `npm run build` / `npm start` — compile and launch the production bundle.
+- `npm run lint` — enforce ESLint + Next.js rules; fix violations before committing.
+- `npm run prisma:seed` or `npx tsx scripts/seed-fake-tribes.ts` — reseed deterministic worlds before simulations.
+- `node test-combat-system.js` (or other `test-*.js`) — smoke-test combat once the dev server is running.
 
 ## Coding Style & Naming Conventions
 - TypeScript everywhere with 2-space indentation, trailing commas, and named exports when practical.
-- Components use PascalCase, utilities camelCase, files kebab-case, and constants `UPPER_SNAKE_CASE`.
-- Prefer server components for loading, keep client hooks in `hooks/`, never touch Prisma from browser bundles, and rely on Tailwind + shadcn/ui primitives.
-- Comment only around non-obvious combat/admin orchestration; leave straightforward code uncluttered.
-- **Override (current tasks):** Maintain inline comments for new logic blocks so downstream reviewers can trace the freshly introduced endgame engine easily.
-
-## Building Blueprint Maintenance
-- `lib/config/construction.ts` now generates level data for Smithy, Stable, Workshop, Market, Rally Point, Wall, Watchtower, Church, Farm, and Hiding Place using helper factories—keep any new structures on the same helper path so effects stay declarative.
-- Update `lib/game-services/construction-helpers.ts` whenever a new building type appears so queue cost/time lookups resolve correctly.
-- When population rules change, adjust both the Farm blueprint and `BuildingService.calculatePopulationLimit` to preserve parity with docs.
+- Components use PascalCase, utilities camelCase, constants `UPPER_SNAKE_CASE`, and files stay kebab-case.
+- Default to server components; only browser hooks go in `hooks/`, and never import Prisma models client-side.
+- Keep Tailwind + shadcn/ui primitives for styling; preserve inline comments for any new endgame or combat logic blocks.
 
 ## Testing Guidelines
-- Smoke tests follow the `test-<feature>.js` pattern; execute them with `node test-combat-system.js` (or similar) once `npm run dev` is running.
-- Run `npm run prisma:seed` before any test that assumes specific tribes, worlds, or admin accounts.
-- New systems need another `test-*.js` harness or a lightweight `lib/__tests__/` suite that documents fetch flows and setup notes.
-
-## Combat Systems Notes
-- Morale now follows the official point-ratio formula `(defender ÷ attacker)^exponent` with optional time-based floors; keep code comments in place and update `docs/features/combat-simulator.md` plus the changelog whenever behaviour shifts.
-- Shared morale utilities live in `lib/combat/morale.ts`; reuse them instead of reimplementing multiplier logic in other modules.
+- Smoke tests follow the `test-<feature>.js` pattern and run via Node once seeds are loaded.
+- Add targeted harnesses in `lib/__tests__/` or scripts when new systems land; document setup assumptions inline.
+- Run `npm run prisma:seed` ahead of tests that rely on specific tribes, worlds, or admin accounts.
 
 ## Commit & Pull Request Guidelines
-- Commits are concise, present-tense, and single-purpose (e.g., `feat: add loyalty decay`); branch names follow `feature/<summary>` or `fix/<summary>`.
-- Rebase before opening a PR and include purpose, validation commands (`npm run lint`, `node test-combat-system.js`, etc.), and any linked docs/schema updates.
-- Add screenshots or logs for UI/admin work, and split gameplay tuning, tooling, and docs edits into separate PRs for fast reviews.
+- Commits are concise, present-tense, and single-purpose (e.g., `feat: add loyalty decay`); avoid bundling unrelated tweaks.
+- PRs should describe purpose, validation (`npm run lint`, `node test-combat-system.js`, etc.), linked issues, and any docs/schema updates.
+- Add screenshots or logs for UI/admin work; split gameplay tuning, tooling, and docs into separate PRs for faster review.
 
 ## Security & Configuration Tips
-- Copy `.env.example` to `.env.local`, then set `DATABASE_URL`, `JWT_SECRET`, `NEXTAUTH_SECRET`, and WebSocket secrets before running the app.
+- Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `JWT_SECRET`, `NEXTAUTH_SECRET`, and WebSocket secrets before running.
 - Never commit secrets or `prisma/dev.db`; surface new env keys in `.env.example` and `docs/development`.
 - Admin APIs require Bearer tokens from `/api/admin/auth/login`; never hardcode credentials in tests or scripts.
