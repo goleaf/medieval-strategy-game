@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Map visualization dashboard with interactive world overview** ✅
 - **Admin notifications system with severity levels, types, and read/unread tracking** ✅
 - **Player analytics and reporting dashboard backed by a dedicated analytics API** ✅
+- **Tribal Wars world type presets documentation for ops teams** ✅
+- **Switchboard checklist for Tribal Wars world presets** ✅
+- **Interactive admin switchboard for Tribal Wars presets backed by API data** ✅
 - **WebSocket real-time statistics system with dedicated server and React hook** ✅
 - **System maintenance and server health monitoring backed by Maintenance models and cleanup API** ✅
 - **Admin messaging system for direct player communication using AdminMessage models** ✅
