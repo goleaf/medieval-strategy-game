@@ -45,6 +45,7 @@ export async function getFeatureDoc(slug: string): Promise<FeatureDoc | null> {
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      console.warn(`[docs] Feature doc missing`, { slug, filePath: path.join(FEATURES_DIR, `${slug}.md`) })
       return null
     }
     throw error

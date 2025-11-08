@@ -12,14 +12,14 @@ const formatter = new Intl.DateTimeFormat("en", {
   day: "numeric",
 })
 
+type FeatureDocPageParams = { slug: string }
+
 interface FeatureDocPageProps {
-  params: {
-    slug: string
-  }
+  params: FeatureDocPageParams | Promise<FeatureDocPageParams>
 }
 
 export async function generateMetadata({ params }: FeatureDocPageProps): Promise<Metadata> {
-  const { slug } = params
+  const { slug } = await Promise.resolve(params)
   const doc = await getFeatureDoc(slug)
 
   if (!doc) {
@@ -35,7 +35,7 @@ export async function generateMetadata({ params }: FeatureDocPageProps): Promise
 }
 
 export default async function FeatureDocPage({ params }: FeatureDocPageProps) {
-  const { slug } = params
+  const { slug } = await Promise.resolve(params)
   const doc = await getFeatureDoc(slug)
 
   if (!doc) {
