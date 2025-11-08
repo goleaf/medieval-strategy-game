@@ -1,244 +1,100 @@
-# Task System
+# Quest System
 
-The task system is a comprehensive progression and reward mechanism inspired by Travian: Legends. It guides players through village development and provides meaningful rewards for completing various objectives.
+The new Quest System replaces the legacy linear task chain with flexible quest panes that reward natural play. Players progress across multiple quest categories simultaneously, earn proportional resource refunds for construction, and bank rewards for later collection.
 
-## Overview
+## Panes at a Glance
 
-The task system consists of two main categories:
+| Pane   | Purpose | Notes |
+| ------ | ------- | ----- |
+| **Main Quests** | Core progression beats covering village setup, economic expansion, troop unlocks, and early warfare prep. | Always visible. |
+| **Tribe Quests** | Focus on social play—joining a tribe, coordinating, and unlocking group bonuses. | Appears once the account is tribe eligible. |
+| **Event Quests** | Seasonal objectives that surface only when an event is active on the player’s market. | Hidden when no event keys are active. |
+| **Mentor Quests** | Tutorial-style guidance for new or returning players. | Auto-completes onboarding boosts. |
+| **Rewards Pane** | Dedicated ledger for unclaimed quest and refund payouts. | Accessible on both desktop and mobile. |
 
-1. **Village-Specific Tasks**: Tasks that apply to individual villages
-2. **Player/Global Tasks**: Tasks that apply across all of a player's villages
+> Mobile players can access the Rewards pane by swiping to the second main-menu page and tapping **Rewards**, or via **Menu → Profile → arrow next to the player name → Rewards**.
 
-## Task Categories
+## Flexible Progression
 
-### Village-Specific Tasks
+* Quest panes run in parallel—players are never forced down a single quest line.
+* Building in any order still yields full value because the system tracks actual construction costs and issues refunds accordingly.
+* Players can push HQ, Market, Smithy, or military structures early without “breaking” the quest sequence.
+* Delayed or skipped steps do not forfeit payouts; refunds are granted as soon as qualifying actions occur.
 
-These tasks focus on individual village development and include:
+## Resource Refund Mechanic
 
-#### Building Level Tasks
-- **Warehouse**: Levels 1, 3, 7, 12, 20
-- **Granary**: Levels 1, 3, 7, 12, 20
-- **Barracks**: Levels 1, 3, 7, 12, 20
-- **Stable**: Levels 1, 3, 7, 12, 20
-- **Academy**: Levels 1, 10, 20
-- **Smithy**: Levels 1, 10, 20
-- **Town Hall**: Levels 1, 10, 20
-- **Workshop**: Level 1
-- **Main Building**: Levels 1, 3, 7, 12, 20
-- **Cranny**: Levels 1, 3, 6, 10
-- **Marketplace**: Levels 1, 3, 7, 12, 20
-- **Embassy**: Level 1
-- **Residence**: Levels 1, 3, 7, 10, 20
-- **Palace/Command Center**: Levels 1, 3, 7, 12, 20
-- **Wall**: Levels 1, 3, 7, 12, 20
-- **Rally Point**: Levels 1, 10, 20
+* Every completed building upgrade grants a resource refund equal to a configurable percentage of the real upgrade cost.
+* Example: with a 10% reward ratio, finishing Headquarters level 20 (costing 7 266 wood) grants **727 wood** (`Math.round(726.6)`), replacing the old fixed 100-wood payout.
+* Queue inflation safeguard: if more than five builds are queued and in-game cost inflation applies, the refund remains capped at the initial (pre-inflation) cost recorded when the task was added—no inflation abuse.
+* Refund entries are tagged with the originating building and village so the player can claim them strategically from the Rewards pane.
 
-#### Resource Field Tasks
-- **Sawmill**: Levels 1, 5
-- **Brickyard**: Levels 1, 5
-- **Iron Foundry**: Levels 1, 5
-- **Grain Mill**: Levels 1, 5
-- **Bakery**: Levels 1, 5
+## Claiming Rewards
 
-#### Population Tasks
-- Population milestones: 50, 100, 150, 250, 350, 500, 750, 1000
+* Completed quest rewards and construction refunds accumulate in the Rewards pane until claimed.
+* Players can time claims to avoid Warehouse overflow—perfect before long training queues or troop dispatches.
+* Rewards can be claimed in bulk for a specific village via `POST /api/tasks/claim` and are deposited directly into that village’s storage. Hero experience bonuses are applied automatically if the hero exists.
 
-### Player/Global Tasks
+## API Surface
 
-These tasks track overall player progress:
+| Endpoint | Description |
+| -------- | ----------- |
+| `GET /api/tasks` | Returns all quest panes (Main, Tribe, Mentor, optional Event) plus the Rewards ledger. Optional `eventKey` query params expose seasonal panes. |
+| `POST /api/tasks` | Forces a quest sync and returns refreshed panes (accepts optional `eventKeys` array in the body). |
+| `POST /api/tasks/claim` | Claims specified reward IDs for a given village and credits the resources/hero XP. |
+| `GET /api/tasks/village/:id` | Filters unclaimed rewards tied to a village for warehouse planning. |
+| `POST /api/tasks/village/:id/update` | Resyncs quest state for the player owning the village. |
 
-#### Culture Points Production
-- Culture points production: 50, 100, 150, 250, 350, 500
+## Data Model
 
-#### Global Population
-- Total population across all villages: 500, 1000, 1500, 2500, 5000, 10000, 20000
+Prisma adds dedicated quest tables:
 
-## Reward System
-
-### Base Rewards
-
-Each task provides rewards in resources and hero experience:
-
-- **Building Level Tasks**: 50-200 base resources per level
-- **Resource Field Tasks**: 30-50 base resources per level
-- **Population Tasks**: 100-200 base resources
-- **Culture Points Tasks**: 75-150 base resources
-
-### Reward Multipliers
-
-- **Task Type Multipliers**: Different multipliers based on task difficulty
-- **Completion Count Bonus**: Each subsequent completion of the same task type gives 50% larger rewards
-- **Hero Level Bonus**: 10% experience bonus per hero level
-
-### Resource Rewards
-
-Tasks reward equal amounts of all basic resources:
-- Wood
-- Stone
-- Iron
-- Gold
-- Food
-
-### Hero Experience
-
-Tasks also reward hero experience points, scaled by task difficulty and hero level.
-
-## Task Progression
-
-### Automatic Progress Tracking
-
-The system automatically tracks progress by:
-
-1. **Building Upgrades**: Monitors building levels in real-time
-2. **Resource Fields**: Tracks resource field development
-3. **Population Growth**: Monitors village and total population
-4. **Culture Points**: Tracks culture point production rates
-
-### Completion Detection
-
-Tasks are checked for completion:
-
-- **Real-time**: When buildings are upgraded
-- **Periodic**: During game ticks
-- **Manual**: When players request progress updates
-
-## Village Conquest
-
-### Task Transfer Rules
-
-When a village is conquered:
-
-1. **Completed Tasks**: All completed tasks are transferred to the new owner
-2. **In-Progress Tasks**: Progress is maintained for the new owner
-3. **Resource Rewards**: No resource rewards for previously completed tasks
-4. **Special Resets**: Certain tasks are reset for new owners (loyalty, residence/palace)
-
-### Conquest-Specific Tasks
-
-New tasks are created for conquered villages:
-
-- **Residence/Palace**: Levels 1, 10, 20 (replaces existing)
-- **Wall**: Levels 1, 10, 20 (replaces existing)
-- **Loyalty**: Reach 100 loyalty
-
-## Technical Implementation
-
-### Database Schema
-
-#### Task Model
 ```prisma
-model Task {
-  id String @id @default(cuid())
-  type TaskType
-  category TaskCategory
-  level Int
-  // Requirements and rewards...
+model QuestDefinition {
+  id          String @id @default(cuid())
+  key         String @unique
+  pane        QuestPane
+  metric      QuestMetric
+  targetValue Int @default(1)
+  // reward columns, metadata, timestamps...
 }
-```
 
-#### TaskProgress Model
-```prisma
-model TaskProgress {
-  id String @id @default(cuid())
-  taskId String
-  playerId String
-  villageId String? // For village-specific tasks
-  isCompleted Boolean @default(false)
+model QuestProgress {
+  id          String @id @default(cuid())
+  questId     String
+  playerId    String
+  currentValue Int @default(0)
   completedAt DateTime?
+}
+
+model QuestReward {
+  id        String @id @default(cuid())
+  playerId  String
+  questId   String?
+  source    QuestRewardSource @default(QUEST)
+  wood      Int @default(0)
+  stone     Int @default(0)
+  iron      Int @default(0)
+  gold      Int @default(0)
+  food      Int @default(0)
+  heroExperience Int @default(0)
+  metadata  Json?
   claimedAt DateTime?
 }
 ```
 
-### API Endpoints
+`WorldConfig` gains `questRefundPercentage` (default 0.10) so balance designers can tune refund strength per world.
 
-#### Get Tasks
-```
-GET /api/tasks?villageId={id}&category={category}
-```
+## Implementation Notes
 
-#### Update Progress
-```
-POST /api/tasks/update
-```
+* `lib/game-services/task-service.ts` seeds quest blueprints, evaluates progress, records refunds, and exposes helper APIs.
+* Building completions call `registerBuildingRefund` before clearing cost snapshots, ensuring refunds use pre-inflation values.
+* Quest progress uses lightweight SQL upserts (via Prisma `executeRaw`) so we are not blocked by offline `prisma generate` runs.
+* Claiming rewards performs a transaction: village resources increment, reward timestamps set, hero XP applied, and metadata preserved for audit.
+* Tests (`test-task-system.js`) now verify blueprint coverage instead of static task chains.
 
-#### Village Tasks
-```
-GET /api/tasks/village/{villageId}
-POST /api/tasks/village/{villageId}/update
-```
+## Practical Tips
 
-### Frontend Components
-
-#### TaskList Component
-- Displays tasks for a village or globally
-- Shows progress bars and completion status
-- Allows manual progress updates
-
-## Integration Points
-
-### Village Creation
-When a new village is created:
-1. Village-specific tasks are generated
-2. Task progress records are created
-
-### Building Upgrades
-When buildings are upgraded:
-1. Relevant tasks are checked for completion
-2. Rewards are automatically awarded
-
-### Game Ticks
-During game ticks:
-1. Population and culture point tasks are evaluated
-2. Progress is updated automatically
-
-## Future Enhancements
-
-### Planned Features
-- **Task Categories**: Organize tasks into categories (Economy, Military, Culture)
-- **Achievement Badges**: Visual rewards for completing task series
-- **Task Chains**: Prerequisites and follow-up tasks
-- **Seasonal Tasks**: Time-limited special tasks
-- **Guild Tasks**: Community-wide objectives
-
-### Performance Optimizations
-- **Batch Updates**: Process multiple task completions efficiently
-- **Caching**: Cache task progress for faster loading
-- **WebSocket Updates**: Real-time task completion notifications
-
-## Configuration
-
-### Task Definitions
-Tasks are defined in `lib/game-services/task-service.ts` with:
-- Task requirements
-- Reward calculations
-- Completion logic
-
-### Reward Multipliers
-Configurable multipliers in the task service:
-- Base reward amounts
-- Hero experience bonuses
-- Completion count scaling
-
-## Testing
-
-### Unit Tests
-- Task completion logic
-- Reward calculations
-- Progress tracking
-
-### Integration Tests
-- Village creation with tasks
-- Building upgrade completions
-- Conquest task transfers
-
-## Monitoring
-
-### Analytics
-- Task completion rates
-- Popular task types
-- Reward distribution
-
-### Error Handling
-- Failed task completions
-- Reward awarding errors
-- Database consistency checks
+* Encourage players to claim refunds when storage space is available—quests no longer auto-credit into potentially capped warehouses.
+* Keep construction queues reasonable; refunds ignore queue inflation beyond the initial cost, but inflated queues still consume resources sooner.
+* When events activate, pass the active `eventKey` to `GET /api/tasks` so the Event pane surfaces.
+* Maintain docs and admin panels in tandem with schema changes—quest percentages, rewards, and pane visibility are now first-class balance levers.

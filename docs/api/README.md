@@ -88,9 +88,11 @@ Errors bubble up through `lib/errors.ts` helpers and are also captured by `app/a
 - `POST /api/messages` – Send a new message.
 - `GET /api/tribes` / `POST /api/tribes` – Manage player tribes, invites, and diplomacy.
 
-### Task System
-- `GET /api/tasks` – Retrieve the current task list for the player.
-- `POST /api/tasks/claim` – Claim completed rewards.
+### Quest System
+- `GET /api/tasks` – Return quest panes (Main, Tribe, Mentor, optional Event) plus the Rewards ledger.
+- `POST /api/tasks` – Force a quest resync and return refreshed panes.
+- `POST /api/tasks/claim` – Claim one or more rewards into a specific village.
+- `GET /api/tasks/village/:id` – Filter unclaimed rewards tagged to a village.
 
 ### Protection & Respawn
 - `GET /api/protection` – Read current beginner protection timers.

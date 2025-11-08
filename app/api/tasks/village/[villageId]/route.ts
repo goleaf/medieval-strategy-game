@@ -1,77 +1,92 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { getTaskDefinitionsByCategory, updateTaskProgress } from '@/lib/game-services/task-service';
-import { TaskCategory } from '@prisma/client';
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/lib/auth"
+import { getQuestPaneState, syncQuestProgressForPlayer } from "@/lib/game-services/task-service"
+import { prisma } from "@/lib/db"
 
 /**
  * GET /api/tasks/village/[villageId]
- * Get tasks for a specific village
+ * Return reward entries scoped to a specific village for warehouse planning.
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { villageId: string } }
+  { params }: { params: { villageId: string } },
 ) {
   try {
-    const session = await auth();
+    const session = await auth()
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const villageId = params.villageId;
+    const villageId = params.villageId
+    const village = await prisma.village.findFirst({
+      where: { id: villageId, playerId: session.user.id },
+    })
 
-    // Verify the village belongs to the user
-    // TODO: Add village ownership verification
+    if (!village) {
+      return NextResponse.json({ error: "Village not found" }, { status: 404 })
+    }
 
-    // Get village-specific tasks
-    const tasks = getTaskDefinitionsByCategory(TaskCategory.VILLAGE_SPECIFIC);
+    const panes = await getQuestPaneState(session.user.id)
+    const rewardPane = panes.find((pane) => pane.pane === "REWARDS")
+    const rewards = (rewardPane?.rewards ?? []).filter((reward) => {
+      if (!reward.metadata) return false
+      try {
+        const parsed = JSON.parse(reward.metadata) as Record<string, unknown>
+        return parsed?.villageId === villageId
+      } catch {
+        return false
+      }
+    })
 
     return NextResponse.json({
       success: true,
       data: {
         villageId,
-        tasks
-      }
-    });
-
+        rewards,
+      },
+    })
   } catch (error) {
-    console.error('Error fetching village tasks:', error);
+    console.error("Error fetching village rewards:", error)
     return NextResponse.json({
-      error: 'Failed to fetch village tasks'
-    }, { status: 500 });
+      error: "Failed to fetch village rewards",
+    }, { status: 500 })
   }
 }
 
 /**
  * POST /api/tasks/village/[villageId]/update
- * Update task progress for a specific village
+ * Force a sync for quests relevant to the owning player.
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { villageId: string } }
+  { params }: { params: { villageId: string } },
 ) {
   try {
-    const session = await auth();
+    const session = await auth()
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const villageId = params.villageId;
+    const villageId = params.villageId
+    const village = await prisma.village.findFirst({
+      where: { id: villageId, playerId: session.user.id },
+    })
 
-    // Verify the village belongs to the user
-    // TODO: Add village ownership verification
+    if (!village) {
+      return NextResponse.json({ error: "Village not found" }, { status: 404 })
+    }
 
-    // Update task progress for this village
-    await updateTaskProgress(session.user.id, villageId);
+    await syncQuestProgressForPlayer(session.user.id)
+    const panes = await getQuestPaneState(session.user.id)
 
     return NextResponse.json({
       success: true,
-      message: 'Village task progress updated'
-    });
-
+      data: { panes },
+    })
   } catch (error) {
-    console.error('Error updating village task progress:', error);
+    console.error("Error updating village quest state:", error)
     return NextResponse.json({
-      error: 'Failed to update village task progress'
-    }, { status: 500 });
+      error: "Failed to update village quest progress",
+    }, { status: 500 })
   }
 }

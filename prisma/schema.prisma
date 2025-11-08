@@ -315,6 +315,8 @@ model Player {
   ownedVisionSources   VisionSource[]           @relation("VisionSourceOwnerPlayer")
   reconMissions        ReconMission[]           @relation("ReconMissionOwnerPlayer")
   contactLogEntries    ContactLogEntry[]        @relation("ContactLogViewerPlayer")
+  questProgress        QuestProgress[]
+  questRewards         QuestReward[]
 
   @@index([userId])
   @@index([gameWorldId])
@@ -359,6 +361,7 @@ model WorldConfig {
   scoutingConfig            Json?   @default("{}")
   nightPolicyConfig         Json?   @default("{}")
   siegeRulesConfig          Json?   @default("{}")
+  questRefundPercentage     Float   @default(0.1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2856,6 +2859,98 @@ enum TaskCategory {
   ECONOMY
   MILITARY
   VILLAGE_SPECIFIC
+}
+
+enum QuestPane {
+  MAIN
+  TRIBE
+  EVENT
+  MENTOR
+}
+
+enum QuestMetric {
+  BUILDING_LEVEL
+  JOIN_TRIBE
+  COMPLETE_TUTORIAL
+  OTHER
+}
+
+enum QuestRewardSource {
+  QUEST
+  BUILDING_REFUND
+  SYSTEM
+}
+
+model QuestDefinition {
+  id          String      @id @default(cuid())
+  key         String      @unique
+  pane        QuestPane
+  title       String
+  description String
+  metric      QuestMetric
+  targetValue Int         @default(1)
+  rewardWood  Int         @default(0)
+  rewardStone Int         @default(0)
+  rewardIron  Int         @default(0)
+  rewardGold  Int         @default(0)
+  rewardFood  Int         @default(0)
+  rewardHeroExperience Int @default(0)
+  isRepeatable Boolean    @default(false)
+  isEventQuest Boolean    @default(false)
+  eventKey     String?
+  sortOrder    Int        @default(0)
+  metadata     Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  progress QuestProgress[]
+  rewards  QuestReward[]
+
+  @@index([pane, sortOrder])
+  @@index([isEventQuest, eventKey])
+}
+
+model QuestProgress {
+  id          String    @id @default(cuid())
+  questId     String
+  playerId    String
+  currentValue Int      @default(0)
+  targetValue Int       @default(0)
+  completedAt DateTime?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  quest  QuestDefinition @relation(fields: [questId], references: [id], onDelete: Cascade)
+  player Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([questId, playerId])
+  @@index([playerId, completedAt])
+}
+
+model QuestReward {
+  id              String            @id @default(cuid())
+  playerId        String
+  questId         String?
+  source          QuestRewardSource @default(QUEST)
+  sourceReference String?
+  wood            Int               @default(0)
+  stone           Int               @default(0)
+  iron            Int               @default(0)
+  gold            Int               @default(0)
+  food            Int               @default(0)
+  heroExperience  Int               @default(0)
+  metadata        Json?
+  createdAt       DateTime          @default(now())
+  claimedAt       DateTime?
+
+  quest  QuestDefinition? @relation(fields: [questId], references: [id], onDelete: SetNull)
+  player Player           @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, claimedAt])
+  @@index([source, playerId])
+  @@index([questId, playerId])
+  @@unique([questId, playerId, source])
 }
 
 // ============================================================================

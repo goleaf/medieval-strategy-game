@@ -1,74 +1,61 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { getAllTaskDefinitions, getTaskDefinitionsByCategory, updateTaskProgress } from '@/lib/game-services/task-service';
-import { TaskCategory } from '@prisma/client';
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/lib/auth"
+import { getQuestPaneState, syncQuestProgressForPlayer } from "@/lib/game-services/task-service"
 
 /**
  * GET /api/tasks
- * Get all available tasks or tasks for a specific village/player
+ * Return quest panes with progress, including the Rewards pane.
  */
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth();
+    const session = await auth()
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { searchParams } = new URL(req.url);
-    const villageId = searchParams.get('villageId');
-    const category = searchParams.get('category') as TaskCategory;
-
-    let tasks;
-
-    if (category) {
-      tasks = getTaskDefinitionsByCategory(category);
-    } else if (villageId) {
-      // For village-specific tasks
-      tasks = getTaskDefinitionsByCategory(TaskCategory.VILLAGE_SPECIFIC);
-    } else {
-      // Return all tasks
-      tasks = getAllTaskDefinitions();
-    }
+    const { searchParams } = new URL(req.url)
+    const eventKeys = searchParams.getAll("eventKey")
+    const panes = await getQuestPaneState(session.user.id, {
+      eventKeys: eventKeys.length ? eventKeys : undefined,
+    })
 
     return NextResponse.json({
       success: true,
-      data: tasks
-    });
-
+      data: { panes },
+    })
   } catch (error) {
-    console.error('Error fetching tasks:', error);
+    console.error("Error fetching quests:", error)
     return NextResponse.json({
-      error: 'Failed to fetch tasks'
-    }, { status: 500 });
+      error: "Failed to fetch quest panes",
+    }, { status: 500 })
   }
 }
 
 /**
- * POST /api/tasks/update
- * Update task progress and check for completions
+ * POST /api/tasks
+ * Force a resync of quest progress and return refreshed panes.
  */
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
+    const session = await auth()
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await req.json();
-    const { villageId } = body;
+    const body = await req.json().catch(() => ({}))
+    const eventKeys = Array.isArray(body?.eventKeys) ? body.eventKeys : undefined
 
-    // Update task progress
-    await updateTaskProgress(session.user.id, villageId);
+    await syncQuestProgressForPlayer(session.user.id, { eventKeys })
+    const panes = await getQuestPaneState(session.user.id, { eventKeys })
 
     return NextResponse.json({
       success: true,
-      message: 'Task progress updated'
-    });
-
+      data: { panes },
+    })
   } catch (error) {
-    console.error('Error updating task progress:', error);
+    console.error("Error refreshing quests:", error)
     return NextResponse.json({
-      error: 'Failed to update task progress'
-    }, { status: 500 });
+      error: "Failed to refresh quest progress",
+    }, { status: 500 })
   }
 }

@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **System maintenance and server health monitoring backed by Maintenance models and cleanup API** ✅
 - **Admin messaging system for direct player communication using AdminMessage models** ✅
 - **Advanced player search with powerful filtering capabilities** ✅
+- **Parallel quest pane system with resource refunds and claimable rewards** ✅
 - Real-time statistics dashboard ✅
 - Admin authentication system with JWT tokens ✅
 - Bulk player operations (mass ban, unban, delete) ✅

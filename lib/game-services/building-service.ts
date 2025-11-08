@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
 import { VillageDestructionService } from "./village-destruction-service"
-import { updateTaskProgress } from "./task-service"
+import { registerBuildingRefund, updateTaskProgress } from "./task-service"
 import { CulturePointService } from "./culture-point-service"
 import { getBlueprintKeyForBuilding, mapBlueprintCost, type ResourceCost } from "./construction-helpers"
 import { BUILDING_BONUSES, LEGACY_BUILDING_COSTS, LEGACY_BUILDING_TIMES } from "./building-data"
@@ -646,6 +646,14 @@ export class BuildingService {
       orderBy: { startedAt: "desc" },
     })
 
+    const costSnapshot = {
+      wood: building.constructionCostWood,
+      stone: building.constructionCostStone,
+      iron: building.constructionCostIron,
+      gold: building.constructionCostGold,
+      food: building.constructionCostFood,
+    }
+
     // Complete the building
     await prisma.building.update({
       where: { id: buildingId },
@@ -671,6 +679,15 @@ export class BuildingService {
         },
       })
     }
+
+    await registerBuildingRefund({
+      playerId: building.village.playerId,
+      villageId: building.villageId,
+      buildingType: building.type as BuildingType,
+      newLevel: building.level + 1,
+      cost: costSnapshot,
+      queueTaskId: task?.id ?? null,
+    })
 
     // Update production rates based on new building levels
     const village = await prisma.village.findUnique({
