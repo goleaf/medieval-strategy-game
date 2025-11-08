@@ -1,6 +1,8 @@
 import type { BuildingType, ResourceType } from "@prisma/client"
 import type { ConstructionEntityKey } from "@/lib/config/construction"
 
+// Keep this lookup in sync with the blueprint definitions in `lib/config/construction.ts` so cost/time
+// calculations stay aligned with the design brief for each structure.
 const BUILDING_BLUEPRINT_MAP: Partial<Record<BuildingType, ConstructionEntityKey>> = {
   HEADQUARTER: "main_building",
   BARRACKS: "barracks",
@@ -10,6 +12,16 @@ const BUILDING_BLUEPRINT_MAP: Partial<Record<BuildingType, ConstructionEntityKey
   RESIDENCE: "residence",
   SNOB: "residence",
   CITY: "main_building",
+  SMITHY: "smithy",
+  STABLES: "stable",
+  WORKSHOP: "workshop",
+  MARKETPLACE: "market",
+  RALLY_POINT: "rally_point",
+  WALL: "wall",
+  FARM: "farm",
+  CRANNY: "hiding_place",
+  WATCHTOWER: "watchtower",
+  TEMPLE: "church",
 }
 
 const RESOURCE_BLUEPRINT_MAP: Record<ResourceType, ConstructionEntityKey> = {

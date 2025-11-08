@@ -9,6 +9,7 @@ This project now supports Travian-style wood/clay/iron/crop fields alongside the
 - `VillageResourceLedger` — authoritative balances, hourly/net production, and storage caps (Warehouse vs. Granary).
 - `ResourceProductionModifier` — oasis, hero, artifact, or admin buffs; supports `ALL_RESOURCES`, `SINGLE_RESOURCE`, and `NET_CROP_CONSUMPTION`.
 - `TroopBalance.cropUpkeep` — new Prisma column that drives upkeep math for the starvation loop.
+- `BuildingService.calculatePopulationLimit` — reads the Farm blueprint so the crop-support cap mirrors the construction data.
 
 Seed everything with:
 

@@ -20,6 +20,11 @@
 - Comment only around non-obvious combat/admin orchestration; leave straightforward code uncluttered.
 - **Override (current tasks):** Maintain inline comments for new logic blocks so downstream reviewers can trace the freshly introduced endgame engine easily.
 
+## Building Blueprint Maintenance
+- `lib/config/construction.ts` now generates level data for Smithy, Stable, Workshop, Market, Rally Point, Wall, Watchtower, Church, Farm, and Hiding Place using helper factories—keep any new structures on the same helper path so effects stay declarative.
+- Update `lib/game-services/construction-helpers.ts` whenever a new building type appears so queue cost/time lookups resolve correctly.
+- When population rules change, adjust both the Farm blueprint and `BuildingService.calculatePopulationLimit` to preserve parity with docs.
+
 ## Testing Guidelines
 - Smoke tests follow the `test-<feature>.js` pattern; execute them with `node test-combat-system.js` (or similar) once `npm run dev` is running.
 - Run `npm run prisma:seed` before any test that assumes specific tribes, worlds, or admin accounts.
