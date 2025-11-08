@@ -205,11 +205,12 @@ model Building {
 #### CrannyService
 - `calculateCrannyCapacity(level: number)`: Calculate single cranny capacity
 - `calculateTotalProtection(villageId, attackerTribe?)`: Calculate village protection
+- `getProtectionBreakdown(villageId, attackerTribe?)`: Return base vs. tribe-adjusted protection for UI/combat pipelines
 - `calculateEffectiveLoot(resources, protection)`: Apply protection to resources
 - `getCrannyInfo(villageId)`: Get scouting information
 
 #### CombatService
-- Modified loot calculation to account for cranny protection
+- Uses `computeCrannyLoot` (from `lib/balance/subsystem-effects`) plus `CrannyService.getProtectionBreakdown` to enforce per-tribe modifiers before computing haul
 - Updated scouting to include cranny information
 
 ### Frontend Components
@@ -292,4 +293,3 @@ npm run test combat-simulator
 - Tribe bonuses (Gaul 1.5x, Teuton raid reduction)
 - Admin management interface
 - Scouting integration
-

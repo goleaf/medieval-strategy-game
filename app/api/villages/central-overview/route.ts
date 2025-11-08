@@ -12,6 +12,7 @@ interface VillageOverviewData {
   y: number
   isCapital: boolean
   loyalty: number
+  loyaltyMax: number
   // Resources
   wood: number
   stone: number
@@ -29,6 +30,17 @@ interface VillageOverviewData {
   // Building activity
   buildingQueueCount: number
   activeConstructions: number
+  buildQueue: Array<{
+    id: string
+    buildingId: string | null
+    entityKey: string
+    fromLevel: number
+    toLevel: number
+    status: string
+    position: number
+    startedAt: Date | null
+    finishesAt: Date | null
+  }>
   // Troop movements
   outgoingAttacks: number
   incomingAttacks: number
@@ -44,7 +56,8 @@ interface VillageOverviewData {
   celebrationEndTime?: Date
   settlers: number
   administrators: number
-  expansionSlots: number
+  expansionSlotsAvailable: number
+  expansionSlotsTotal: number
   // Merchant availability
   merchants: { free: number; total: number }
   timeToFull: { wood: number | null; stone: number | null; iron: number | null; gold: number | null; food: number | null }
@@ -68,7 +81,18 @@ export async function GET(req: NextRequest) {
             troopProduction: true,
           },
         },
+        buildQueueTasks: {
+          where: {
+            status: { in: ["WAITING", "BUILDING", "PAUSED"] },
+          },
+          orderBy: { position: "asc" },
+        },
         troops: true,
+        unitStacks: {
+          include: {
+            unitType: true,
+          },
+        },
         attacksFrom: {
           include: {
             movement: true,
@@ -132,8 +156,24 @@ export async function GET(req: NextRequest) {
         const timeToFull = StorageService.calculateTimeToFull(storageSnapshot, productionPerHour)
 
         // Count building activity
-        const activeConstructions = village.buildings.filter(b => b.isBuilding).length
-        const buildingQueueCount = village.buildings.filter(b => b.queuePosition !== null).length
+        const activeConstructions = village.buildQueueTasks.filter((task) => task.status === "BUILDING").length
+        const buildingQueueCount = village.buildQueueTasks.length
+        const buildQueue = village.buildQueueTasks.map((task) => {
+          const sourceBuilding = task.buildingId
+            ? village.buildings.find((b) => b.id === task.buildingId)
+            : null
+          return {
+            id: task.id,
+            buildingId: task.buildingId,
+            entityKey: sourceBuilding?.type ?? task.entityKey,
+            fromLevel: task.fromLevel,
+            toLevel: task.toLevel,
+            status: task.status,
+            position: task.position,
+            startedAt: task.startedAt,
+            finishesAt: task.finishesAt,
+          }
+        })
 
         // Count troop movements
         const outgoingAttacks = village.attacksFrom.filter(a =>
@@ -150,25 +190,42 @@ export async function GET(req: NextRequest) {
         ).length
 
         // Calculate total troops
-        const totalTroops = village.troops.reduce((sum, troop) => sum + troop.quantity, 0)
+        const stackTroops =
+          village.unitStacks?.flatMap((stack) => {
+            if (!stack.unitType || stack.count <= 0) return []
+            return {
+              type: stack.unitTypeId,
+              quantity: stack.count,
+            }
+          }) ?? []
 
-        // Get troop breakdown
-        const troops = village.troops.map(troop => ({
+        const legacyTroops = village.troops.map((troop) => ({
           type: troop.type,
           quantity: troop.quantity,
         }))
+
+        const troops = [...stackTroops, ...legacyTroops]
+        const totalTroops = troops.reduce((sum, troop) => sum + troop.quantity, 0)
+
+        // Get troop breakdown
+        const { unitStacks, ...villageRest } = village
 
         const merchants = {
           free: merchantSnapshot.availableMerchants,
           total: merchantSnapshot.totalMerchants,
         }
 
+        const settlersCount = village.troops.find((t) => t.type === "SETTLER")?.quantity ?? 0
+        const adminTypes = new Set(["NOBLEMAN", "NOMARCH", "LOGADES", "CHIEF", "SENATOR"])
+        const administrators = village.troops
+          .filter((troop) => adminTypes.has(troop.type))
+          .reduce((sum, troop) => sum + troop.quantity, 0)
+        const expansionSlotsAvailable = Math.max(0, village.expansionSlotsTotal - village.expansionSlotsUsed)
+
         // Placeholder values for culture points (will be implemented later)
         // For now, calculate based on townhall level
-        const townhallBuilding = village.buildings.find(b => b.type === "HEADQUARTER")
-        const townhallLevel = townhallBuilding?.level || 1
-        const culturePoints = townhallLevel * 100 // Simplified calculation
-        const dailyCpProduction = townhallLevel * 5 // Simplified calculation
+        const culturePoints = village.culturePointsPerHour
+        const dailyCpProduction = Math.round(village.culturePointsPerHour * 24)
 
         return {
           id: village.id,
@@ -177,6 +234,7 @@ export async function GET(req: NextRequest) {
           y: village.y,
           isCapital: village.isCapital,
           loyalty: village.loyalty,
+          loyaltyMax: village.maxLoyalty,
           wood: village.wood,
           stone: village.stone,
           iron: village.iron,
@@ -191,6 +249,7 @@ export async function GET(req: NextRequest) {
           granaryCapacity,
           buildingQueueCount,
           activeConstructions,
+          buildQueue,
           outgoingAttacks,
           incomingAttacks,
           outgoingReinforcements,
@@ -200,9 +259,10 @@ export async function GET(req: NextRequest) {
           culturePoints,
           dailyCpProduction,
           activeCelebrations: 0, // Placeholder
-          settlers: 0, // Placeholder
-          administrators: 0, // Placeholder
-          expansionSlots: 1, // Placeholder
+          settlers: settlersCount,
+          administrators,
+          expansionSlotsAvailable,
+          expansionSlotsTotal: village.expansionSlotsTotal,
           merchants,
           timeToFull,
         }

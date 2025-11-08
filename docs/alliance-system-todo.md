@@ -1,0 +1,152 @@
+# Alliance System TODO
+
+- [x] 01. Lock product goals, anti-abuse tolerances, and alliance size caps with stakeholders.
+  - [x] Gather design/ops input on acceptable risk thresholds for griefing and spam.
+  - [x] Record approved limits and rationale inside `docs/alliances.md`.
+- [x] 02. Define whether worlds allow multi-alliance membership or enforce exclusivity.
+  - [x] Document gameplay implications for diplomacy, chat, and ranking if multi-membership is allowed.
+  - [x] Share decision summary with engineering and live-ops for rollout planning.
+- [x] 03. Enumerate every configurable world toggle (creation resource cost, probation length, cooldowns).
+  - [x] Assign default, minimum, and maximum values for each knob in a balance table.
+  - [x] Note dependency between toggles and any scripts or admin panels required to edit them.
+- [x] 04. Map clear success metrics (retention, ops participation, moderation load) for post-launch evaluation.
+  - [x] Define telemetry events required to feed each metric with sampling plans.
+  - [x] Align analytics dashboards with product owners so goals remain visible.
+- [x] 05. Draft player-facing narrative for alliances to align UX copy and onboarding.
+  - [x] Produce glossary entries, tooltips, and tutorial beats for alliance concepts.
+  - [x] Review wording with localization team for clarity across supported languages.
+- [x] 06. Build an ERD covering Alliance, Member, Rank, Permission, Squad, Forum, Announcement, AuditLog, Invite, and Application.
+  - [x] Validate multiplicities (one-to-many, many-to-many) against gameplay requirements.
+  - [x] Store the ERD diagram (image + source) under `docs/diagrams/`.
+- [x] 07. Document relationships plus ownership constraints in the conceptual model.
+  - [x] Clarify which objects are soft-deleted versus hard-deleted for audit retention.
+  - [x] Add notes on cascading behaviors when alliances are disbanded.
+- [x] 08. Define lifecycle states for each entity with allowed transitions.
+  - [x] Produce state diagrams for announcements, invites, applications, and member statuses.
+  - [x] Include failure modes and recovery steps for each transition.
+- [x] 09. Specify identifier formats and normalization rules for names, tags, and slugs.
+  - [x] Outline server-side normalization functions and validation order.
+  - [x] Add reserved-name registry maintenance process for live-ops.
+- [x] 10. Identify indexing requirements to meet scale targets (tag lookup, unread counts, last active).
+  - [x] Capture read/write patterns driving each index to avoid redundancy.
+  - [x] Estimate storage costs and migration steps for introducing new indexes.
+- [x] 11. Flesh out creation flow UX from eligibility gate through confirmation.
+  - [x] Wireframe each screen including validation error states and tooltips.
+  - [x] Define API contract for creation endpoint outlining synchronous vs async operations.
+- [x] 12. Integrate profanity/impersonation filters plus reserved-name checks.
+  - [x] Select filtering service or dictionary and document tuning knobs.
+  - [x] Ensure manual review queue exists for borderline cases with escalation SLAs.
+- [x] 13. Auto-seed alliance defaults (Leader rank, base ranks, forum skeleton, MOTD placeholder).
+  - [x] Detail template content for each seeded board/thread and how it localizes.
+  - [x] Add migration/backfill plan for existing alliances if defaults change later.
+- [x] 14. Configure optional entry questionnaire template at creation time.
+  - [x] Allow leaders to choose question presets or free-form prompts with limits.
+  - [x] Store templates for reuse when recruitment status toggles back to open.
+- [x] 15. Expose confirmation summary showing costs, obligations, and irreversible choices.
+  - [x] Include anti-fraud warnings (e.g., shared leadership responsibilities).
+  - [x] Require explicit acknowledgement checkbox before final submission.
+- [x] 16. Define leadership transfer UX, permissions, confirmations, and optional MFA.
+  - [x] Draft flow for selecting successor with rank filtering and warnings.
+  - [x] Specify backend audit payload recording actor, recipient, and context.
+- [x] 17. Outline disband guardrails and messaging for blocked attempts.
+  - [x] Implement checklists ensuring member count, debt, and wonder ownership constraints.
+  - [x] Provide fallback instructions (transfer assets, settle debts) when disband fails.
+- [x] 18. Implement leader fallback auto-promotion rules when leadership disappears.
+  - [x] Determine tie-breakers (highest rank, tenure, contribution) and document.
+  - [x] Simulate scenarios to ensure auto-promotion never elevates barred members.
+- [x] 19. Design governance dashboard summarizing leadership health and risks.
+  - [x] Include widgets for pending transfers, lone-leader warnings, and audit hotspots.
+  - [x] Surface quick actions to add co-leaders or update ranks from the dashboard.
+- [x] 20. Ensure leadership/disband actions emit detailed audit events.
+  - [x] Define schema fields (before/after, confirmation tokens, IP/device info).
+  - [x] Build admin review UI for rapid investigation of contested actions.
+- [x] 21. Map admission flows for invites, applications, and auto-join.
+  - [x] Detail recruiter review UX, canned responses, and bulk actions.
+  - [x] Configure expiration timers and reminders for unanswered applications.
+- [x] 22. Define member states with capability matrices per state.
+  - [x] Document what UI surfaces each state (badges, restrictions, tooltips).
+  - [x] Build automated transitions (e.g., probation → active after timer) with audit entries.
+- [x] 23. Layer probation timers, auto-promote suggestions, and contribution goals.
+  - [x] Determine data sources feeding contribution metrics (ops attendance, donations).
+  - [x] Create notification rules prompting leaders when reviews are due.
+- [x] 24. Design leave, kick, and ban confirmations with reason codes and cooldowns.
+  - [x] Provide templated messages sent to affected players describing outcomes.
+  - [x] Enforce asset checks preventing removal during critical responsibilities.
+- [x] 25. Build private member notes timeline for authorized ranks.
+  - [x] Support tagging notes (discipline, availability, specialty) and search.
+  - [x] Protect sensitive notes with access logging and redact-on-export rules.
+- [x] 26. Enumerate permission catalog grouped by functional area.
+  - [x] Break each permission into allow/deny toggles with concise descriptions.
+  - [x] Maintain version history so future changes remain auditable.
+- [x] 27. Specify rank ordering, inheritance semantics, and per-member overrides.
+  - [x] Provide UI cues explaining why a given member has/doesn’t have a permission.
+  - [x] Allow download/export of the rank matrix for offline planning.
+- [x] 28. Enforce safety rails preventing orphaned leadership or privilege escalation.
+  - [x] Simulate proposed changes before saving and show warnings inline.
+  - [x] Block self-demotion below thresholds unless another leader exists.
+- [x] 29. Provide rank management UI with cloning, templates, and conflict resolution.
+  - [x] Support diff view between current ranks and proposed edits for review.
+  - [x] Add optimistic locking messages when concurrent edits occur.
+- [x] 30. Instrument audit entries for every rank/permission change.
+  - [x] Include acting user, target rank/member, field deltas, and optional reasons.
+  - [x] Offer filters by permission type to speed investigations.
+- [x] 31. Architect forum hierarchy with visibility matrices (rank, squad, allowlist).
+  - [x] Define schema for board visibility rules and enforcement middleware.
+  - [x] Provide admin preview mode to verify what each rank sees.
+- [x] 32. Define board metadata: posting rules, pin limits, archive timers, and quotas.
+  - [x] Store per-board configuration objects editable via UI with validation.
+  - [x] List fallback defaults for new boards and inheritance from categories.
+- [x] 33. Support thread features (tags, polls, attachments, mentions, revisions, soft-delete).
+  - [x] Outline UX for editing posts while preserving revision history.
+  - [x] Document attachment constraints (size/type) and virus scanning hooks.
+- [x] 34. Implement unread tracking optimized for large alliances.
+  - [x] Choose data model (per-thread pointers vs. sharded counters) and justify.
+  - [x] Expose APIs to fetch unread summaries without loading full threads.
+- [x] 35. Provide search facets with permission-aware filtering.
+  - [x] Decide on search backend (SQL FTS, Elastic, etc.) and permission filters.
+  - [x] Define UI for advanced search including saved queries for officers.
+- [x] 36. Build moderation toolkit (pin/lock/move/merge/split, post approval, soft-delete/restore, purge).
+  - [x] Describe locking behavior and user feedback during moderator actions.
+  - [x] Ensure merged/split threads maintain authorship timelines in audit log.
+- [x] 37. Add member-level mutes, probation write limits, and squad posting restrictions.
+  - [x] Configure duration presets and escalation policies for repeat offenses.
+  - [x] Display mute indicators on profiles and forum posts for transparency.
+- [x] 38. Integrate content filters with auto-hold queue and moderator review notes.
+  - [x] Determine thresholds for automatic rejection vs. manual approval.
+  - [x] Provide analytics on filter hits to tune word lists over time.
+- [x] 39. Log moderator actions per thread/board with visibility controls.
+  - [x] Build timeline UI showing actions, actors, and reasons tied to content.
+  - [x] Sync logs into global audit export for compliance reviews.
+- [x] 40. Plan forum performance levers (pagination, lazy load, attachments, cleanup, exports).
+  - [x] Benchmark expected load for 1k-member alliances and set SLAs.
+  - [x] Automate archival/export jobs with monitoring for failures.
+- [x] 41. Define announcement types with permission gates and rate limits.
+  - [x] Create configuration table mapping type → allowed ranks and quotas.
+  - [x] Document emergency override workflow with on-call escalation.
+- [x] 42. Detail composer fields: severity, targeting, scheduling, localization, attachments, CTAs.
+  - [x] Build preview mode showing localized variants and delivery scope summary.
+  - [x] Validate attachment/link types to prevent malicious content.
+- [x] 43. Implement targeting matrix and quiet-hour handling with emergency overrides.
+  - [x] Model quiet hours per member and fallback windows when bypassed.
+  - [x] Log targeting decisions for auditing who received which broadcast.
+- [x] 44. Build read receipt pipeline with reminders, escalation, and expiration.
+  - [x] Create UI displaying acknowledgment percentages and outstanding members.
+  - [x] Configure auto-reminders and escalation channels after defined delays.
+- [x] 45. Connect announcements to notification channels with dedupe and opt-in controls.
+  - [x] Define priority rules to avoid multi-channel spam for one announcement.
+  - [x] Respect user notification settings while still honoring require-ack logic.
+- [x] 46. Capture optional diplomacy snapshot module (relations, notes, visibility).
+  - [x] Provide CRUD UI with permissions limited to Leader/Council/Diplomat.
+  - [x] Decide what relation info appears on public alliance profile vs. private view.
+- [x] 47. Implement security measures: rate limits, anti-spam, report routing.
+  - [x] Configure per-permission rate limiters with analytics on hits/misses.
+  - [x] Build report submission flow feeding alliance mods and global staff when flagged.
+- [x] 48. Ensure audit log coverage with filters, exports, retention, and immutable storage.
+  - [x] Design query interfaces allowing time, actor, category filters.
+  - [x] Document retention policy and archival storage location for compliance.
+- [x] 49. Handle concurrency/idempotency for ranks, announcements, and moderation.
+  - [x] Implement version checks prompting users to reload when stale.
+  - [x] Provide idempotency tokens on APIs handling invites and broadcasts.
+- [x] 50. Address internationalization and accessibility requirements.
+  - [x] Support alliance language settings with localized defaults for forum and announcements.
+  - [x] Add dual time displays, RTL support, and non-color severity cues across UI.

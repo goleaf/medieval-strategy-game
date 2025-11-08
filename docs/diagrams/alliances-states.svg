@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="540" viewBox="0 0 980 540">
+  <style>
+    rect { fill: #f0fff4; stroke: #2f855a; stroke-width: 2; rx: 8; ry: 8; }
+    text { font-family: 'Inter', sans-serif; font-size: 13px; fill: #1a202c; }
+    line { stroke: #2f855a; stroke-width: 2; marker-end: url(#arrow); }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f855a" />
+    </marker>
+  </defs>
+  <text x="40" y="30" font-size="16" font-weight="bold">Alliance Lifecycle</text>
+  <rect x="40" y="50" width="120" height="50" />
+  <text x="100" y="80" text-anchor="middle">Forming</text>
+  <rect x="220" y="50" width="120" height="50" />
+  <text x="280" y="80" text-anchor="middle">Active</text>
+  <rect x="400" y="50" width="140" height="50" />
+  <text x="470" y="80" text-anchor="middle">Disbanding</text>
+  <rect x="600" y="50" width="140" height="50" />
+  <text x="670" y="80" text-anchor="middle">Disbanded</text>
+  <line x1="160" y1="75" x2="220" y2="75" />
+  <line x1="340" y1="75" x2="400" y2="75" />
+  <line x1="540" y1="75" x2="600" y2="75" />
+
+  <text x="40" y="150" font-size="16" font-weight="bold">Member States</text>
+  <rect x="40" y="170" width="110" height="45" />
+  <text x="95" y="198" text-anchor="middle">Invited</text>
+  <rect x="200" y="170" width="120" height="45" />
+  <text x="260" y="198" text-anchor="middle">Probation</text>
+  <rect x="380" y="170" width="120" height="45" />
+  <text x="440" y="198" text-anchor="middle">Active</text>
+  <rect x="560" y="170" width="120" height="45" />
+  <text x="620" y="198" text-anchor="middle">Suspended</text>
+  <rect x="740" y="170" width="120" height="45" />
+  <text x="800" y="198" text-anchor="middle">Former</text>
+  <line x1="150" y1="192" x2="200" y2="192" />
+  <line x1="320" y1="192" x2="380" y2="192" />
+  <line x1="500" y1="192" x2="560" y2="192" />
+  <line x1="680" y1="192" x2="740" y2="192" />
+  <line x1="440" y1="215" x2="620" y2="260" />
+  <text x="530" y="240" text-anchor="middle">discipline</text>
+
+  <text x="40" y="290" font-size="16" font-weight="bold">Announcement State</text>
+  <rect x="40" y="310" width="120" height="45" />
+  <text x="100" y="338" text-anchor="middle">Draft</text>
+  <rect x="200" y="310" width="140" height="45" />
+  <text x="270" y="338" text-anchor="middle">Scheduled</text>
+  <rect x="400" y="310" width="130" height="45" />
+  <text x="465" y="338" text-anchor="middle">Sending</text>
+  <rect x="580" y="310" width="120" height="45" />
+  <text x="640" y="338" text-anchor="middle">Sent</text>
+  <rect x="760" y="310" width="120" height="45" />
+  <text x="820" y="338" text-anchor="middle">Failed</text>
+  <line x1="160" y1="332" x2="200" y2="332" />
+  <line x1="340" y1="332" x2="400" y2="332" />
+  <line x1="530" y1="332" x2="580" y2="332" />
+  <line x1="700" y1="332" x2="760" y2="332" />
+  <line x1="200" y1="332" x2="250" y2="372" />
+  <text x="230" y="360" text-anchor="middle">cancel</text>
+</svg>

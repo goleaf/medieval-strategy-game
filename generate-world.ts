@@ -82,7 +82,7 @@ async function clearExistingData() {
 
   // Tribe-related deletions
   await prisma.war.deleteMany()
-  await prisma.alliance.deleteMany()
+  await prisma.tribeTreaty.deleteMany()
   await prisma.tribeInvite.deleteMany()
   await prisma.tribe.deleteMany()
 

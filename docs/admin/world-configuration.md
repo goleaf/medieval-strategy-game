@@ -21,6 +21,7 @@ The World Configuration system allows administrators to manage global game setti
 #### Game State
 - **Game Running**: Pause/resume the entire game world
 - **World Name**: Display name for the game world
+- **Siege Rules Config**: JSON blob merged into `DEFAULT_CATAPULT_RULES` to toggle field targeting, floors, WW caps, etc. (see `docs/features/catapult-targeting.md`)
 
 ## API Endpoints
 
@@ -133,6 +134,7 @@ model WorldConfig {
   nightBonusMultiplier Float @default(1.2)
   beginnerProtectionHours Int @default(72)
   beginnerProtectionEnabled Boolean @default(true)
+  siegeRulesConfig          Json?   @default("{}")
 
   @@unique([id])
 }

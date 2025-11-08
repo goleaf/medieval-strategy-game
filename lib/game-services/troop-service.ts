@@ -167,6 +167,11 @@ const TROOP_STATS: Record<TroopType, { cost: Record<string, number>; stats: Reco
     stats: { attack: 80, defense: 50, speed: 5, health: 500 },
     buildTime: 3000,
   },
+  SETTLER: {
+    cost: { wood: 1500, stone: 1500, iron: 1500, gold: 0, food: 1500 },
+    stats: { attack: 0, defense: 0, speed: 5, health: 150 },
+    buildTime: 3600,
+  },
 }
 
 export class TroopService {

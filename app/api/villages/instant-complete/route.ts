@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db"
 import { BuildingService } from "@/lib/game-services/building-service"
 import { TroopService } from "@/lib/game-services/troop-service"
+import { UnitSystemService } from "@/lib/game-services/unit-system-service"
+import { TrainingStatus } from "@prisma/client"
 import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
 
@@ -25,6 +27,9 @@ export async function POST(req: NextRequest) {
             troopProduction: true,
           },
         },
+        trainingQueueItems: {
+          where: { status: { in: [TrainingStatus.WAITING, TrainingStatus.TRAINING] } },
+        },
       },
     })
 
@@ -43,8 +48,10 @@ export async function POST(req: NextRequest) {
       b.troopProduction.filter((tp) => tp.completionAt > new Date()),
     )
 
+    const activeModernTraining = village.trainingQueueItems.length
+
     const totalActiveItems =
-      queuedBuildings.length + activeResearch.length + activeTroopProduction.length
+      queuedBuildings.length + activeResearch.length + activeTroopProduction.length + activeModernTraining
 
     if (totalActiveItems === 0) {
       return errorResponse("No active constructions or research to complete", 400)
@@ -64,6 +71,7 @@ export async function POST(req: NextRequest) {
     let completedBuildings = 0
     let completedResearch = 0
     let completedTroopProduction = 0
+    let completedModernTraining = 0
 
     // Complete all queued buildings
     for (const building of queuedBuildings) {
@@ -108,6 +116,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (activeModernTraining > 0) {
+      try {
+        const now = new Date()
+        await prisma.trainingQueueItem.updateMany({
+          where: { id: { in: village.trainingQueueItems.map((item) => item.id) } },
+          data: { finishAt: now },
+        })
+        completedModernTraining = await UnitSystemService.completeFinishedTraining(now)
+      } catch (error) {
+        console.error("Failed to complete modern training queue:", error)
+      }
+    }
+
     // Deduct gold
     await prisma.village.update({
       where: { id: villageId },
@@ -122,6 +143,7 @@ export async function POST(req: NextRequest) {
       completedTroopProduction,
       totalGoldCost,
       remainingGold: village.gold - totalGoldCost,
+      completedModernTraining,
     })
   } catch (error) {
     return serverErrorResponse(error)

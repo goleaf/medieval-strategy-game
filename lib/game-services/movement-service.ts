@@ -174,7 +174,9 @@ export class MovementService {
     // Create movement record
     const movement = await prisma.movement.create({
       data: {
-        troopId: "", // We'll create individual movements for each troop type
+        kind: "TROOP",
+        fromVillageId,
+        toVillageId,
         fromX: fromVillage.x,
         fromY: fromVillage.y,
         toX: toVillage.x,
@@ -209,7 +211,10 @@ export class MovementService {
           // Create movement record for this troop type
           await prisma.movement.create({
             data: {
+              kind: "TROOP",
               troopId: troop.id,
+              fromVillageId,
+              toVillageId,
               fromX: fromVillage.x,
               fromY: fromVillage.y,
               toX: toVillage.x,
@@ -241,12 +246,14 @@ export class MovementService {
     }
 
     // Find destination village
-    const destinationVillage = await prisma.village.findFirst({
-      where: {
-        x: movement.toX,
-        y: movement.toY
-      }
-    })
+    const destinationVillage = movement.toVillageId
+      ? await prisma.village.findUnique({ where: { id: movement.toVillageId } })
+      : await prisma.village.findFirst({
+          where: {
+            x: movement.toX,
+            y: movement.toY
+          }
+        })
 
     if (!destinationVillage) {
       return
@@ -316,7 +323,7 @@ export class MovementService {
     if (!player1?.tribe || !player2?.tribe) return false
 
     // Check for alliance between tribes
-    const alliance = await prisma.alliance.findFirst({
+    const alliance = await prisma.tribeTreaty.findFirst({
       where: {
         OR: [
           { tribe1Id: player1.tribe.id, tribe2Id: player2.tribe.id },

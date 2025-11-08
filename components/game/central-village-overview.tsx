@@ -15,6 +15,7 @@ interface VillageOverviewData {
   y: number
   isCapital: boolean
   loyalty: number
+  loyaltyMax: number
   wood: number
   stone: number
   iron: number
@@ -41,8 +42,18 @@ interface VillageOverviewData {
   celebrationEndTime?: Date
   settlers: number
   administrators: number
-  expansionSlots: number
+  expansionSlotsAvailable: number
+  expansionSlotsTotal: number
   merchants: { free: number; total: number }
+  buildQueue: Array<{
+    id: string
+    entityKey: string
+    fromLevel: number
+    toLevel: number
+    status: string
+    position: number
+    finishesAt: string | null
+  }>
 }
 
 interface OverviewResponse {
@@ -411,7 +422,7 @@ export function CentralVillageOverview({ playerId, onVillageSelect }: CentralVil
                     "0"
                   ),
                   village.settlers,
-                  `${village.expansionSlots}/1`,
+                  `${village.expansionSlotsAvailable}/${Math.max(1, village.expansionSlotsTotal || 1)}`,
                 ])}
               />
             </CardContent>
@@ -522,4 +533,3 @@ export function CentralVillageOverview({ playerId, onVillageSelect }: CentralVil
     </div>
   )
 }
-

@@ -3,27 +3,33 @@ import { ShipmentService } from "@/lib/game-services/shipment-service"
 import { MerchantService } from "@/lib/game-services/merchant-service"
 import { StorageService } from "@/lib/game-services/storage-service"
 
-const txModels = {
-  shipment: {
-    create: vi.fn(),
-  },
-  village: {
-    findMany: vi.fn(),
-  },
-  villageDistanceCache: {
-    findUnique: vi.fn(),
-    create: vi.fn(),
-  },
-}
+const prismaModule = vi.hoisted(() => {
+  const txModels = {
+    shipment: {
+      create: vi.fn(),
+    },
+    village: {
+      findMany: vi.fn(),
+    },
+    villageDistanceCache: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+    },
+  }
 
-const prismaMock = {
-  ...txModels,
-  $transaction: vi.fn(async (cb: any) => cb(txModels as any)),
-}
+  const prismaMock = {
+    ...txModels,
+    $transaction: vi.fn(async (cb: any) => cb(txModels as any)),
+  }
+
+  return { txModels, prismaMock }
+})
 
 vi.mock("@/lib/db", () => ({
-  prisma: prismaMock,
+  prisma: prismaModule.prismaMock,
 }))
+
+const { txModels, prismaMock } = prismaModule
 
 describe("ShipmentService", () => {
   beforeEach(() => {

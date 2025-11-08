@@ -4,6 +4,24 @@ import { ProtectionService } from "@/lib/game-services/protection-service"
 import { type NextRequest } from "next/server"
 import { reinforcementSendSchema } from "@/lib/utils/validation"
 import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
+import { getTroopSystemConfig } from "@/lib/troop-system/config"
+import { getRallyPointEngine } from "@/lib/rally-point/server"
+import { randomUUID } from "node:crypto"
+
+const config = getTroopSystemConfig()
+
+function looksLikeUnitTypeId(id: string): boolean {
+  return Boolean(config.units[id])
+}
+
+function shouldUseRallyEngine(
+  selections: Array<{ troopId: string; quantity: number }>,
+  legacyTroops: { id: string }[],
+): boolean {
+  if (selections.length === 0) return false
+  const legacyIds = new Set(legacyTroops.map((troop) => troop.id))
+  return selections.every((selection) => !legacyIds.has(selection.troopId) && looksLikeUnitTypeId(selection.troopId))
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,7 +72,36 @@ export async function POST(req: NextRequest) {
     // TODO: Check alliance/confederacy relationship
     // For now, allow reinforcements to any village (will be restricted later)
 
-    // Validate troop selection and deduct troops
+    const useRallyEngine = shouldUseRallyEngine(units, fromVillage.troops)
+
+    if (useRallyEngine) {
+      const engine = getRallyPointEngine()
+      const unitsByType = units.reduce<Record<string, number>>((acc, unit) => {
+        if (unit.quantity > 0) {
+          acc[unit.troopId] = (acc[unit.troopId] ?? 0) + unit.quantity
+        }
+        return acc
+      }, {})
+
+      const result = await engine.sendMission({
+        sourceVillageId: fromVillage.id,
+        sourceAccountId: fromVillage.playerId,
+        mission: "reinforce",
+        target: { type: "village", villageId: targetVillage.id },
+        units: unitsByType,
+        idempotencyKey: randomUUID(),
+      })
+
+      return successResponse(
+        {
+          movement: result.movement,
+          warnings: result.warnings,
+        },
+        201,
+      )
+    }
+
+    // Legacy troop-based path
     for (const unit of units) {
       const troop = fromVillage.troops.find((t) => t.id === unit.troopId)
       if (!troop || troop.quantity < unit.quantity) {
@@ -78,13 +125,15 @@ export async function POST(req: NextRequest) {
 
     const movement = await prisma.movement.create({
       data: {
-        troopId: fromVillage.troops[0].id,
+        kind: "TROOP",
+        fromVillageId,
+        toVillageId: targetVillage.id,
         fromX: fromVillage.x,
         fromY: fromVillage.y,
         toX,
         toY,
         path: JSON.stringify(path),
-        totalSteps: path.length,
+        totalSteps: Math.max(1, path.length),
         arrivalAt,
       },
     })
@@ -121,4 +170,3 @@ export async function POST(req: NextRequest) {
     return serverErrorResponse(error)
   }
 }
-

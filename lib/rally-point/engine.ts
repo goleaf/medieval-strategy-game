@@ -8,6 +8,7 @@ import {
   getServerSpeed,
   getWavePrecisionMs,
 } from "@/lib/config/rally-point"
+import { TrapperService } from "@/lib/game-services/trapper-service"
 import { SimpleCombatResolver } from "./combat"
 import { computeSlowestSpeed, euclideanDistance, travelTimeMs } from "./math"
 import type { RallyPointRepository, RallyPointTransaction } from "./repository"
@@ -23,14 +24,18 @@ import type {
   RecallReinforcementsInput,
   SendMissionInput,
   SendMissionResult,
+  TrapResolution,
   UnitStats,
   UnitsComposition,
+  UnitTechLevel,
   VillageRecord,
   WaveGroupRecord,
   WaveGroupRequest,
   WaveGroupResult,
   WaveMemberRecord,
 } from "./types"
+import type { CatapultDamageResult, VillageSiegeSnapshot } from "@/lib/combat/catapult/types"
+import { applyTrapCapture, resolveTrapperLevel } from "./traps"
 
 interface TargetResolution {
   coords: { x: number; y: number }
@@ -89,6 +94,22 @@ class GarrisonLedger {
   entries() {
     return Array.from(this.counts.entries())
   }
+}
+
+function selectTechLevelsForUnits(
+  stacks: GarrisonStack[],
+  units: UnitsComposition,
+): Record<string, UnitTechLevel> | undefined {
+  const result: Record<string, UnitTechLevel> = {}
+  for (const stack of stacks) {
+    const requested = units[stack.unitTypeId]
+    if (!requested || requested <= 0) continue
+    result[stack.unitTypeId] = {
+      attack: stack.smithyAttackLevel ?? 0,
+      defense: stack.smithyDefenseLevel ?? 0,
+    }
+  }
+  return Object.keys(result).length ? result : undefined
 }
 
 export class RallyPointEngine {
@@ -155,6 +176,8 @@ export class RallyPointEngine {
         throw new Error("Depart time already elapsed beyond precision window")
       }
 
+      const techLevels = selectTechLevelsForUnits(garrisonStacks, input.units)
+
       ledger.consume(input.units)
       await this.persistGarrison(trx, sourceVillage.id, input.sourceAccountId, ledger)
 
@@ -172,6 +195,7 @@ export class RallyPointEngine {
         payload: {
           units: input.units,
           catapultTargets,
+          techLevels,
           metadata: input.payload ?? {},
         },
         status: "en_route",
@@ -415,23 +439,55 @@ export class RallyPointEngine {
 
     const defenderVillage = movement.toVillageId ? await trx.getVillageById(movement.toVillageId) : null
     const defenderStacks = movement.toVillageId ? await trx.getAllGarrisons(movement.toVillageId) : []
+    const defenderSiegeSnapshot = movement.toVillageId ? await trx.getVillageSiegeSnapshot(movement.toVillageId) : null
+
+    let attackerUnits: UnitsComposition = movement.payload.units
+    let trapSummary: TrapResolution | undefined
+    if (movement.toVillageId && defenderVillage) {
+      const trapperLevel = resolveTrapperLevel(defenderSiegeSnapshot)
+      if (trapperLevel > 0) {
+        const trapperOutcome = await this.processTrapsBeforeCombat(trx, {
+          movement,
+          defenderVillage,
+          trapperLevel,
+        })
+        attackerUnits = trapperOutcome.units
+        trapSummary = trapperOutcome.summary
+      }
+    }
 
     const combatResult = await this.combatResolver.resolve({
       mission: movement.mission,
       attackerVillageId: movement.fromVillageId,
       defenderVillageId: movement.toVillageId,
       target: { x: movement.toTileX, y: movement.toTileY },
-      attackerUnits: movement.payload.units,
+      attackerUnits,
+      attackerTechLevels: movement.payload.techLevels,
       defenderGarrisons: defenderStacks,
       wallLevel: (movement.payload.metadata?.wallLevel as number | undefined) ?? undefined,
       wallType: (movement.payload.metadata?.wallType as string | undefined) ?? undefined,
       rallyPointLevel: attackerRp.level,
       catapultTargets: movement.payload.catapultTargets ?? [],
       timestamp: this.now(),
+      defenderSiegeSnapshot,
     })
+
+    if (trapSummary) {
+      combatResult.trap = trapSummary
+    }
 
     if (movement.toVillageId) {
       await this.applyDefenderOutcome(trx, movement.toVillageId, defenderStacks, combatResult)
+      if (combatResult.catapultDamage) {
+        await this.applyCatapultDamage(trx, combatResult.catapultDamage)
+      }
+      if (defenderSiegeSnapshot) {
+        await this.enforceTrapCapacityAfterBattle(trx, {
+          villageId: movement.toVillageId,
+          snapshot: defenderSiegeSnapshot,
+          damage: combatResult.catapultDamage,
+        })
+      }
     }
 
     const survivors = combatResult.attackerSurvivors
@@ -492,13 +548,184 @@ export class RallyPointEngine {
       toTileY: attackerVillage.y,
       departAt,
       arriveAt,
-      payload: { units: survivors },
+      payload: {
+        units: survivors,
+        techLevels: movement.payload.techLevels,
+        metadata: movement.payload.metadata,
+      },
       status: "returning",
       createdBy: "system",
       createdAt: this.now(),
       updatedAt: this.now(),
     })
     return record.id
+  }
+
+  private async processTrapsBeforeCombat(
+    trx: RallyPointTransaction,
+    params: { movement: MovementRecord; defenderVillage: VillageRecord; trapperLevel: number },
+  ): Promise<{ units: UnitsComposition; summary?: TrapResolution }> {
+    const capacity = TrapperService.capacityForLevel(params.trapperLevel)
+    if (capacity <= 0) {
+      return { units: params.movement.payload.units }
+    }
+    const prisoners = await trx.listActiveTrapPrisoners(params.defenderVillage.id)
+    const occupied = prisoners.reduce((sum, row) => sum + row.count, 0)
+    const freeTraps = Math.max(0, capacity - occupied)
+    if (freeTraps <= 0) {
+      return { units: params.movement.payload.units }
+    }
+
+    const outcome = applyTrapCapture({
+      attackerUnits: params.movement.payload.units,
+      unitCatalog: this.unitCatalog,
+      freeTraps,
+    })
+
+    if (!outcome.captured.length) {
+      return { units: outcome.updatedUnits }
+    }
+
+    const captureRows = outcome.captured.filter((entry) => entry.count > 0)
+    if (captureRows.length) {
+      await trx.createTrapPrisoners(
+        captureRows.map((entry) => ({
+          defenderVillageId: params.defenderVillage.id,
+          attackerVillageId: params.movement.fromVillageId,
+          attackerAccountId: params.movement.ownerAccountId,
+          unitTypeId: entry.unitTypeId,
+          count: entry.count,
+          sourceMovementId: params.movement.id,
+        })),
+      )
+    }
+
+    return {
+      units: outcome.updatedUnits,
+      summary: { captured: outcome.captured },
+    }
+  }
+
+  private async enforceTrapCapacityAfterBattle(
+    trx: RallyPointTransaction,
+    params: { villageId: string; snapshot: VillageSiegeSnapshot; damage?: CatapultDamageResult },
+  ) {
+    const initialLevel = resolveTrapperLevel(params.snapshot)
+    if (initialLevel <= 0) return
+
+    const trapperStructure = params.snapshot.buildings.find((building) => building.type === "TRAPPER")
+    let finalLevel = initialLevel
+    if (params.damage && trapperStructure) {
+      for (const hit of params.damage.targets) {
+        if (!hit.structureId) continue
+        if (hit.structureId === trapperStructure.id || hit.targetId === "TRAPPER") {
+          finalLevel = hit.afterLevel
+          break
+        }
+      }
+    }
+
+    if (finalLevel >= initialLevel) {
+      return
+    }
+
+    await this.pruneTrapOccupancy(trx, params.villageId, finalLevel)
+  }
+
+  private async pruneTrapOccupancy(
+    trx: RallyPointTransaction,
+    defenderVillageId: string,
+    trapperLevel: number,
+  ) {
+    const prisoners = await trx.listActiveTrapPrisoners(defenderVillageId)
+    if (!prisoners.length) return
+    const capacity = TrapperService.capacityForLevel(trapperLevel)
+    const totalHeld = prisoners.reduce((sum, row) => sum + row.count, 0)
+    if (totalHeld <= capacity) {
+      return
+    }
+
+    let excess = totalHeld - capacity
+    const grouped = new Map<
+      string,
+      { attackerVillageId: string; attackerAccountId: string; units: UnitsComposition }
+    >()
+
+    for (const prisoner of prisoners) {
+      if (excess <= 0) break
+      const releaseCount = Math.min(prisoner.count, excess)
+      if (releaseCount <= 0) continue
+      excess -= releaseCount
+
+      const remaining = prisoner.count - releaseCount
+      if (remaining <= 0) {
+        await trx.deleteTrapPrisoner(prisoner.id)
+      } else {
+        await trx.updateTrapPrisonerCount(prisoner.id, remaining)
+      }
+
+      const key = `${prisoner.attackerVillageId}:${prisoner.attackerAccountId}`
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          attackerVillageId: prisoner.attackerVillageId,
+          attackerAccountId: prisoner.attackerAccountId,
+          units: {},
+        })
+      }
+      const entry = grouped.get(key)!
+      entry.units[prisoner.unitTypeId] = (entry.units[prisoner.unitTypeId] ?? 0) + releaseCount
+    }
+
+    for (const entry of grouped.values()) {
+      await this.scheduleReleasedPrisonersReturn(
+        trx,
+        defenderVillageId,
+        entry.attackerVillageId,
+        entry.attackerAccountId,
+        entry.units,
+      )
+    }
+  }
+
+  private async scheduleReleasedPrisonersReturn(
+    trx: RallyPointTransaction,
+    defenderVillageId: string,
+    attackerVillageId: string,
+    attackerAccountId: string,
+    units: UnitsComposition,
+  ) {
+    if (!Object.values(units).some((value) => value > 0)) {
+      return
+    }
+    const defenderVillage = await this.requireVillage(trx, defenderVillageId)
+    const attackerVillage = await this.requireVillage(trx, attackerVillageId)
+    const slowestSpeed = computeSlowestSpeed(units, this.unitCatalog)
+    if (slowestSpeed <= 0) {
+      return
+    }
+    const distance = euclideanDistance(
+      { x: defenderVillage.x, y: defenderVillage.y },
+      { x: attackerVillage.x, y: attackerVillage.y },
+    )
+    const travelMs = travelTimeMs(distance, slowestSpeed, this.serverSpeed)
+    const departAt = this.now()
+    const arriveAt = new Date(departAt.getTime() + travelMs)
+    await trx.createMovement({
+      id: randomUUID(),
+      mission: "return",
+      ownerAccountId: attackerAccountId,
+      fromVillageId: defenderVillageId,
+      toVillageId: attackerVillageId,
+      toTileX: attackerVillage.x,
+      toTileY: attackerVillage.y,
+      departAt,
+      arriveAt,
+      payload: { units },
+      status: "returning",
+      createdBy: "system",
+      createdAt: departAt,
+      updatedAt: departAt,
+    })
   }
 
   private async applyDefenderOutcome(
@@ -661,6 +888,17 @@ export class RallyPointEngine {
     const entries = ledger.entries()
     for (const [unitTypeId, count] of entries) {
       await trx.setOwnerGarrisonUnit(villageId, ownerAccountId, unitTypeId, count)
+    }
+  }
+
+  private async applyCatapultDamage(trx: RallyPointTransaction, damage: CatapultDamageResult) {
+    for (const hit of damage.targets) {
+      if (!hit.structureId) continue
+      if (hit.targetKind === "resource_field") {
+        await trx.updateResourceFieldLevel(hit.structureId, hit.afterLevel)
+      } else {
+        await trx.updateBuildingLevel(hit.structureId, hit.afterLevel)
+      }
     }
   }
 

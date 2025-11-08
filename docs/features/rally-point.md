@@ -36,7 +36,7 @@ The JSON pack defines:
 
 4. **Siege math**
    - Rams use the logarithmic curve + wall resistance multipliers from the data pack.
-   - Catapult shots honor RP targeting rules, split shots within the wave window, and emit per-target level drops for downstream building services.
+   - Catapult shots now pull a defender siege snapshot (buildings + resource fields), re-validate RP selections, fall back to deterministic random targets, clamp against capital floors/critical structures, enforce WW drop caps, and emit per-target before→after metadata (including wasted shots, modifiers, and structure ids) so the repository can persist level changes immediately.
 
 ## Repository Adapter
 
@@ -61,3 +61,24 @@ Key transactional methods:
 - Reinforcement recall flows
 
 Run them via `npx vitest run lib/__tests__/rally-point-engine.test.ts`.
+
+## Server Integration
+
+- **Prisma repository** — `lib/rally-point/prisma-repository.ts` implements the storage adapter over the new Prisma models (`RallyPoint`, `RallyPointWaveGroup`, `RallyPointMovement`, `GarrisonStack`, etc.) while keeping the in-memory adapter for tests.
+- **Unit catalog** — `lib/rally-point/unit-catalog.ts` derives `UnitStats` from `config/unit-system.json`, ensuring the combat resolver shares the same balance knobs as the troop system.
+- **Engine bootstrap** — `lib/rally-point/server.ts` exposes a singleton `getRallyPointEngine()` that wires the Prisma repository + catalog together for jobs and API routes.
+- **Game tick hook** — `lib/jobs/game-tick.ts` calls `engine.resolveDueMovements()` every tick so arrivals, combat, and returns are processed deterministically alongside existing logistics.
+
+## API Surface
+
+All handlers live under `/api/rally-point/*` and accept/return JSON in UTC:
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/api/rally-point/missions` | `POST` | Send a single mission (attack/raid/reinforce/siege) with idempotency + optional `arriveAt` |
+| `/api/rally-point/waves` | `POST` | Schedule a wave group that lands at a common timestamp with ms jitter |
+| `/api/rally-point/movements` | `GET` | List incoming/outgoing movements for a village, filtered by status/mission |
+| `/api/rally-point/movements/:id/cancel` | `POST` | Cancel an outbound mission within the grace window |
+| `/api/rally-point/reinforcements/recall` | `POST` | Recall stationed reinforcements back to their home village |
+
+Each mutating endpoint requires a UUID `idempotencyKey` and the caller’s `ownerAccountId`. Responses include the raw movement payload plus any warnings emitted by the engine.

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db"
 import { hash } from "bcryptjs"
 import { type NextRequest, NextResponse } from "next/server"
 import { VillageService } from "@/lib/game-services/village-service"
+import { CulturePointService } from "@/lib/game-services/culture-point-service"
 
 export async function POST(req: NextRequest) {
   try {
@@ -69,6 +70,8 @@ export async function POST(req: NextRequest) {
         ...(tribe && { tribeId: tribe }),
       },
     })
+
+    await CulturePointService.refreshAccount(player.id, selectedGameWorld)
 
     // Initialize beginner protection
     const { ProtectionService } = await import("@/lib/game-services/protection-service")

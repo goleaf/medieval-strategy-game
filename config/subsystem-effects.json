@@ -37,5 +37,43 @@
   "oasis": {
     "annex_radius_tiles": 3,
     "mansion_slots": { "10": 1, "15": 2, "20": 3 }
+  },
+  "trapper": {
+    "max_level": 20,
+    "capacity_per_level": 10,
+    "capture_priority": [
+      "fast_raiders",
+      "general_infantry",
+      "defensive_cavalry",
+      "heavy_cavalry",
+      "optional_siege",
+      "hero_last"
+    ],
+    "eligible_units": {
+      "hero": true,
+      "siege": false,
+      "administrators": false,
+      "settlers": false
+    },
+    "prisoner_upkeep_policy": "attacker_home",
+    "release_cooldown_seconds": 0
+  },
+  "roman_build_queue": {
+    "field_lane_slots": 1,
+    "inner_lane_slots": 1,
+    "other_tribes_slot_count": 1,
+    "payment_policy": "pay_on_queue",
+    "active_cancel_policy": "disabled",
+    "waiting_cancel_policy": "full_refund"
+  },
+  "teuton_raid_focus": {
+    "cranny_penetration_multiplier": 0.67,
+    "merchant_capacity": 1000,
+    "merchant_tiles_per_hour": 12,
+    "cheap_raider_roi": {
+      "min_successful_raids": 2,
+      "max_successful_raids": 4
+    },
+    "fake_attack_population_modifier": 0
   }
 }

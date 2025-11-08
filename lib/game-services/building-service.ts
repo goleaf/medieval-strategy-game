@@ -1,78 +1,37 @@
 import { prisma } from "@/lib/db"
 import { VillageDestructionService } from "./village-destruction-service"
 import { updateTaskProgress } from "./task-service"
-import type { BuildingType, DemolitionMode } from "@prisma/client"
+import { CulturePointService } from "./culture-point-service"
+import { getBlueprintKeyForBuilding, mapBlueprintCost, type ResourceCost } from "./construction-helpers"
+import { BUILDING_BONUSES, LEGACY_BUILDING_COSTS, LEGACY_BUILDING_TIMES } from "./building-data"
+import { CONSTRUCTION_CONFIG, getLevelData, getMainBuildingMultiplier, getQueuePreset } from "@/lib/config/construction"
+import { getSubsystemEffectsConfig } from "@/lib/config/subsystem-effects"
+import type {
+  BuildQueueTask,
+  BuildTaskStatus,
+  BuildTaskSource,
+  BuildingCategory,
+  BuildingType,
+  DemolitionMode,
+  GameTribe,
+} from "@prisma/client"
 
-const BUILDING_COSTS: Record<BuildingType, Record<string, number>> = {
-  HEADQUARTER: { wood: 100, stone: 100, iron: 50, gold: 20, food: 100 },
-  MARKETPLACE: { wood: 150, stone: 150, iron: 100, gold: 50, food: 150 },
-  BARRACKS: { wood: 200, stone: 100, iron: 150, gold: 0, food: 200 },
-  STABLES: { wood: 250, stone: 150, iron: 200, gold: 50, food: 250 },
-  WATCHTOWER: { wood: 100, stone: 200, iron: 100, gold: 0, food: 100 },
-  WALL: { wood: 50, stone: 300, iron: 50, gold: 0, food: 50 },
-  WAREHOUSE: { wood: 300, stone: 200, iron: 100, gold: 0, food: 300 },
-  GRANARY: { wood: 200, stone: 150, iron: 50, gold: 0, food: 200 },
-  SAWMILL: { wood: 100, stone: 100, iron: 50, gold: 0, food: 100 },
-  QUARRY: { wood: 100, stone: 100, iron: 50, gold: 0, food: 100 },
-  IRON_MINE: { wood: 100, stone: 100, iron: 100, gold: 0, food: 100 },
-  TREASURY: { wood: 200, stone: 200, iron: 200, gold: 100, food: 200 },
-  ACADEMY: { wood: 300, stone: 300, iron: 200, gold: 100, food: 300 },
-  TEMPLE: { wood: 250, stone: 250, iron: 100, gold: 50, food: 250 },
-  HOSPITAL: { wood: 200, stone: 200, iron: 150, gold: 0, food: 200 },
-  FARM: { wood: 150, stone: 100, iron: 50, gold: 0, food: 150 },
-  SNOB: { wood: 500, stone: 500, iron: 500, gold: 500, food: 500 },
-  CRANNY: { wood: 40, stone: 50, iron: 30, gold: 0, food: 40 },
-  // Reign of Fire buildings
-  CITY: { wood: 500, stone: 500, iron: 300, gold: 200, food: 300 },
-  WATCHTOWER: { wood: 150, stone: 200, iron: 100, gold: 50, food: 150 },
-  // Teutonic-specific buildings
-  EARTH_WALL: { wood: 100, stone: 200, iron: 50, gold: 0, food: 100 },
-  BREWERY: { wood: 300, stone: 250, iron: 150, gold: 100, food: 200 },
-  // Defensive buildings
-  TRAPPER: { wood: 100, stone: 100, iron: 100, gold: 20, food: 100 },
+type QueueLimits = {
+  maxWaiting: number
+  parallelFieldSlots: number
+  parallelInnerSlots: number
 }
 
-// Building bonuses (Reign of Fire features)
-const BUILDING_BONUSES: Record<BuildingType, {
-  woodProduction?: number;
-  stoneProduction?: number;
-  ironProduction?: number;
-  goldProduction?: number;
-  foodProduction?: number;
-  visibility?: number; // Watchtower bonus
-}> = {
-  HEADQUARTER: {},
-  MARKETPLACE: {},
-  BARRACKS: {},
-  STABLES: {},
-  WATCHTOWER: { visibility: 2 }, // +2 visibility radius per level
-  WALL: {},
-  WAREHOUSE: {},
-  GRANARY: {},
-  SAWMILL: {},
-  QUARRY: {},
-  IRON_MINE: {},
-  TREASURY: {},
-  ACADEMY: {},
-  TEMPLE: {},
-  HOSPITAL: {},
-  FARM: {},
-  SNOB: {},
-  CRANNY: {},
-  // Reign of Fire buildings
-  CITY: { woodProduction: 10, stoneProduction: 10, ironProduction: 5, goldProduction: 3, foodProduction: 15 }, // +bonuses per level
-  WATCHTOWER: { visibility: 3 }, // Enhanced visibility
-  // Teutonic-specific buildings
-  EARTH_WALL: {},
-  BREWERY: {},
-  // Huns-specific buildings
-  COMMAND_CENTER: {},
-  MAKESHIFT_WALL: {},
-  // Defensive buildings
-  TRAPPER: {},
+type UpgradeComputation = {
+  cost: ResourceCost
+  baseTimeSeconds: number
+  effectiveTimeSeconds: number
+  blueprintKey?: string
+  category: BuildingCategory
 }
 
-// Get building bonuses for a specific building type and level
+const SUBSYSTEM_EFFECTS = getSubsystemEffectsConfig()
+
 export function getBuildingBonuses(buildingType: BuildingType, level: number = 1) {
   const baseBonuses = BUILDING_BONUSES[buildingType] || {};
   const scaledBonuses: any = {};
@@ -117,58 +76,17 @@ export async function getVillageBuildingBonuses(villageId: string) {
   return totalBonuses;
 }
 
-const BUILDING_UPGRADE_TIME: Record<BuildingType, number> = {
-  HEADQUARTER: 3600,
-  MARKETPLACE: 2700,
-  BARRACKS: 2700,
-  STABLES: 3600,
-  WATCHTOWER: 2700,
-  WALL: 2700,
-  WAREHOUSE: 2400,
-  GRANARY: 2400,
-  SAWMILL: 2400,
-  QUARRY: 2400,
-  IRON_MINE: 2400,
-  TREASURY: 3600,
-  ACADEMY: 5400,
-  TEMPLE: 5400,
-  HOSPITAL: 3600,
-  FARM: 2400,
-  SNOB: 7200,
-  CRANNY: 1800,
-  // Reign of Fire buildings
-  CITY: 7200, // 2 hours base time
-  WATCHTOWER: 3600, // 1 hour base time
-  // Teutonic-specific buildings
-  EARTH_WALL: 2700,
-  BREWERY: 3600,
-  // Huns-specific buildings
-  COMMAND_CENTER: 4800,
-  MAKESHIFT_WALL: 2400,
-  // Defensive buildings
-  TRAPPER: 1800,
-}
-
 export class BuildingService {
-  /**
-   * Get construction queue limit from world config
-   */
-  static async getQueueLimit(): Promise<number> {
-    const config = await prisma.worldConfig.findFirst()
-    return config?.constructionQueueLimit || 3
-  }
-
   /**
    * Get current construction queue for a village
    */
   static async getConstructionQueue(villageId: string) {
-    return await prisma.building.findMany({
+    return prisma.buildQueueTask.findMany({
       where: {
         villageId,
-        isBuilding: true,
-        queuePosition: { not: null },
+        status: { in: [BuildTaskStatus.WAITING, BuildTaskStatus.BUILDING, BuildTaskStatus.PAUSED] },
       },
-      orderBy: { queuePosition: "asc" },
+      orderBy: { position: "asc" },
     })
   }
 
@@ -234,6 +152,227 @@ export class BuildingService {
     return 100 + farmLevel * 50
   }
 
+  private static async getQueueLimitsForVillage(villageId: string, tribe?: GameTribe | null): Promise<QueueLimits> {
+    const override = await prisma.villageQueueLimit.findUnique({ where: { villageId } })
+    if (override) {
+      return {
+        maxWaiting: override.maxWaiting,
+        parallelFieldSlots: override.parallelFieldSlots,
+        parallelInnerSlots: override.parallelInnerSlots,
+      }
+    }
+    const base = { ...getQueuePreset() }
+    const romanCfg = SUBSYSTEM_EFFECTS.roman_build_queue
+    if (!romanCfg) {
+      return base
+    }
+
+    let effectiveTribe = tribe ?? null
+    if (!effectiveTribe) {
+      const owner = await prisma.village.findUnique({
+        where: { id: villageId },
+        select: { player: { select: { gameTribe: true } } },
+      })
+      effectiveTribe = owner?.player?.gameTribe ?? null
+    }
+
+    return this.applyQueueModifiers(base, effectiveTribe)
+  }
+
+  private static applyQueueModifiers(base: QueueLimits, tribe: GameTribe | null | undefined): QueueLimits {
+    const romanCfg = SUBSYSTEM_EFFECTS.roman_build_queue
+    if (!romanCfg) return base
+    const normalize = (value: number | undefined) => Math.max(0, Math.floor(value ?? 0))
+
+    if (tribe === "ROMANS") {
+      return {
+        ...base,
+        parallelFieldSlots: normalize(romanCfg.field_lane_slots),
+        parallelInnerSlots: normalize(romanCfg.inner_lane_slots),
+      }
+    }
+
+    if (romanCfg.other_tribes_slot_count > 1) {
+      const slots = normalize(romanCfg.other_tribes_slot_count)
+      return {
+        ...base,
+        parallelFieldSlots: slots,
+        parallelInnerSlots: slots,
+      }
+    }
+
+    return base
+  }
+
+  private static usesParallelSlots(limits: QueueLimits): boolean {
+    return limits.parallelFieldSlots > 0 || limits.parallelInnerSlots > 0
+  }
+
+  private static getAllowedActiveSlots(category: BuildingCategory, limits: QueueLimits): number {
+    if (!this.usesParallelSlots(limits)) return 1
+    const value = category === "FIELD" ? limits.parallelFieldSlots : limits.parallelInnerSlots
+    return Math.max(1, value)
+  }
+
+  private static async countActiveTasks(
+    villageId: string,
+    category?: BuildingCategory,
+  ): Promise<number> {
+    return prisma.buildQueueTask.count({
+      where: {
+        villageId,
+        status: BuildTaskStatus.BUILDING,
+        ...(category ? { category } : {}),
+      },
+    })
+  }
+
+  private static async canStartTask(
+    villageId: string,
+    category: BuildingCategory,
+    limits: QueueLimits,
+  ): Promise<boolean> {
+    if (!this.usesParallelSlots(limits)) {
+      const active = await this.countActiveTasks(villageId)
+      return active === 0
+    }
+    const allowed = this.getAllowedActiveSlots(category, limits)
+    if (allowed <= 0) return false
+    const active = await this.countActiveTasks(villageId, category)
+    return active < allowed
+  }
+
+  private static computeUpgradeDetails(
+    type: BuildingType,
+    currentLevel: number,
+    targetLevel: number,
+    mainBuildingLevel: number,
+    serverSpeed: number,
+  ): UpgradeComputation {
+    const blueprintKey = getBlueprintKeyForBuilding(type)
+    let category: BuildingCategory = BuildingCategory.INNER
+    let cost: ResourceCost
+    let baseTimeSeconds: number
+
+    if (blueprintKey) {
+      const blueprint = CONSTRUCTION_CONFIG.buildingBlueprints[blueprintKey]
+      category = blueprint.category === "field" ? BuildingCategory.FIELD : BuildingCategory.INNER
+      const levelData = getLevelData(blueprintKey, targetLevel)
+      cost = mapBlueprintCost(levelData.cost)
+      baseTimeSeconds = levelData.buildTimeSeconds
+    } else {
+      const legacy = LEGACY_BUILDING_COSTS[type] || {}
+      const scale = Math.pow(1.2, currentLevel)
+      cost = {
+        wood: Math.round((legacy.wood ?? 0) * scale),
+        stone: Math.round((legacy.stone ?? 0) * scale),
+        iron: Math.round((legacy.iron ?? 0) * scale),
+        gold: Math.round((legacy.gold ?? 0) * scale),
+        food: Math.round((legacy.food ?? 0) * scale),
+      }
+      baseTimeSeconds = ((LEGACY_BUILDING_TIMES[type] ?? 3600) * (1 + currentLevel * 0.1))
+    }
+
+    const mbMultiplier = getMainBuildingMultiplier(mainBuildingLevel)
+    const effectiveTimeSeconds = Math.max(
+      30,
+      Math.round((baseTimeSeconds * mbMultiplier) / Math.max(serverSpeed, 1)),
+    )
+
+    return {
+      cost,
+      baseTimeSeconds,
+      effectiveTimeSeconds,
+      blueprintKey: blueprintKey ?? undefined,
+      category,
+    }
+  }
+
+  private static async startTask(task: BuildQueueTask): Promise<void> {
+    if (!task.buildingId) return
+    const building = await prisma.building.findUnique({
+      where: { id: task.buildingId },
+      include: {
+        village: {
+          include: {
+            player: { include: { gameWorld: true } },
+            buildings: { select: { id: true, type: true, level: true } },
+          },
+        },
+      },
+    })
+
+    if (!building || !building.village) return
+
+    const mainBuilding = building.village.buildings.find((b) => b.type === "HEADQUARTER")
+    const mainBuildingLevel = mainBuilding?.level ?? 1
+    const serverSpeed = building.village.player?.gameWorld?.speed ?? 1
+    const upgrade = this.computeUpgradeDetails(
+      building.type as BuildingType,
+      building.level,
+      task.toLevel,
+      mainBuildingLevel,
+      serverSpeed,
+    )
+    const now = new Date()
+    const finishesAt = new Date(now.getTime() + upgrade.effectiveTimeSeconds * 1000)
+
+    await prisma.buildQueueTask.update({
+      where: { id: task.id },
+      data: {
+        status: BuildTaskStatus.BUILDING,
+        startedAt: now,
+        finishesAt,
+        speedSnapshot: {
+          baseTimeSeconds: upgrade.baseTimeSeconds,
+          effectiveTimeSeconds: upgrade.effectiveTimeSeconds,
+          serverSpeed,
+          mainBuildingLevel,
+        },
+      },
+    })
+
+    await prisma.building.update({
+      where: { id: building.id },
+      data: {
+        isBuilding: true,
+        completionAt: finishesAt,
+        queuePosition: task.position,
+      },
+    })
+  }
+
+  private static async startNextTasks(villageId: string): Promise<void> {
+    const limits = await this.getQueueLimitsForVillage(villageId)
+    if (!this.usesParallelSlots(limits)) {
+      const active = await this.countActiveTasks(villageId)
+      if (active > 0) return
+      const next = await prisma.buildQueueTask.findFirst({
+        where: { villageId, status: BuildTaskStatus.WAITING },
+        orderBy: { position: "asc" },
+      })
+      if (next) {
+        await this.startTask(next)
+      }
+      return
+    }
+
+    for (const category of [BuildingCategory.INNER, BuildingCategory.FIELD]) {
+      const allowed = this.getAllowedActiveSlots(category, limits)
+      if (allowed <= 0) continue
+      let active = await this.countActiveTasks(villageId, category)
+      while (active < allowed) {
+        const next = await prisma.buildQueueTask.findFirst({
+          where: { villageId, status: BuildTaskStatus.WAITING, category },
+          orderBy: { position: "asc" },
+        })
+        if (!next) break
+        await this.startTask(next)
+        active += 1
+      }
+    }
+  }
+
   /**
    * Upgrade building - adds to construction queue
    * Costs are deducted at enqueue
@@ -241,112 +380,133 @@ export class BuildingService {
   static async upgradeBuilding(buildingId: string): Promise<void> {
     const building = await prisma.building.findUnique({
       where: { id: buildingId },
-      include: { village: true },
+      include: {
+        village: {
+          include: {
+            player: { include: { gameWorld: true } },
+            buildings: { select: { id: true, type: true, level: true } },
+          },
+        },
+        queueTasks: {
+          where: {
+            status: { in: [BuildTaskStatus.WAITING, BuildTaskStatus.BUILDING, BuildTaskStatus.PAUSED] },
+          },
+        },
+      },
     })
 
     if (!building) throw new Error("Building not found")
-    if (building.isBuilding) throw new Error("Building already under construction")
+    if (!building.village) throw new Error("Village not found")
+    if (building.queueTasks.length > 0) throw new Error("Building already under construction")
 
     // Check Brewery building restrictions (Teutonic-only)
     if (building.type === "BREWERY") {
-      const restrictedBuildings = building.village.buildings.filter(b =>
-        ["RESIDENCE", "PALACE", "COMMAND_CENTER"].includes(b.type)
+      const restrictedBuildings = building.village.buildings.filter((b) =>
+        ["RESIDENCE", "PALACE", "COMMAND_CENTER"].includes(b.type),
       )
       if (restrictedBuildings.length > 0) {
-        throw new Error("Cannot build Brewery in a village that contains Residence, Palace, or Command Center")
+        throw new Error(
+          "Cannot build Brewery in a village that contains Residence, Palace, or Command Center",
+        )
       }
     }
 
-    // Check queue limit
-    const queueLimit = await this.getQueueLimit()
-    const currentQueue = await this.getConstructionQueue(building.villageId)
-    if (currentQueue.length >= queueLimit) {
-      throw new Error(`Construction queue is full (max ${queueLimit})`)
+    const limits = await this.getQueueLimitsForVillage(building.villageId, building.village.player?.gameTribe ?? null)
+    const waitingCount = await prisma.buildQueueTask.count({
+      where: { villageId: building.villageId, status: BuildTaskStatus.WAITING },
+    })
+    if (waitingCount >= limits.maxWaiting) {
+      throw new Error(`Construction queue is full (max waiting ${limits.maxWaiting})`)
     }
 
-    const costs = BUILDING_COSTS[building.type as BuildingType]
     const village = building.village
+    const mainBuilding = village.buildings.find((b) => b.type === "HEADQUARTER")
+    const mainBuildingLevel = mainBuilding?.level ?? 1
+    const serverSpeed = village.player?.gameWorld?.speed ?? 1
+    const targetLevel = building.level + 1
+    const upgrade = this.computeUpgradeDetails(
+      building.type as BuildingType,
+      building.level,
+      targetLevel,
+      mainBuildingLevel,
+      serverSpeed,
+    )
 
-    // Check resources
-    if (
-      village.wood < costs.wood ||
-      village.stone < costs.stone ||
-      village.iron < costs.iron ||
-      village.gold < costs.gold ||
-      village.food < costs.food
-    ) {
+    const hasResources =
+      village.wood >= upgrade.cost.wood &&
+      village.stone >= upgrade.cost.stone &&
+      village.iron >= upgrade.cost.iron &&
+      village.gold >= upgrade.cost.gold &&
+      village.food >= upgrade.cost.food
+    if (!hasResources) {
       throw new Error("Insufficient resources")
     }
-
-    // Calculate completion time with speed scaling
-    let baseCompletionTime = BUILDING_UPGRADE_TIME[building.type as BuildingType] * (1 + building.level * 0.1)
-
-    // Apply speed scaling from game world
-    const player = await prisma.player.findUnique({
-      where: { id: village.playerId },
-      include: { gameWorld: true }
-    })
-
-    if (player?.gameWorld?.speed && player.gameWorld.speed > 1) {
-      // Speed scaling: higher speed = faster construction (time divided by speed factor)
-      baseCompletionTime = baseCompletionTime / player.gameWorld.speed
-    }
-
-    // Apply Reign of Fire construction speed bonus (25% faster for specific buildings)
-    if (player?.gameWorld?.version === "REIGN_OF_FIRE") {
-      const reignOfFireFastBuildings: BuildingType[] = [
-        "HEADQUARTER",
-        "WAREHOUSE",
-        "GRANARY",
-        "SAWMILL",
-        "QUARRY",
-        "IRON_MINE",
-        "FARM"
-      ];
-
-      if (reignOfFireFastBuildings.includes(building.type as BuildingType)) {
-        // 25% faster = 0.75 multiplier
-        baseCompletionTime = baseCompletionTime * 0.75;
-      }
-    }
-
-    const completionTime = baseCompletionTime
-    
-    // Calculate when this building will complete based on queue
-    let completionAt = new Date()
-    if (currentQueue.length > 0) {
-      const lastBuilding = currentQueue[currentQueue.length - 1]
-      completionAt = lastBuilding.completionAt || new Date()
-    }
-    completionAt = new Date(completionAt.getTime() + completionTime * 1000)
 
     // Deduct costs immediately
     await prisma.village.update({
       where: { id: village.id },
       data: {
-        wood: village.wood - costs.wood,
-        stone: village.stone - costs.stone,
-        iron: village.iron - costs.iron,
-        gold: village.gold - costs.gold,
-        food: village.food - costs.food,
+        wood: { decrement: upgrade.cost.wood },
+        stone: { decrement: upgrade.cost.stone },
+        iron: { decrement: upgrade.cost.iron },
+        gold: { decrement: upgrade.cost.gold },
+        food: { decrement: upgrade.cost.food },
       },
     })
 
-    // Add to queue
-    const queuePosition = currentQueue.length + 1
+    const canStart = await this.canStartTask(building.villageId, upgrade.category, limits)
+    const lastTask = await prisma.buildQueueTask.findFirst({
+      where: { villageId: building.villageId },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    })
+    const position = (lastTask?.position ?? 0) + 1
+    const now = new Date()
+    const finishesAt = canStart
+      ? new Date(now.getTime() + upgrade.effectiveTimeSeconds * 1000)
+      : null
+
+    await prisma.buildQueueTask.create({
+      data: {
+        villageId: building.villageId,
+        buildingId: building.id,
+        entityKey: upgrade.blueprintKey ?? building.type.toLowerCase(),
+        category: upgrade.category,
+        fromLevel: building.level,
+        toLevel: targetLevel,
+        status: canStart ? BuildTaskStatus.BUILDING : BuildTaskStatus.WAITING,
+        queuedAt: now,
+        startedAt: canStart ? now : null,
+        finishesAt,
+        position,
+        speedSnapshot: {
+          baseTimeSeconds: upgrade.baseTimeSeconds,
+          effectiveTimeSeconds: canStart ? upgrade.effectiveTimeSeconds : null,
+          serverSpeed,
+          mainBuildingLevel,
+        },
+        metadata: { cost: upgrade.cost },
+        createdBy: BuildTaskSource.PLAYER,
+      },
+    })
+
     await prisma.building.update({
       where: { id: buildingId },
       data: {
         isBuilding: true,
-        completionAt,
-        queuePosition,
-        constructionCostWood: costs.wood,
-        constructionCostStone: costs.stone,
-        constructionCostIron: costs.iron,
-        constructionCostGold: costs.gold,
-        constructionCostFood: costs.food,
+        completionAt: finishesAt,
+        queuePosition: position,
+        constructionCostWood: upgrade.cost.wood,
+        constructionCostStone: upgrade.cost.stone,
+        constructionCostIron: upgrade.cost.iron,
+        constructionCostGold: upgrade.cost.gold,
+        constructionCostFood: upgrade.cost.food,
       },
     })
+
+    if (!canStart) {
+      await this.startNextTasks(building.villageId)
+    }
   }
 
   /**
@@ -360,12 +520,16 @@ export class BuildingService {
       where: { id: buildingId },
       include: {
         village: true,
-        research: true
+        research: true,
+        queueTasks: {
+          where: { status: { in: [BuildTaskStatus.WAITING, BuildTaskStatus.BUILDING, BuildTaskStatus.PAUSED] } },
+          orderBy: { position: "asc" },
+        },
       },
     })
 
     if (!building) throw new Error("Building not found")
-    if (!building.isBuilding || building.queuePosition === null) {
+    if (!building.queueTasks.length) {
       throw new Error("Building is not under construction")
     }
 
@@ -373,6 +537,8 @@ export class BuildingService {
     if (building.research?.isResearching) {
       throw new Error("Cannot cancel building that is currently researching")
     }
+
+    const task = building.queueTasks[0]
 
     let refund = {
       wood: 0,
@@ -383,7 +549,7 @@ export class BuildingService {
     }
 
     // Calculate refund based on Travian system
-    if (building.level === 0) {
+    if (task.status === BuildTaskStatus.WAITING) {
       // Level 1 upgrade - full refund
       refund = {
         wood: building.constructionCostWood,
@@ -395,7 +561,7 @@ export class BuildingService {
     } else {
       // Higher level upgrade - refund difference between new and current level costs
       const currentLevelCost = this.getBuildingCosts(building.type as BuildingType)
-      const newLevelCost = BUILDING_COSTS[building.type as BuildingType]
+      const newLevelCost = LEGACY_BUILDING_COSTS[building.type as BuildingType] || currentLevelCost
 
       // Apply level scaling to both costs
       const currentLevelScaled = {
@@ -452,21 +618,15 @@ export class BuildingService {
       },
     })
 
-    // Shift queue positions
-    const buildingsToShift = await prisma.building.findMany({
-      where: {
-        villageId: building.villageId,
-        isBuilding: true,
-        queuePosition: { gt: queuePosition },
+    await prisma.buildQueueTask.update({
+      where: { id: task.id },
+      data: {
+        status: BuildTaskStatus.CANCELLED,
+        cancelledAt: new Date(),
       },
     })
 
-    for (const b of buildingsToShift) {
-      await prisma.building.update({
-        where: { id: b.id },
-        data: { queuePosition: (b.queuePosition || 0) - 1 },
-      })
-    }
+    await this.startNextTasks(building.villageId)
   }
 
   /**
@@ -480,6 +640,11 @@ export class BuildingService {
 
     if (!building) throw new Error("Building not found")
     if (!building.isBuilding) return
+
+    const task = await prisma.buildQueueTask.findFirst({
+      where: { buildingId, status: BuildTaskStatus.BUILDING },
+      orderBy: { startedAt: "desc" },
+    })
 
     // Complete the building
     await prisma.building.update({
@@ -496,6 +661,16 @@ export class BuildingService {
         constructionCostFood: 0,
       },
     })
+
+    if (task) {
+      await prisma.buildQueueTask.update({
+        where: { id: task.id },
+        data: {
+          status: BuildTaskStatus.DONE,
+          completedAt: new Date(),
+        },
+      })
+    }
 
     // Update production rates based on new building levels
     const village = await prisma.village.findUnique({
@@ -533,47 +708,19 @@ export class BuildingService {
         })
       }
     }
-
-    // Shift queue positions
-    const buildingsToShift = await prisma.building.findMany({
-      where: {
-        villageId: building.villageId,
-        isBuilding: true,
-        queuePosition: { gt: building.queuePosition || 0 },
-      },
-    })
-
-    for (const b of buildingsToShift) {
-      await prisma.building.update({
-        where: { id: b.id },
-        data: { queuePosition: (b.queuePosition || 0) - 1 },
-      })
-    }
-
-    // Start next building in queue if any
-    const nextBuilding = await prisma.building.findFirst({
-      where: {
-        villageId: building.villageId,
-        isBuilding: true,
-        queuePosition: 1,
-      },
-    })
-
-    if (nextBuilding && nextBuilding.completionAt) {
-      // Building already has completion time calculated, just mark as active
-      // The game tick will handle completion
-    }
-
-    // Check for task completion after building upgrade
+    await CulturePointService.recalculateVillageContribution(building.villageId)
+    await this.startNextTasks(building.villageId)
     await updateTaskProgress(building.village.playerId, building.villageId)
   }
 
   static getBuildingCosts(type: BuildingType) {
-    return BUILDING_COSTS[type]
+    return (
+      LEGACY_BUILDING_COSTS[type] || { wood: 0, stone: 0, iron: 0, gold: 0, food: 0 }
+    )
   }
 
   static getBuildingUpgradeTime(type: BuildingType, level: number) {
-    const baseTime = BUILDING_UPGRADE_TIME[type]
+    const baseTime = LEGACY_BUILDING_TIMES[type] ?? 3600
     return baseTime * (1 + level * 0.1)
   }
 
@@ -582,7 +729,7 @@ export class BuildingService {
    * Demolition time is roughly half the construction time
    */
   static getDemolitionTime(type: BuildingType, level: number): number {
-    const baseTime = BUILDING_UPGRADE_TIME[type]
+    const baseTime = LEGACY_BUILDING_TIMES[type] ?? 3600
     return Math.floor((baseTime * (1 + level * 0.1)) * 0.5) // 50% of construction time
   }
 
@@ -778,7 +925,11 @@ export class BuildingService {
     }
 
     // Refund a portion of the "virtual" resources that would be gained from demolition
-    const baseCosts = BUILDING_COSTS[building.type as BuildingType]
+    const baseCosts = LEGACY_BUILDING_COSTS[building.type as BuildingType] || {
+      wood: 0,
+      stone: 0,
+      iron: 0,
+    }
     const refundWood = Math.floor(baseCosts.wood * refundPercentage * 0.1) // 10% of construction cost
     const refundStone = Math.floor(baseCosts.stone * refundPercentage * 0.1)
     const refundIron = Math.floor(baseCosts.iron * refundPercentage * 0.1)

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { NightPolicyService } from "./night-policy-service"
 
 export class ProtectionService {
   /**
@@ -138,25 +139,14 @@ export class ProtectionService {
   }
 
   /**
-   * Check if it's currently night time (for night bonus)
-   * Night is defined as 22:00 - 06:00 UTC
-   */
-  static isNightTime(): boolean {
-    const now = new Date()
-    const hour = now.getUTCHours()
-    return hour >= 22 || hour < 6
-  }
-
-  /**
    * Get night bonus multiplier for defense
    */
-  static async getNightBonusMultiplier(): Promise<number> {
-    if (!this.isNightTime()) {
+  static async getNightBonusMultiplier(at: Date = new Date()): Promise<number> {
+    const state = await NightPolicyService.evaluate(at)
+    if (state.mode !== "BONUS" || !state.active) {
       return 1.0
     }
-
-    const config = await prisma.worldConfig.findFirst()
-    return config?.nightBonusMultiplier || 1.2
+    return state.defenseMultiplier
   }
 
   /**
@@ -181,4 +171,3 @@ export class ProtectionService {
     return Math.ceil((protectionUntil.getTime() - now.getTime()) / (1000 * 60 * 60)) // Hours remaining
   }
 }
-

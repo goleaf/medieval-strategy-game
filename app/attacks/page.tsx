@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { ArrowLeft, Eye, X, Clock } from "lucide-react"
 import { AttackPlanner } from "@/components/game/attack-planner"
+import { ReinforcementPlanner } from "@/components/game/reinforcement-planner"
 import { CombatSimulator } from "@/components/game/combat-simulator"
 import { TextTable } from "@/components/game/text-table"
 import { CountdownTimer } from "@/components/game/countdown-timer"
@@ -32,10 +33,12 @@ export default function AttacksPage() {
   const [villages, setVillages] = useState<VillageWithTroops[]>([])
   const [attacks, setAttacks] = useState<Attack[]>([])
   const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
+  const [playerId, setPlayerId] = useState<string | null>(null)
+  const [hasGoldClub, setHasGoldClub] = useState(false)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (playerRef: string) => {
     try {
-      const villagesRes = await fetch("/api/villages?playerId=temp-player-id")
+      const villagesRes = await fetch(`/api/villages?playerId=${playerRef}`)
       const villagesData = await villagesRes.json()
       if (villagesData.success && villagesData.data) {
         setVillages(villagesData.data)
@@ -45,7 +48,7 @@ export default function AttacksPage() {
       }
 
       // Fetch attacks from API
-      const attacksRes = await fetch("/api/attacks?playerId=temp-player-id")
+      const attacksRes = await fetch(`/api/attacks?playerId=${playerRef}`)
       const attacksData = await attacksRes.json()
       if (attacksData.success) {
         setAttacks(attacksData.data)
@@ -54,6 +57,77 @@ export default function AttacksPage() {
       console.error("Failed to fetch data:", error)
     }
   }, [])
+
+  const fetchPlayer = useCallback(async () => {
+    try {
+      const authToken = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
+      if (authToken) {
+        const res = await fetch("/api/auth/player-data", {
+          headers: { Authorization: `Bearer ${authToken}` },
+        })
+        const json = await res.json()
+        if (json.success && json.data?.player) {
+          setPlayerId(json.data.player.id)
+          setHasGoldClub(Boolean(json.data.player.hasGoldClubMembership))
+          return
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load player data:", error)
+    }
+    setPlayerId("temp-player-id")
+    setHasGoldClub(false)
+  }, [])
+
+  const handleLaunchAttack = useCallback(
+    async (toX: number, toY: number, selection: Record<string, number>, type: string) => {
+      if (!selectedVillageId) throw new Error("Select a village first")
+      const response = await fetch("/api/attacks/launch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromVillageId: selectedVillageId,
+          toX,
+          toY,
+          attackType: type,
+          troopSelection: selection,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to launch attack")
+      }
+      await fetchData(playerId ?? "temp-player-id")
+      alert("Attack launched!")
+    },
+    [fetchData, playerId, selectedVillageId],
+  )
+
+  const handleSendReinforcements = useCallback(
+    async (toX: number, toY: number, selection: Record<string, number>) => {
+      if (!selectedVillageId) throw new Error("Select a village first")
+      const units = Object.entries(selection).map(([troopId, quantity]) => ({
+        troopId,
+        quantity,
+      }))
+      const response = await fetch("/api/reinforcements/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromVillageId: selectedVillageId,
+          toX,
+          toY,
+          units,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send reinforcements")
+      }
+      alert("Reinforcements en route!")
+    },
+    [selectedVillageId],
+  )
 
   const handleCancelAttack = async (attackId: string) => {
     if (!confirm("Are you sure you want to cancel this attack?")) return
@@ -66,7 +140,7 @@ export default function AttacksPage() {
 
       if (data.success) {
         alert("Attack cancelled successfully!")
-        await fetchData() // Refresh the data
+        await fetchData(playerId ?? "temp-player-id") // Refresh the data
       } else {
         alert(`Error: ${data.error}`)
       }
@@ -92,8 +166,14 @@ export default function AttacksPage() {
   }
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    fetchPlayer()
+  }, [fetchPlayer])
+
+  useEffect(() => {
+    if (playerId) {
+      fetchData(playerId)
+    }
+  }, [fetchData, playerId])
 
   const currentVillage = villages.find(v => v.id === selectedVillageId)
 
@@ -139,16 +219,29 @@ export default function AttacksPage() {
                 </div>
               )}
               {currentVillage && (
-                <section>
-                  <h2 className="text-lg font-bold mb-2">Plan Attack</h2>
-                  <AttackPlanner
-                    villageId={currentVillage.id}
-                    troops={currentVillage.troops as any}
-                    onLaunchAttack={async () => {
-                      await fetchData()
-                    }}
-                  />
-                </section>
+                <>
+                  <section>
+                    <h2 className="text-lg font-bold mb-2">Plan Attack</h2>
+                    <AttackPlanner
+                      villageId={currentVillage.id}
+                      troops={currentVillage.troops as any}
+                      playerId={playerId}
+                      playerHasGoldClub={hasGoldClub}
+                      onLaunchAttack={handleLaunchAttack}
+                    />
+                  </section>
+
+                  <section>
+                    <h2 className="text-lg font-bold mb-2">Send Reinforcements</h2>
+                    <ReinforcementPlanner
+                      villageId={currentVillage.id}
+                      troops={currentVillage.troops as any}
+                      playerId={playerId}
+                      playerHasGoldClub={hasGoldClub}
+                      onSendReinforcements={handleSendReinforcements}
+                    />
+                  </section>
+                </>
               )}
 
               <section>

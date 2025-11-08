@@ -67,6 +67,30 @@ DELETE /api/attacks/[id]
 - Supports both coordinate input and village selection
 - Real-time troop availability checking
 
+## Village Expansion
+
+### Founding With Settlers
+
+- Train three `SETTLER` units in a village that has unlocked expansion slots via Residence (levels 10/20/30), Palace (10/15/20), or Command Center (10/20/30).
+- Accounts must have spare culture point slots (`villagesAllowed > villagesUsed`) before settlers can depart.
+- The backend debits the founding bundle (750 wood/stone/iron + 750 food) and schedules a `SETTLER_FOUND` movement. If the tile is occupied on arrival the wave auto-returns with the original units and resources.
+- On success the new village inherits the owner, is linked through an `ExpansionLink(type='FOUND')`, increments `villagesUsed`, and consumes one expansion slot on the source village.
+- API: `POST /api/expansion/send-settlers` with body `{ "sourceVillageId": "v123", "targetX": 42, "targetY": -18 }`.
+
+### Conquering With Administrators
+
+- Only surviving administrator units (`NOBLEMAN`, `SENATOR`, `CHIEF`, `NOMARCH`, `LOGADES`) reduce loyalty. Each unit rolls within its configured range (e.g., Senator 20‑30) and the total is scaled by the defender’s Residence/Palace multiplier.
+- When loyalty reaches zero the `ExpansionService` verifies capital immunity, culture-point slots, and expansion slot availability on the attacking village before transferring ownership. On success it:
+  - Moves `villagesUsed` between players and records `conqueredFromPlayerId`.
+  - Resets loyalty to 25, clears defender troops, downgrades Residence/Palace levels, and creates an `ExpansionLink(type='CONQUER')`.
+  - Rebuilds village tasks for the new owner.
+- If the transfer is blocked, loyalty is clamped to the configured floor (default 1) so attackers must regroup.
+
+### Loyalty Regeneration
+
+- All villages regenerate toward `maxLoyalty` (+2 per hour by default) once combat has paused for 30 minutes.
+- Production scaling now uses `loyalty / maxLoyalty`, so Palace villages retain their higher stability cap.
+
 ## Reinforcing Allies
 
 Send troops to allied villages to help defend against attacks.

@@ -1,0 +1,16 @@
+# UI/UX & Tools Implementation Plan
+
+## Phase 1 – Documentation & Schema
+- [x] Author a comprehensive `docs/features/ui-ux-tools.md` guide describing the village/command/troop/ construction overviews, presets, assistants, and map expectations.
+- [x] Extend the Prisma schema with player Gold Club membership tracking plus the `AttackPreset` + `AttackPresetUnit` models, committing a matching migration.
+
+## Phase 2 – API Surface
+- [x] Expose `/api/attack-presets` + `/api/attack-presets/[id]` endpoints backed by zod validation for creation, updates, deletes, and list filtering by player/village.
+- [x] Ship `/api/quicklinks` (GET + POST) and `/api/quicklinks/options` so the client can fetch available actions and persist slot assignments with building/premium guards.
+
+## Phase 3 – Client Integration & Premium Enforcement
+- [x] Rebuild the navbar “quick bar” to consume the new APIs, provide edit/save UX (mouse + `Q` shortcut), and visualize premium locks + slot rules.
+- [x] Thread real Gold Club membership through the rally point UI, troop evasion API, and combat-service evasion hook so premium gating is enforced consistently.
+
+## Phase 4 – QA
+- [x] Run `npm run lint` to ensure the new code passes the shared ESLint configuration.

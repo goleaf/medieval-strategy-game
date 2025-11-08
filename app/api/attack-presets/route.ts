@@ -3,12 +3,14 @@ import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
 import { attackPresetCreateSchema, attackPresetQuerySchema } from "@/lib/utils/validation"
 import { Prisma } from "@prisma/client"
+import { getTroopSystemConfig } from "@/lib/troop-system/config"
 
 export async function GET(req: NextRequest) {
   try {
     const params = {
       playerId: req.nextUrl.searchParams.get("playerId") ?? "",
       villageId: req.nextUrl.searchParams.get("villageId") ?? undefined,
+      mission: req.nextUrl.searchParams.get("mission") ?? undefined,
     }
 
     const parsed = attackPresetQuerySchema.safeParse(params)
@@ -16,11 +18,14 @@ export async function GET(req: NextRequest) {
       return errorResponse(parsed.error, 400)
     }
 
-    const { playerId, villageId } = parsed.data
+    const { playerId, villageId, mission } = parsed.data
 
     const where: Prisma.AttackPresetWhereInput = { playerId }
     if (villageId) {
       where.OR = [{ villageId }, { villageId: null }]
+    }
+    if (mission) {
+      where.mission = mission
     }
 
     const presets = await prisma.attackPreset.findMany({
@@ -76,6 +81,7 @@ export async function POST(req: NextRequest) {
           preferredArrival: data.preferredArrival ? new Date(data.preferredArrival) : null,
           waveWindowMs: data.waveWindowMs ?? null,
           catapultTargets: data.catapultTargets,
+          mission: data.mission ?? "ATTACK",
           units: {
             create: data.units.map((unit) => ({
               troopType: unit.troopType,

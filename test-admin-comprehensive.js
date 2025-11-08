@@ -171,28 +171,7 @@ async function testAdminFeatures() {
       return data
     })
 
-    // 9. Map Tools Test
-    test('Map Tools - Spawn Barbarian', async () => {
-      const response = await fetch(`${baseURL}/api/admin/map/spawn-barbarian`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({
-          x: 10,
-          y: 10,
-          warriors: 50,
-          spearmen: 25,
-          bowmen: 15,
-          horsemen: 5
-        })
-      })
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const data = await response.json()
-      if (!data.success) throw new Error('Spawn barbarian failed')
-      return data
-    })
-
-    // 10. Admin Dashboard Access Test
+    // 9. Admin Dashboard Access Test
     test('Admin Dashboard Page', async () => {
       const response = await fetch(`${baseURL}/admin/dashboard`)
 
@@ -233,5 +212,4 @@ async function testAdminFeatures() {
 }
 
 testAdminFeatures().catch(console.error)
-
 

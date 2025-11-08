@@ -19,7 +19,26 @@ type VillageWithBuildings = {
   iron: number
   gold: number
   food: number
-  buildings: Array<{ id: string; type: string; level: number; isBuilding: boolean; completionAt: string | null; queuePosition: number | null }>
+  buildings: Array<{
+    id: string
+    type: string
+    level: number
+    isBuilding: boolean
+    completionAt: string | null
+    queuePosition: number | null
+    research?: { isResearching: boolean } | null
+  }>
+  buildQueueTasks: Array<{
+    id: string
+    buildingId: string | null
+    entityKey: string
+    fromLevel: number
+    toLevel: number
+    status: string
+    position: number
+    startedAt: string | null
+    finishesAt: string | null
+  }>
 }
 
 function getBuildingImage(type: string): string {
@@ -246,7 +265,12 @@ export default function BuildingsPage() {
             </div>
           )}
           {loading && <div className="text-center py-4">Processing...</div>}
-          <BuildingQueue buildings={village.buildings} />
+          <BuildingQueue
+            tasks={village.buildQueueTasks}
+            activeResearchCount={village.buildings.filter((b) => (b as any).research?.isResearching).length}
+            villageId={village.id}
+            onInstantComplete={fetchVillage}
+          />
 
           {/* Instant Completion Section */}
           <section className="bg-secondary/50 border border-border rounded-lg p-4">
@@ -262,7 +286,7 @@ export default function BuildingsPage() {
               </div>
               <Button
                 onClick={handleInstantComplete}
-                disabled={loading || !village.buildings.some(b => b.isBuilding)}
+                disabled={loading || village.buildQueueTasks.length === 0}
                 variant="outline"
                 className="flex items-center gap-2"
               >

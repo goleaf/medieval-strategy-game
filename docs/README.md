@@ -13,7 +13,6 @@ docs/
 │   ├── world-configuration.md
 │   ├── speed-templates.md
 │   ├── player-management.md
-│   ├── map-tools.md
 │   ├── error-logs.md
 │   ├── admin-authentication.md
 │   ├── bulk-operations.md
@@ -23,9 +22,13 @@ docs/
 │   ├── resource-system.md
 │   ├── subsystem-effects.md
 │   ├── troop-system.md
+│   ├── asymmetric-mechanics.md   # Gaul/Roman/Teuton asymmetric spec
+│   ├── map-vision-system.md      # Fog-of-war & recon design
 │   ├── ui-ux-tools.md
 ├── api/                   # API documentation (future)
 └── development/           # Development guides (future)
+    ├── map-vision.md      # Vision backend notes
+    └── reserved-names.md
 ```
 
 ## 🎮 Game Overview
@@ -46,7 +49,6 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 - **World Configuration**: Adjust game speed, production rates, and global settings
 - **Speed Templates**: Apply predefined game speed configurations
 - **Player Management**: Ban, unban, rename, and relocate players
-- **Map Tools**: Spawn barbarians, relocate villages, clean up empty areas
 - **Error Monitoring**: View system errors and performance metrics
 
 ### Advanced Features
@@ -108,12 +110,10 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 - `POST /api/admin/players/{id}/move-village` - Move player village
 - `POST /api/admin/players/bulk` - Bulk player operations
 
-### Map Tools
-- `POST /api/admin/map/spawn-barbarian` - Spawn barbarian village
-- `POST /api/admin/map/relocate-tile` - Relocate village
-- `POST /api/admin/map/wipe-empty` - Remove empty villages
-
 ### Game Features
+
+- **Gaul/Roman/Teuton asymmetric mechanics**: see `docs/features/asymmetric-mechanics.md` for the authoritative trapping, double build-queue, and raid-focus spec.
+- **Map & Fog-of-War Vision System**: see `docs/features/map-vision-system.md` for the combined design + implementation plan covering topology, vision sources, recon, contacts, and rollout.
 - `GET /api/protection` - Get player protection status
 - `POST /api/protection` - Extend beginner protection
 

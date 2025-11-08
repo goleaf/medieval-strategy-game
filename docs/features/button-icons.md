@@ -35,7 +35,6 @@ The application uses **Lucide React** (lucide-react) for all icons. This library
 | Page/Action | Icon | Component |
 |-------------|------|-----------|
 | Dashboard/Home | `Home` | Back to Dashboard buttons |
-| Map | `Map` | Map navigation |
 | Attacks | `Swords` | Attack management |
 | Market | `ShoppingCart` | Marketplace |
 | Messages | `MessageCircle` | Message center |
@@ -100,12 +99,12 @@ import { Settings } from "lucide-react"
 ```tsx
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Map } from "lucide-react"
+import { Trophy } from "lucide-react"
 
-<Link href="/map">
+<Link href="/leaderboard">
   <Button variant="ghost" size="sm">
-    <Map className="w-4 h-4" />
-    Map
+    <Trophy className="w-4 h-4" />
+    Rankings
   </Button>
 </Link>
 ```
@@ -115,7 +114,7 @@ import { Map } from "lucide-react"
 ### ✅ Completed Pages
 
 1. **Dashboard** (`/app/dashboard/page.tsx`)
-   - Navigation links: Map, Attacks, Market, Messages, Tribes, Rankings
+   - Navigation links: Attacks, Market, Messages, Tribes, Rankings
    - Action buttons: View Details, Buildings, Troops
 
 2. **Buildings** (`/app/village/[id]/buildings/page.tsx`)
@@ -204,5 +203,3 @@ Add the new icon to this document in the appropriate category.
 - Animated icons for loading states
 - Icon theming based on user preferences
 - Accessibility improvements for screen readers
-
-

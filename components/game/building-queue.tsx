@@ -3,7 +3,6 @@
 import Image from "next/image"
 import { X, Coins } from "lucide-react"
 import { CountdownTimer } from "./countdown-timer"
-import type { Building } from "@prisma/client"
 
 function getBuildingImage(type: string): string {
   const imageMap: Record<string, string> = {
@@ -28,21 +27,36 @@ function getBuildingImage(type: string): string {
   return imageMap[type] || "/placeholder.svg"
 }
 
-interface BuildingWithResearch extends Building {
-  research?: { isResearching: boolean } | null
+export interface QueueTask {
+  id: string
+  buildingId: string | null
+  entityKey: string
+  fromLevel: number
+  toLevel: number
+  status: string
+  position: number
+  finishesAt: string | Date | null
+  startedAt: string | Date | null
 }
 
 interface BuildingQueueProps {
-  buildings: BuildingWithResearch[]
+  tasks: QueueTask[]
+  activeResearchCount?: number
   onCancel?: (buildingId: string) => void
   villageId?: string
   onInstantComplete?: () => void
 }
 
-export function BuildingQueue({ buildings, onCancel, villageId, onInstantComplete }: BuildingQueueProps) {
-  const queuedBuildings = buildings.filter((b) => b.isBuilding && b.queuePosition !== null)
-  const activeResearch = buildings.filter((b) => b.research?.isResearching)
-  const totalActiveItems = queuedBuildings.length + activeResearch.length
+export function BuildingQueue({
+  tasks,
+  activeResearchCount = 0,
+  onCancel,
+  villageId,
+  onInstantComplete,
+}: BuildingQueueProps) {
+  const queuedTasks = tasks.filter((task) => task.status !== "DONE" && task.status !== "CANCELLED")
+  const activeBuilds = queuedTasks.filter((task) => task.status === "BUILDING").length
+  const totalActiveItems = activeBuilds + activeResearchCount
 
   const handleInstantComplete = async () => {
     if (!villageId || totalActiveItems === 0) return
@@ -70,11 +84,11 @@ export function BuildingQueue({ buildings, onCancel, villageId, onInstantComplet
     }
   }
 
-  if (queuedBuildings.length === 0) {
+  if (queuedTasks.length === 0) {
     return <div className="text-sm text-muted-foreground">No buildings in queue</div>
   }
 
-  const sortedBuildings = queuedBuildings.sort((a, b) => (a.queuePosition || 0) - (b.queuePosition || 0))
+  const sortedTasks = queuedTasks.sort((a, b) => a.position - b.position)
 
   return (
     <div className="space-y-2">
@@ -91,39 +105,42 @@ export function BuildingQueue({ buildings, onCancel, villageId, onInstantComplet
           </button>
         )}
       </div>
-      {sortedBuildings.map((building) => (
+      {sortedTasks.map((task) => (
         <div
-          key={building.id}
+          key={task.id}
           className="flex items-center justify-between border border-border bg-secondary/50 p-2 text-sm"
         >
-          <div className="flex items-center gap-3">
-            <Image
-              src={getBuildingImage(building.type)}
-              alt={building.type}
-              width={32}
-              height={32}
-              className="object-contain"
-            />
-            <div className="flex-1">
-              <div className="font-semibold">
-                {building.type} (Level {building.level} → {building.level + 1})
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Queue #{building.queuePosition}
-                {building.completionAt && (
-                  <>
-                    {" "}
-                    • Completes in <CountdownTimer targetDate={building.completionAt} />
-                  </>
-                )}
+            <div className="flex items-center gap-3">
+              <Image
+                src={getBuildingImage(task.entityKey.toUpperCase())}
+                alt={task.entityKey}
+                width={32}
+                height={32}
+                className="object-contain"
+              />
+              <div className="flex-1">
+                <div className="font-semibold">
+                  {task.entityKey.toUpperCase()} (Level {task.fromLevel} → {task.toLevel})
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Queue #{task.position}
+                  {task.finishesAt && (
+                    <>
+                      {" "}
+                      • Completes in <CountdownTimer targetDate={task.finishesAt} />
+                    </>
+                  )}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  Status: {task.status === "BUILDING" ? "Building" : task.status === "WAITING" ? "Waiting" : task.status.toLowerCase()}
+                </div>
               </div>
             </div>
-          </div>
-          {onCancel && building.queuePosition !== 1 && !building.research?.isResearching && (
+          {onCancel && task.position !== 1 && task.buildingId && (
             <button
-              onClick={() => onCancel(building.id)}
+              onClick={() => onCancel(task.buildingId!)}
               className="ml-2 rounded border border-border bg-destructive px-2 py-1 text-xs hover:bg-destructive/80 flex items-center gap-1"
-              title={building.research?.isResearching ? "Cannot cancel building that is researching" : "Cancel construction"}
+              title="Cancel construction"
             >
               <X className="w-3 h-3" />
               Cancel
@@ -134,4 +151,3 @@ export function BuildingQueue({ buildings, onCancel, villageId, onInstantComplet
     </div>
   )
 }
-

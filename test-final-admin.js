@@ -63,7 +63,6 @@ async function testCompleteAdminSystem() {
       { name: 'Unit Balance', endpoint: '/api/admin/units/balance' },
       { name: 'Player Management', endpoint: '/api/admin/players' },
       { name: 'System Statistics', endpoint: '/api/admin/stats' },
-      { name: 'Map Visualization', endpoint: '/api/admin/map/visualization' },
       { name: 'Admin Notifications', endpoint: '/api/admin/notifications' },
       { name: 'Player Analytics', endpoint: '/api/admin/analytics' },
     ]
@@ -162,26 +161,6 @@ async function testCompleteAdminSystem() {
       return true
     })
 
-    // 7. Map Tools Test
-    await test('Map Tools - Barbarian Spawn', async () => {
-      const response = await fetch(`${baseURL}/api/admin/map/spawn-barbarian`, {
-        method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          x: 25,
-          y: 25,
-          warriors: 50,
-          spearmen: 25,
-          bowmen: 15,
-          horsemen: 5
-        })
-      })
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const data = await response.json()
-      return data.success
-    })
-
   } catch (error) {
     console.log(`💥 Test suite crashed: ${error.message}`)
   }
@@ -197,14 +176,12 @@ async function testCompleteAdminSystem() {
 
   if (testResults.failed === 0) {
     console.log('\n🎉 COMPLETE ADMIN SYSTEM SUCCESS!')
-    console.log('🌟 All 17 admin features are working perfectly!')
+    console.log('🌟 All 15 admin features are working perfectly!')
     console.log('\n📋 COMPLETE FEATURE SET:')
     console.log('   • 🔐 Admin Authentication System')
     console.log('   • ⚙️ World Configuration Management')
     console.log('   • 🏃 Speed Templates System')
     console.log('   • 👥 Player Management (Ban/Unban/Rename/Move)')
-    console.log('   • 🗺️ Map Tools (Spawn/Relocate/Wipe)')
-    console.log('   • 📊 Map Visualization Dashboard')
     console.log('   • 🔔 Admin Notifications System')
     console.log('   • ⚖️ Database-Backed Unit Balance Editor')
     console.log('   • 📈 Real-time Statistics Dashboard')
@@ -235,5 +212,3 @@ async function testCompleteAdminSystem() {
 }
 
 testCompleteAdminSystem().catch(console.error)
-
-

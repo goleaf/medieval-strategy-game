@@ -25,7 +25,18 @@ export async function GET(req: NextRequest) {
             },
           },
         },
+        buildQueueTasks: {
+          where: {
+            status: { in: ["WAITING", "BUILDING", "PAUSED"] },
+          },
+          orderBy: { position: "asc" },
+        },
         troops: true,
+        unitStacks: {
+          include: {
+            unitType: true,
+          },
+        },
         continent: true,
         player: {
           select: {
@@ -38,10 +49,27 @@ export async function GET(req: NextRequest) {
     // Add protection status to each village
     const villagesWithProtection = await Promise.all(
       villages.map(async (village) => {
+        const { unitStacks, ...rest } = village
+        const stackTroops =
+          unitStacks?.flatMap((stack) => {
+            if (!stack.unitType || stack.count <= 0) return []
+            return {
+              id: `${stack.unitTypeId}:${stack.villageId}`,
+              type: stack.unitTypeId,
+              quantity: stack.count,
+              attack: stack.unitType.attack,
+              defense: stack.unitType.defInf,
+              speed: stack.unitType.speedTilesPerHour,
+            }
+          }) ?? []
+
+        const combinedTroops = [...stackTroops, ...village.troops]
+
         const isProtected = await ProtectionService.isVillageProtected(village.id)
         const protectionHoursRemaining = await ProtectionService.getProtectionTimeRemaining(village.playerId)
         return {
-          ...village,
+          ...rest,
+          troops: combinedTroops,
           isProtected,
           protectionHoursRemaining,
         }

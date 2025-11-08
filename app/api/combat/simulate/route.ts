@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
+import type { BattleReport } from "@/lib/combat"
 import { CombatService } from "@/lib/game-services/combat-service"
 import { TroopService } from "@/lib/game-services/troop-service"
+import type { AttackType } from "@prisma/client"
 import { z } from "zod"
 
 const simulateSchema = z.object({
@@ -15,6 +17,12 @@ const simulateSchema = z.object({
   })),
   wallLevel: z.number().min(0).max(20).default(0),
   heroBonus: z.number().min(0).max(100).default(0),
+  smithyLevels: z.object({
+    attackerAttack: z.number().min(0).max(20).optional(),
+    attackerDefense: z.number().min(0).max(20).optional(),
+    defenderAttack: z.number().min(0).max(20).optional(),
+    defenderDefense: z.number().min(0).max(20).optional(),
+  }).optional(),
   defenderResources: z.object({
     wood: z.number().min(0),
     stone: z.number().min(0),
@@ -37,6 +45,7 @@ interface SimulationResult {
   attackerOffense: number
   defenderDefense: number
   carryCapacity: number
+  battleReport?: BattleReport
 }
 
 export async function POST(req: NextRequest) {
@@ -50,23 +59,41 @@ export async function POST(req: NextRequest) {
       defenderTroops,
       wallLevel,
       heroBonus,
+      smithyLevels,
       defenderResources,
     } = validatedData
 
     // Convert troop arrays to combat service format
-    const attackerTroopsForCombat = attackerTroops.map((troop, index) => ({
-      id: `attacker-${troop.type}-${index}`,
-      quantity: troop.quantity,
-      attack: TroopService.getTroopStats(troop.type as any).stats.attack,
-      type: troop.type,
-    }))
+    const attackerSmithyAttack = smithyLevels?.attackerAttack ?? 0
+    const attackerSmithyDefense = smithyLevels?.attackerDefense ?? 0
+    const defenderSmithyAttack = smithyLevels?.defenderAttack ?? 0
+    const defenderSmithyDefense = smithyLevels?.defenderDefense ?? 0
 
-    const defenderTroopsForCombat = defenderTroops.map((troop, index) => ({
-      id: `defender-${troop.type}-${index}`,
-      quantity: troop.quantity,
-      defense: TroopService.getTroopStats(troop.type as any).stats.defense,
-      type: troop.type,
-    }))
+    const attackerTroopsForCombat = attackerTroops.map((troop, index) => {
+      const stats = TroopService.getTroopStats(troop.type as any).stats
+      return {
+        id: `attacker-${troop.type}-${index}`,
+        quantity: troop.quantity,
+        attack: stats.attack,
+        defense: stats.defense,
+        type: troop.type,
+        smithyAttackLevel: attackerSmithyAttack,
+        smithyDefenseLevel: attackerSmithyDefense,
+      }
+    })
+
+    const defenderTroopsForCombat = defenderTroops.map((troop, index) => {
+      const stats = TroopService.getTroopStats(troop.type as any).stats
+      return {
+        id: `defender-${troop.type}-${index}`,
+        quantity: troop.quantity,
+        attack: stats.attack,
+        defense: stats.defense,
+        type: troop.type,
+        smithyAttackLevel: defenderSmithyAttack,
+        smithyDefenseLevel: defenderSmithyDefense,
+      }
+    })
 
     // Calculate total offense/defense
     const baseAttackerOffense = await TroopService.calculatePower(
@@ -98,21 +125,27 @@ export async function POST(req: NextRequest) {
       "defense"
     )
 
-    // Check for siege units
-    const hasSiege = attackerTroops.some(
-      (t) => t.type === "RAM" || t.type === "CATAPULT"
-    )
+    const heroAttackMultiplier = 1 + heroBonus / 100
 
     // Run simulation
-    const result = await CombatService.resolveCombat(
-      attackerOffense,
-      defenderDefense,
+    const result = await CombatService.resolveCombat({
+      attackerTroops: attackerTroopsForCombat,
+      defenderTroops: defenderTroopsForCombat,
       wallLevel,
-      attackerTroopsForCombat,
-      defenderTroopsForCombat,
-      hasSiege,
-      attackType as any
-    )
+      wallType: "city_wall",
+      attackType: attackType as AttackType,
+      heroAttackMultiplier,
+      seedComponents: ["combat-sim", JSON.stringify(validatedData)],
+    })
+
+    // Estimate wall damage for the simulation response
+    result.wallDamage = CombatService.estimateWallDamage({
+      attackerTroops: attackerTroopsForCombat,
+      attackerCasualties: result.attackerCasualties,
+      wallLevel,
+      wallType: "city_wall",
+      attackType: attackType as AttackType,
+    })
 
     // Calculate carry capacity
     const carryCapacity = CombatService.calculateCarryCapacity(
@@ -154,6 +187,7 @@ export async function POST(req: NextRequest) {
       attackerOffense,
       defenderDefense,
       carryCapacity,
+      battleReport: result.battleReport,
     }
 
     // Log the simulation (if enabled in settings)

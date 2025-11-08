@@ -2,6 +2,10 @@
 
 > Normative balance design for three asymmetric mechanics. Values below are tunable parameters that live in balance data, not hard-coded constants.
 
+**Balance data sources**
+- JSON: `config/subsystem-effects.json` (`trapper`, `roman_build_queue`, `teuton_raid_focus` blocks)
+- Loader: `lib/config/subsystem-effects.ts`
+
 ## 1. Shared Terms and Scope
 
 - **Hostile mission**: any incoming attack, raid, or siege.

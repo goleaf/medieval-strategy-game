@@ -1,12 +1,21 @@
+import type { CatapultDamageResult, VillageSiegeSnapshot } from "@/lib/combat/catapult/types"
+
+import type { BattleReport } from "@/lib/combat"
+
 export type UUID = string
 
 export type MissionType = "attack" | "raid" | "reinforce" | "siege"
 export type MovementMission = MissionType | "return"
 
-export type UnitRole = "inf" | "cav" | "ram" | "catapult" | "admin" | "settler"
+export type UnitRole = "inf" | "cav" | "ram" | "catapult" | "admin" | "settler" | "scout"
 
 export interface UnitsComposition {
   [unitId: string]: number
+}
+
+export interface UnitTechLevel {
+  attack: number
+  defense: number
 }
 
 export interface UnitStats {
@@ -16,7 +25,9 @@ export interface UnitStats {
   speed: number // tiles per hour
   carry: number
   attack: number
-  defense: number
+  defense?: number
+  defInf?: number
+  defCav?: number
   siege?: "ram" | "catapult"
   isAdministrator?: boolean
 }
@@ -83,12 +94,15 @@ export interface GarrisonStack {
   ownerAccountId: string
   unitTypeId: string
   count: number
+  smithyAttackLevel?: number
+  smithyDefenseLevel?: number
 }
 
 export interface MovementPayload {
   units: UnitsComposition
   hero?: boolean
   catapultTargets?: string[]
+  techLevels?: Record<string, UnitTechLevel>
   waveGroupId?: string
   waveMemberId?: string
   arriveWindowMs?: number
@@ -156,12 +170,14 @@ export interface CombatResolutionInput {
   defenderVillageId: string | null
   target: { x: number; y: number }
   attackerUnits: UnitsComposition
+  attackerTechLevels?: Record<string, UnitTechLevel>
   defenderGarrisons: GarrisonStack[]
   wallType?: string
   wallLevel?: number
   rallyPointLevel: number
   catapultTargets: string[]
   timestamp: Date
+  defenderSiegeSnapshot?: VillageSiegeSnapshot | null
 }
 
 export interface CombatResolution {
@@ -171,14 +187,47 @@ export interface CombatResolution {
   defenderCasualties: GarrisonStack[]
   loot?: Record<string, number>
   wallDrop?: number
-  buildingHits?: Array<{ target: string; drop: number }>
+  catapultDamage?: CatapultDamageResult
   loyaltyDrop?: number
+  battleReport?: BattleReport
+  trap?: TrapResolution
 }
 
 export interface MovementResolutionResult {
   movement: MovementRecord
   report?: CombatResolution
   createdReturnMovementId?: string
+}
+
+export interface TrapResolutionEntry {
+  unitTypeId: string
+  count: number
+}
+
+export interface TrapResolution {
+  captured: TrapResolutionEntry[]
+}
+
+export interface TrapPrisonerRecord {
+  id: string
+  defenderVillageId: string
+  attackerVillageId: string
+  attackerAccountId: string
+  unitTypeId: string
+  count: number
+  capturedAt: Date
+  sourceMovementId?: string
+}
+
+export interface TrapPrisonerCreateInput {
+  defenderVillageId: string
+  attackerVillageId: string
+  attackerAccountId: string
+  unitTypeId: string
+  count: number
+  capturedAt?: Date
+  sourceMovementId?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface RallyPointEngineOptions {

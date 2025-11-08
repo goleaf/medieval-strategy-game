@@ -1,27 +1,48 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { useState } from "react"
-import { Swords, Target, Users, X, ArrowRight, ArrowLeft } from "lucide-react"
-import type { AttackType } from "@prisma/client"
-import type { Troop } from "@prisma/client"
+import { useMemo, useState } from "react"
+import { Swords, Target, Users, X, ArrowRight, ArrowLeft, Bookmark, Trash2, RefreshCw, BookmarkCheck } from "lucide-react"
+import type { AttackType, Troop } from "@prisma/client"
 import { TextTable } from "./text-table"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useAttackPresets } from "@/hooks/use-attack-presets"
+import { AttackPresetMission } from "@prisma/client"
 
 interface AttackPlannerProps {
   villageId: string
   troops: Troop[]
+  playerId?: string | null
+  playerHasGoldClub?: boolean
   onLaunchAttack: (toX: number, toY: number, selection: Record<string, number>, type: AttackType) => Promise<void>
 }
 
 type Mode = "inactive" | "coordinates" | "troops"
 
-export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlannerProps) {
+export function AttackPlanner({ villageId, troops, playerId, playerHasGoldClub = false, onLaunchAttack }: AttackPlannerProps) {
   const [mode, setMode] = useState<Mode>('inactive')
   const [targetX, setTargetX] = useState('')
   const [targetY, setTargetY] = useState('')
   const [attackType, setAttackType] = useState<AttackType>('RAID')
   const [troopSelection, setTroopSelection] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(false)
+  const [presetName, setPresetName] = useState("")
+  const [presetRequiresGoldClub, setPresetRequiresGoldClub] = useState(false)
+  const [presetSaving, setPresetSaving] = useState(false)
+  const {
+    presets,
+    loading: presetsLoading,
+    error: presetError,
+    refresh: refreshPresets,
+    createPreset,
+    deletePreset,
+  } = useAttackPresets({
+    playerId,
+    villageId,
+    mission: AttackPresetMission.ATTACK,
+  })
+  const [presetActionError, setPresetActionError] = useState<string | null>(null)
 
   const handleTroopChange = (troopId: string, value: number) => {
     setTroopSelection(prev => {
@@ -56,8 +77,144 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
     }
   }
 
+  const applyPreset = (presetId: string) => {
+    const preset = presets.find((p) => p.id === presetId)
+    if (!preset) return
+    if (preset.targetX !== null) setTargetX(String(preset.targetX))
+    if (preset.targetY !== null) setTargetY(String(preset.targetY))
+    setAttackType(preset.type)
+
+    const selection: Record<string, number> = {}
+    preset.units.forEach((unit) => {
+      const troop = troops.find((t) => t.type === unit.troopType)
+      if (!troop) return
+      const amount = Math.min(unit.quantity, troop.quantity)
+      if (amount > 0) {
+        selection[troop.id] = amount
+      }
+    })
+    setTroopSelection(selection)
+    setMode("troops")
+  }
+
+  const canSavePreset = useMemo(() => {
+    return (
+      !!playerId &&
+      targetX.trim() !== "" &&
+      targetY.trim() !== "" &&
+      Object.keys(troopSelection).length > 0 &&
+      presetName.trim().length > 0
+    )
+  }, [playerId, targetX, targetY, troopSelection, presetName])
+
+  const handleSavePreset = async () => {
+    if (!canSavePreset) return
+    setPresetSaving(true)
+    setPresetActionError(null)
+    try {
+      const units = Object.entries(troopSelection)
+        .map(([troopId, quantity]) => {
+          const troop = troops.find((t) => t.id === troopId)
+          if (!troop) return null
+          return { troopType: troop.type, quantity }
+        })
+        .filter((unit): unit is { troopType: any; quantity: number } => unit !== null)
+
+      await createPreset({
+        name: presetName.trim(),
+        type: attackType,
+        requiresGoldClub: playerHasGoldClub ? presetRequiresGoldClub : false,
+        targetX: targetX ? parseInt(targetX) : null,
+        targetY: targetY ? parseInt(targetY) : null,
+        units,
+      })
+      setPresetName("")
+      setPresetRequiresGoldClub(false)
+    } catch (error) {
+      setPresetActionError(error instanceof Error ? error.message : "Failed to save preset")
+    } finally {
+      setPresetSaving(false)
+    }
+  }
+
+  const handleDeletePreset = async (presetId: string) => {
+    if (!confirm("Delete this preset?")) return
+    try {
+      await deletePreset(presetId)
+    } catch (error) {
+      setPresetActionError(error instanceof Error ? error.message : "Failed to delete preset")
+    }
+  }
+
   return (
     <div className="w-full space-y-4">
+      <div className="border border-border rounded p-3 space-y-3 bg-card/40">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-semibold">
+            <Bookmark className="w-4 h-4" />
+            Attack Presets
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={refreshPresets}
+              className="text-xs inline-flex items-center gap-1 px-2 py-1 border rounded hover:bg-secondary"
+              title="Refresh presets"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Refresh
+            </button>
+          </div>
+        </div>
+        {presetError && (
+          <Alert variant="destructive">
+            <AlertDescription>{presetError}</AlertDescription>
+          </Alert>
+        )}
+        {presetActionError && (
+          <Alert variant="destructive">
+            <AlertDescription>{presetActionError}</AlertDescription>
+          </Alert>
+        )}
+        {presetsLoading ? (
+          <p className="text-sm text-muted-foreground">Loading presets…</p>
+        ) : presets.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No presets yet. Configure a target and troop mix, then save it below.</p>
+        ) : (
+          <div className="space-y-2">
+            {presets.map((preset) => (
+              <div key={preset.id} className="flex items-start justify-between gap-2 border border-border rounded px-3 py-2 bg-background/70">
+                <div className="text-sm">
+                  <p className="font-semibold flex items-center gap-2">
+                    {preset.name}
+                    {preset.requiresGoldClub && (
+                      <span className="text-[10px] uppercase tracking-wide text-amber-600 border border-amber-600/60 px-1 rounded">
+                        Gold Club
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Target:{" "}
+                    {preset.targetX !== null && preset.targetY !== null ? `(${preset.targetX}, ${preset.targetY})` : "Manual"} · {preset.type}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Units: {preset.units.map((unit) => `${unit.quantity}x ${unit.troopType}`).join(", ")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => applyPreset(preset.id)}>
+                    <BookmarkCheck className="w-4 h-4" />
+                    Apply
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => handleDeletePreset(preset.id)}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {mode === 'inactive' && (
         <Button onClick={() => setMode('coordinates')} className="w-full">
           <Target className="w-4 h-4" />
@@ -163,6 +320,37 @@ export function AttackPlanner({ villageId, troops, onLaunchAttack }: AttackPlann
               Back
             </Button>
           </div>
+
+          {playerId && (
+            <div className="border border-border rounded p-3 space-y-3 bg-secondary/50">
+              <p className="font-semibold text-sm">Save as preset</p>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="Preset name"
+                className="w-full p-2 border border-border rounded bg-background"
+              />
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="preset-goldclub"
+                  checked={presetRequiresGoldClub && playerHasGoldClub}
+                  onCheckedChange={(checked) => setPresetRequiresGoldClub(Boolean(checked))}
+                  disabled={!playerHasGoldClub}
+                />
+                <label htmlFor="preset-goldclub" className="text-xs text-muted-foreground">
+                  Requires Gold Club (only available if you have membership)
+                </label>
+              </div>
+              <Button
+                onClick={handleSavePreset}
+                disabled={!canSavePreset || presetSaving}
+                className="w-full"
+              >
+                {presetSaving ? "Saving…" : "Save preset"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

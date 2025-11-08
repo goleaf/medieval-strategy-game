@@ -5,11 +5,14 @@ import type {
   MovementRecord,
   MovementReportRecord,
   RallyPointState,
+  TrapPrisonerCreateInput,
+  TrapPrisonerRecord,
   VillageRecord,
   WaveGroupRecord,
   WaveMemberRecord,
 } from "../types"
 import type { DueMovementFilter, RallyPointRepository, RallyPointTransaction } from "../repository"
+import type { VillageSiegeSnapshot } from "@/lib/combat/catapult/types"
 
 interface StateSnapshot {
   villages: Map<string, VillageRecord>
@@ -19,6 +22,7 @@ interface StateSnapshot {
   waveGroups: Map<string, WaveGroupRecord>
   waveMembers: Map<string, WaveMemberRecord>
   reports: Map<string, MovementReportRecord>
+  trapPrisoners: Map<string, TrapPrisonerRecord>
 }
 
 function keyForGarrison(villageId: string, ownerAccountId: string, unitTypeId: string) {
@@ -37,6 +41,9 @@ function cloneState(source: StateSnapshot): StateSnapshot {
       ...movement.payload,
       units: { ...movement.payload.units },
       catapultTargets: movement.payload.catapultTargets ? [...movement.payload.catapultTargets] : undefined,
+      techLevels: movement.payload.techLevels
+        ? Object.fromEntries(Object.entries(movement.payload.techLevels).map(([unit, levels]) => [unit, { ...levels }]))
+        : undefined,
       metadata: movement.payload.metadata ? { ...movement.payload.metadata } : undefined,
     },
   })
@@ -53,6 +60,12 @@ function cloneState(source: StateSnapshot): StateSnapshot {
       [...source.waveMembers].map(([id, member]) => [id, { ...member, arriveAt: cloneDate(member.arriveAt), departAt: cloneDate(member.departAt), createdAt: cloneDate(member.createdAt), units: { ...member.units }, catapultTargets: member.catapultTargets ? [...member.catapultTargets] : undefined }]),
     ),
     reports: new Map([...source.reports].map(([id, report]) => [id, { ...report, createdAt: cloneDate(report.createdAt), summary: { ...report.summary } }])),
+    trapPrisoners: new Map(
+      [...source.trapPrisoners].map(([id, prisoner]) => [
+        id,
+        { ...prisoner, capturedAt: cloneDate(prisoner.capturedAt) },
+      ]),
+    ),
   }
 }
 
@@ -168,6 +181,63 @@ class InMemoryTransaction implements RallyPointTransaction {
   async saveBattleReport(report: MovementReportRecord) {
     this.state.reports.set(report.id, report)
   }
+
+  async getVillageSiegeSnapshot(villageId: string): Promise<VillageSiegeSnapshot | null> {
+    const village = this.state.villages.get(villageId)
+    if (!village) return null
+    return {
+      villageId,
+      isCapital: false,
+      kind: "standard" as const,
+      buildings: [],
+      resourceFields: [],
+    }
+  }
+
+  async listActiveTrapPrisoners(villageId: string): Promise<TrapPrisonerRecord[]> {
+    const rows: TrapPrisonerRecord[] = []
+    for (const prisoner of this.state.trapPrisoners.values()) {
+      if (prisoner.defenderVillageId === villageId) {
+        rows.push({ ...prisoner, capturedAt: new Date(prisoner.capturedAt.getTime()) })
+      }
+    }
+    rows.sort((a, b) => a.capturedAt.getTime() - b.capturedAt.getTime())
+    return rows
+  }
+
+  async createTrapPrisoners(records: TrapPrisonerCreateInput[]): Promise<void> {
+    for (const record of records) {
+      const id = randomUUID()
+      this.state.trapPrisoners.set(id, {
+        id,
+        defenderVillageId: record.defenderVillageId,
+        attackerVillageId: record.attackerVillageId,
+        attackerAccountId: record.attackerAccountId,
+        unitTypeId: record.unitTypeId,
+        count: record.count,
+        capturedAt: record.capturedAt ?? new Date(),
+        sourceMovementId: record.sourceMovementId,
+      })
+    }
+  }
+
+  async updateTrapPrisonerCount(prisonerId: string, count: number): Promise<void> {
+    const existing = this.state.trapPrisoners.get(prisonerId)
+    if (!existing) return
+    this.state.trapPrisoners.set(prisonerId, { ...existing, count })
+  }
+
+  async deleteTrapPrisoner(prisonerId: string): Promise<void> {
+    this.state.trapPrisoners.delete(prisonerId)
+  }
+
+  async updateBuildingLevel(): Promise<void> {
+    // no-op for tests
+  }
+
+  async updateResourceFieldLevel(): Promise<void> {
+    // no-op for tests
+  }
 }
 
 export class InMemoryRallyPointRepository implements RallyPointRepository {
@@ -179,6 +249,7 @@ export class InMemoryRallyPointRepository implements RallyPointRepository {
     waveGroups: new Map(),
     waveMembers: new Map(),
     reports: new Map(),
+    trapPrisoners: new Map(),
   }
 
   constructor(seed?: Partial<StateSnapshot>) {

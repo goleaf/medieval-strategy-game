@@ -53,7 +53,7 @@ export class ResourceProductionService {
     }
 
     const tickHours = tickMinutes / 60
-    const loyaltyMultiplier = Math.max(0, village.loyalty) / 100
+    const loyaltyMultiplier = Math.max(0, village.loyalty) / Math.max(1, village.maxLoyalty || 100)
     const speedMultiplier = village.player?.gameWorld?.speed ?? 1
     const heroBonuses = this.getHeroBonuses(village.player?.hero)
     const activeModifiers = this.partitionModifiers(village.resourceModifiers)

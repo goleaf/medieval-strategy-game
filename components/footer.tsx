@@ -105,10 +105,9 @@ export function Footer() {
               order: 1,
               isActive: true,
               menuItems: [
-                { id: "map", sectionId: "game", label: "World Map", href: "/map", iconName: "Map", order: 1, isActive: true, isExternal: false },
-                { id: "leaderboard", sectionId: "game", label: "Leaderboard", href: "/leaderboard", iconName: "Trophy", order: 2, isActive: true, isExternal: false },
-                { id: "tribes", sectionId: "game", label: "Tribes", href: "/tribes", iconName: "Users", order: 3, isActive: true, isExternal: false },
-                { id: "market", sectionId: "game", label: "Market", href: "/market", iconName: "MessageCircle", order: 4, isActive: true, isExternal: false },
+                { id: "leaderboard", sectionId: "game", label: "Leaderboard", href: "/leaderboard", iconName: "Trophy", order: 1, isActive: true, isExternal: false },
+                { id: "tribes", sectionId: "game", label: "Tribes", href: "/tribes", iconName: "Users", order: 2, isActive: true, isExternal: false },
+                { id: "market", sectionId: "game", label: "Market", href: "/market", iconName: "MessageCircle", order: 3, isActive: true, isExternal: false },
               ]
             },
             {

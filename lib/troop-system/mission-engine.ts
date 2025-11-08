@@ -483,8 +483,9 @@ export function resolveCombatMission(input: CombatMissionInput): CombatMissionRe
   const defenderSummary = summarizeOutcome(input.defender, battle.defender, config)
   const ramResolution = applyRamDamage(attackerSummary, input.mission, wall, config)
   const catapultResolution = applyCatapultDamage(attackerSummary, input.siege, config)
+  const allowsLoot = input.mission === "attack" || input.mission === "raid" || input.mission === "siege" || input.mission === "admin_attack"
   const lootResolution =
-    battle.attacker.totalSurvivors > 0 && (input.mission === "attack" || input.mission === "raid" || input.mission === "siege")
+    battle.attacker.totalSurvivors > 0 && allowsLoot
       ? computeLoot(attackerSummary, input.loot, config)
       : undefined
   const loyaltyResolution = applyLoyalty(input.mission, attackerSummary, input.loyalty, config)

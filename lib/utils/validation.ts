@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { AttackType, TroopType } from "@prisma/client"
+import { AttackPresetMission, AttackType, TroopType } from "@prisma/client"
 
 // Common validation schemas
 export const villageSchema = z.object({
@@ -26,22 +26,7 @@ export const buildingCancelDemolitionSchema = z.object({
 
 export const troopTrainSchema = z.object({
   villageId: z.string().min(1, "Village ID required"),
-  troopType: z.enum([
-    "WARRIOR",
-    "SPEARMAN",
-    "BOWMAN",
-    "HORSEMAN",
-    "PALADIN",
-    "EAGLE_KNIGHT",
-    "RAM",
-    "CATAPULT",
-    "KNIGHT",
-    "NOBLEMAN",
-    // Huns-specific units
-    "STEPPE_ARCHER",
-    "HUN_WARRIOR",
-    "LOGADES",
-  ]),
+  troopType: z.string().min(1, "Troop type required"),
   quantity: z.number().int().min(1).max(10000),
 })
 
@@ -57,6 +42,12 @@ export const attackLaunchSchema = z.object({
       quantity: z.number().int().min(1),
     }),
   ),
+})
+
+export const sendSettlersSchema = z.object({
+  sourceVillageId: z.string().min(1, "Source village ID required"),
+  targetX: z.number().int().min(0).max(1000),
+  targetY: z.number().int().min(0).max(1000),
 })
 
 export const reinforcementSendSchema = z.object({
@@ -139,13 +130,6 @@ export const tribeJoinSchema = z.object({
   playerId: z.string().min(1, "Player ID required"),
 })
 
-export const mapQuerySchema = z.object({
-  centerX: z.number().int().min(0).max(1000).optional(),
-  centerY: z.number().int().min(0).max(1000).optional(),
-  zoom: z.number().min(0.1).max(10).optional(),
-  playerId: z.string().min(1).optional(), // For fog of war
-})
-
 export const npcMerchantExchangeSchema = z.object({
   villageId: z.string().min(1, "Village ID required"),
   fromResource: z.enum(["WOOD", "STONE", "IRON", "GOLD", "FOOD"]),
@@ -167,6 +151,7 @@ const attackPresetBaseSchema = z.object({
   villageId: z.string().min(1).optional(),
   name: z.string().min(1).max(50),
   type: z.nativeEnum(AttackType),
+  mission: z.nativeEnum(AttackPresetMission).default(AttackPresetMission.ATTACK),
   requiresGoldClub: z.boolean().optional(),
   targetVillageId: z.string().min(1).nullable().optional(),
   targetX: z.number().int().min(0).max(1000).nullable().optional(),
@@ -255,6 +240,7 @@ export const attackPresetUpdateSchema = attackPresetBaseSchema
 export const attackPresetQuerySchema = z.object({
   playerId: z.string().min(1, "Player ID required"),
   villageId: z.string().min(1).optional(),
+  mission: z.nativeEnum(AttackPresetMission).optional(),
 })
 
 export const quicklinkUpdateSchema = z

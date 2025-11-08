@@ -1,10 +1,39 @@
+import { computeCrannyLoot, computeWallLevelAfterAttack } from "@/lib/balance/subsystem-effects"
+import { resolveBattle, type ArmyInput, type BattleReport, type UnitRole } from "@/lib/combat"
 import { prisma } from "@/lib/db"
 import { TroopService } from "./troop-service"
-import { VillageService } from "./village-service"
 import { ProtectionService } from "./protection-service"
 import { CrannyService } from "./cranny-service"
 import { VillageDestructionService } from "./village-destruction-service"
-import type { AttackStatus, AttackType } from "@prisma/client"
+import { ExpansionService } from "./expansion-service"
+import { LoyaltyService } from "./loyalty-service"
+import { NightPolicyService, formatWorldTime } from "./night-policy-service"
+import type { NightState } from "./night-policy-service"
+import { ScoutingService } from "./scouting-service"
+import { resolveUnitRole } from "./unit-classification"
+import type {
+  AttackStatus,
+  AttackType,
+  Building,
+  BuildingType,
+  Player,
+  Research,
+  ResearchType,
+  TroopType,
+  Village,
+} from "@prisma/client"
+import type { AdministratorSummary } from "./loyalty-service"
+
+type BuildingWithResearch = Building & { research: Research | null }
+type VillageWithOwner = Village & { player: Player; buildings: BuildingWithResearch[] }
+
+const hasActiveGoldClubMembership = (
+  player?: { hasGoldClubMembership: boolean; goldClubExpiresAt: Date | null },
+): boolean => {
+  if (!player?.hasGoldClubMembership) return false
+  if (!player.goldClubExpiresAt) return true
+  return player.goldClubExpiresAt > new Date()
+}
 
 interface CombatResult {
   attackerWon: boolean
@@ -19,16 +48,173 @@ interface CombatResult {
   buildingDamage?: Array<{ buildingId: string; damage: number }>
   populationDamage?: number // Population reduction from building destruction
   buildingsDestroyed?: Array<{ id: string; type: string; level: number }>
+  battleReport?: BattleReport
 }
 
-interface ScoutingResult {
-  success: boolean
-  units?: Array<{ type: string; quantity: number }>
-  buildings?: Array<{ type: string; level: number }>
-  storage?: { wood: number; stone: number; iron: number; gold: number; food: number }
+interface CombatTroopStack {
+  id: string
+  quantity: number
+  attack: number
+  defense: number
+  type?: TroopType | string
+  smithyAttackLevel?: number
+  smithyDefenseLevel?: number
+}
+
+type AttackUnitStack = {
+  troop: { id: string }
+  quantity: number
+}
+
+interface ResolveCombatParams {
+  attackerTroops: CombatTroopStack[]
+  defenderTroops: CombatTroopStack[]
+  wallLevel: number
+  wallType?: string
+  attackType: AttackType
+  attackerSize?: number
+  defenderSize?: number
+  heroAttackMultiplier?: number
+  nightBonusMultiplier?: number
+  seedComponents?: Array<string | number>
+}
+
+const DEFAULT_UNIT_ROLE: UnitRole = "inf"
+
+const RAM_TROOP_TYPES: TroopType[] = ["RAM"]
+
+function buildArmyInput(stacks: CombatTroopStack[], label: string): ArmyInput {
+  return {
+    label,
+    stacks: stacks
+      .filter((stack) => stack.quantity > 0)
+      .map((stack) => ({
+        unitId: stack.id,
+        role: resolveUnitRole(stack.type),
+        count: stack.quantity,
+        attack: stack.attack,
+        defInf: stack.defense,
+        defCav: stack.defense,
+        carry: 0,
+        smithyAttackLevel: stack.smithyAttackLevel,
+        smithyDefenseLevel: stack.smithyDefenseLevel,
+      })),
+  }
+}
+
+function countSurvivingByType(
+  stacks: Array<{ id: string; quantity: number; type?: string }>,
+  casualties: Record<string, number>,
+  type: string,
+): number {
+  return stacks
+    .filter((stack) => stack.type === type)
+    .reduce((sum, stack) => {
+      const fallen = casualties[stack.id] ?? 0
+      return sum + Math.max(0, stack.quantity - fallen)
+    }, 0)
+}
+
+function calculateWallDamageFromCasualties(
+  stacks: Array<{ id: string; quantity: number; type?: string }>,
+  casualties: Record<string, number>,
+  wallLevel: number,
+  wallType?: string,
+  attackType?: AttackType,
+): number {
+  const survivingRams = countSurvivingByType(stacks, casualties, "RAM")
+  const ramTechLevel = averageSiegeTechLevel(stacks, casualties, RAM_TROOP_TYPES)
+  const { drop } = computeWallLevelAfterAttack({
+    currentLevel: wallLevel,
+    survivingRams,
+    ramTechLevel,
+    wallType: wallType ?? "city_wall",
+    isRaid: attackType === "RAID",
+  })
+  return drop
+}
+
+function normalizeWallType(buildingType?: string | null): string {
+  switch (buildingType) {
+    case "STONE_WALL":
+    case "WALL":
+      return "city_wall"
+    case "PALISADE":
+      return "palisade"
+    case "EARTH_WALL":
+      return "earth_wall"
+    default:
+      return "city_wall"
+  }
+}
+
+interface SmithyLevels {
+  attack: number
+  defense: number
+}
+
+function resolveSmithyLevels(village?: VillageWithOwner): SmithyLevels {
+  if (!village) {
+    return { attack: 0, defense: 0 }
+  }
+
+  const smithy = village.buildings.find((b) => b.type === BuildingType.SMITHY)
+  if (!smithy) {
+    return { attack: 0, defense: 0 }
+  }
+
+  const baseLevel = smithy.level ?? 0
+  let attackLevel = baseLevel
+  let defenseLevel = baseLevel
+
+  if (smithy.research?.type === ResearchType.MILITARY_OFFENSE) {
+    attackLevel = smithy.research.level
+  }
+  if (smithy.research?.type === ResearchType.MILITARY_DEFENSE) {
+    defenseLevel = smithy.research.level
+  }
+
+  return { attack: attackLevel, defense: defenseLevel }
+}
+
+function averageSiegeTechLevel(
+  stacks: CombatTroopStack[],
+  casualties: Record<string, number>,
+  types: TroopType[],
+): number | undefined {
+  let total = 0
+  let weighted = 0
+  for (const stack of stacks) {
+    const troopType = stack.type as TroopType | undefined
+    if (!troopType || !types.includes(troopType)) continue
+    const fallen = casualties[stack.id] ?? 0
+    const remaining = Math.max(0, stack.quantity - fallen)
+    if (remaining <= 0) continue
+    const level = stack.smithyAttackLevel ?? 0
+    total += remaining
+    weighted += level * remaining
+  }
+  if (total === 0) return undefined
+  return weighted / total
 }
 
 export class CombatService {
+  static estimateWallDamage(params: {
+    attackerTroops: CombatTroopStack[]
+    attackerCasualties: Record<string, number>
+    wallLevel: number
+    wallType?: string
+    attackType?: AttackType
+  }): number {
+    return calculateWallDamageFromCasualties(
+      params.attackerTroops,
+      params.attackerCasualties,
+      params.wallLevel,
+      params.wallType,
+      params.attackType,
+    )
+  }
+
   /**
    * Calculate carry capacity of attacker troops
    */
@@ -57,182 +243,77 @@ export class CombatService {
     }, 0)
   }
 
+  private static async refundAttackStacks(stacks: AttackUnitStack[]): Promise<void> {
+    for (const stack of stacks) {
+      await prisma.troop.update({
+        where: { id: stack.troop.id },
+        data: { quantity: { increment: stack.quantity } },
+      })
+    }
+  }
+
+  static async refundAttackUnitsById(attackId: string): Promise<void> {
+    const attack = await prisma.attack.findUnique({
+      where: { id: attackId },
+      include: { attackUnits: { include: { troop: true } } },
+    })
+    if (!attack) return
+    await this.refundAttackStacks(attack.attackUnits)
+  }
+
   /**
-   * Resolve classic O/D combat with wall bonus, night bonus, and randomness
+   * Resolve Travian-style combat via deterministic resolver
    */
-  static async resolveCombat(
-    attackerOffense: number,
-    defenderDefense: number,
-    wallLevel: number,
-    attackerTroops: Array<{ id: string; quantity: number; attack: number; type?: string }>,
-    defenderTroops: Array<{ id: string; quantity: number; defense: number }>,
-    hasSiege: boolean,
-    attackType: string = "CONQUEST",
-  ): Promise<CombatResult> {
-    // Wall bonus: each level adds defense (Earth Wall has much weaker defense)
-    const baseWallBonus = wallType === "EARTH_WALL" ? wallLevel * 2.5 : wallLevel * 50
-    let totalDefenderDefense = defenderDefense + baseWallBonus
+  static async resolveCombat(params: ResolveCombatParams): Promise<CombatResult> {
+    const nightBonus = params.nightBonusMultiplier ?? (await ProtectionService.getNightBonusMultiplier())
+    const heroMultiplier = params.heroAttackMultiplier ?? 1
+    const mission = params.attackType === "RAID" ? "raid" : "attack"
 
-    // Night bonus: apply defense multiplier during night
-    const nightBonus = await ProtectionService.getNightBonusMultiplier()
-    totalDefenderDefense = totalDefenderDefense * nightBonus
+    const attackerArmy = buildArmyInput(params.attackerTroops, "attacker")
+    const defenderArmy = buildArmyInput(params.defenderTroops, "defender")
 
-    // Small randomness: ±5%
-    const randomFactor = 0.95 + Math.random() * 0.1
-    const adjustedAttackerOffense = attackerOffense * randomFactor
-    const adjustedDefenderDefense = totalDefenderDefense * (2.05 - randomFactor) // Slight defender advantage
+    const report = resolveBattle({
+      attacker: attackerArmy,
+      defender: defenderArmy,
+      environment: {
+        mission,
+        wallLevel: params.wallLevel,
+        wallType: params.wallType ?? "city_wall",
+        attackerSize: params.attackerSize,
+        defenderSize: params.defenderSize,
+        nightActive: nightBonus > 1,
+        attackerModifiers: heroMultiplier !== 1 ? [{ id: "hero", multiplier: heroMultiplier }] : undefined,
+        seedComponents: params.seedComponents ?? ["combat", params.wallLevel, params.wallType ?? "city_wall"],
+      },
+      configOverrides: {
+        night: { def_mult: nightBonus },
+      },
+    })
 
-    const totalPower = adjustedAttackerOffense + adjustedDefenderDefense
-    const attackerWon = adjustedAttackerOffense > adjustedDefenderDefense
-
-    // Calculate casualties per unit type
     const attackerCasualties: Record<string, number> = {}
-    const defenderCasualties: Record<string, number> = {}
-
-    if (attackerWon) {
-      if (attackType === "RAID") {
-        // Raid: Much lower attacker casualties, usually at least 1 survivor per unit type
-        const attackerDeathRate = Math.min(0.1, (adjustedDefenderDefense / totalPower) * 0.2)
-        for (const troop of attackerTroops) {
-          const casualties = Math.floor(troop.quantity * attackerDeathRate)
-          // Ensure at least 1 survivor if there were any troops
-          attackerCasualties[troop.id] = Math.min(casualties, troop.quantity - 1)
-        }
-      } else {
-        // Conquest: Normal casualties
-        const attackerDeathRate = Math.min(0.5, (adjustedDefenderDefense / totalPower) * 0.6)
-        for (const troop of attackerTroops) {
-          attackerCasualties[troop.id] = Math.floor(troop.quantity * attackerDeathRate)
-        }
-      }
-
-      const defenderDeathRate = Math.min(0.7, (adjustedAttackerOffense / totalPower) * 0.8)
-      for (const troop of defenderTroops) {
-        defenderCasualties[troop.id] = Math.floor(troop.quantity * defenderDeathRate)
-      }
-    } else {
-      const attackerDeathRate = Math.min(0.7, (adjustedDefenderDefense / totalPower) * 0.8)
-      for (const troop of attackerTroops) {
-        attackerCasualties[troop.id] = Math.floor(troop.quantity * attackerDeathRate)
-      }
-
-      const defenderDeathRate = Math.min(0.4, (adjustedAttackerOffense / totalPower) * 0.5)
-      for (const troop of defenderTroops) {
-        defenderCasualties[troop.id] = Math.floor(troop.quantity * defenderDeathRate)
+    for (const unit of report.attacker.units) {
+      if (unit.casualties > 0) {
+        attackerCasualties[unit.unitId] = unit.casualties
       }
     }
 
-    // Siege damage to walls/buildings and population reduction (only for conquests, not raids)
-    let wallDamage = 0
-    const buildingDamage: Array<{ buildingId: string; damage: number }> = []
-    let populationDamage = 0
-    const buildingsDestroyed: Array<{ id: string; type: string; level: number }> = []
-
-    if (hasSiege && attackerWon && attackType !== "RAID") {
-      // Get defender village for building destruction
-      const defenderVillage = await prisma.village.findUnique({
-        where: { id: attack.toVillageId! },
-        include: { buildings: true },
-      })
-
-      if (defenderVillage) {
-        // RAMs damage walls
-        const ramUnits = attackerTroops.filter((t) => t.type === "RAM")
-        const ramPower = ramUnits.reduce((sum, t) => sum + t.quantity, 0)
-        wallDamage = Math.min(wallLevel, Math.floor(ramPower / 10)) // Max damage = current wall level
-
-        // CATAPULTs destroy buildings and reduce population
-        const catapultUnits = attackerTroops.filter((t) => t.type === "CATAPULT")
-        const catapultPower = catapultUnits.reduce((sum, t) => sum + t.quantity, 0)
-
-        if (catapultPower > 0) {
-          // Calculate target population reduction (each catapult can destroy buildings worth ~10 population)
-          const targetPopulationReduction = catapultPower * 10
-
-          // Destroy buildings to reduce population
-          const destructionResult = await VillageDestructionService.destroyBuildingsAndReducePopulation(
-            defenderVillage.id,
-            targetPopulationReduction
-          )
-
-          populationDamage = destructionResult.populationReduced
-          buildingsDestroyed.push(...destructionResult.buildingsDestroyed.map(b => ({
-            id: b.id,
-            type: b.type,
-            level: b.level
-          })))
-        }
+    const defenderCasualties: Record<string, number> = {}
+    for (const unit of report.defender.units) {
+      if (unit.casualties > 0) {
+        defenderCasualties[unit.unitId] = unit.casualties
       }
     }
 
     return {
-      attackerWon,
+      attackerWon: report.attackerWon,
       attackerCasualties,
       defenderCasualties,
-      lootWood: 0, // Calculated separately
+      lootWood: 0,
       lootStone: 0,
       lootIron: 0,
       lootGold: 0,
       lootFood: 0,
-      wallDamage,
-      buildingDamage,
-      populationDamage,
-      buildingsDestroyed,
-    }
-  }
-
-  /**
-   * Resolve scouting attack
-   * Success vs enemy scouts, reveals units/buildings/storage
-   */
-  static async resolveScouting(
-    attackerScouts: number,
-    defenderScouts: number,
-    defenderVillageId: string,
-  ): Promise<ScoutingResult> {
-    // Success chance based on scout ratio
-    const scoutRatio = attackerScouts / Math.max(1, defenderScouts)
-    const successChance = Math.min(0.95, scoutRatio / (scoutRatio + 1))
-
-    const success = Math.random() < successChance
-
-    if (!success) {
-      return { success: false }
-    }
-
-    // Success: reveal defender information
-    const defenderVillage = await prisma.village.findUnique({
-      where: { id: defenderVillageId },
-      include: {
-        troops: true,
-        buildings: true,
-      },
-    })
-
-    if (!defenderVillage) {
-      return { success: false }
-    }
-
-    const crannyInfo = await CrannyService.getCrannyInfo(defenderVillage.id)
-
-    return {
-      success: true,
-      units: defenderVillage.troops.map((t) => ({
-        type: t.type,
-        quantity: t.quantity,
-      })),
-      buildings: defenderVillage.buildings.map((b) => ({
-        type: b.type,
-        level: b.level,
-      })),
-      storage: {
-        wood: defenderVillage.wood,
-        stone: defenderVillage.stone,
-        iron: defenderVillage.iron,
-        gold: defenderVillage.gold,
-        food: defenderVillage.food,
-      },
-      cranny: crannyInfo,
+      battleReport: report,
     }
   }
 
@@ -245,12 +326,27 @@ export class CombatService {
       include: {
         attackUnits: { include: { troop: true } },
         defenseUnits: { include: { troop: true } },
-        fromVillage: { include: { buildings: true, player: { include: { tribe: true } } } },
-        toVillage: { include: { buildings: true, troops: true, player: { include: { tribe: true } } } },
+        fromVillage: {
+          include: {
+            buildings: { include: { research: true } },
+            player: { include: { tribe: true, hero: true } },
+          },
+        },
+        toVillage: {
+          include: {
+            buildings: { include: { research: true } },
+            troops: true,
+            garrisonStacks: { include: { owner: true } },
+            player: { include: { tribe: true, hero: true } },
+          },
+        },
+        movement: true,
       },
     })
 
     if (!attack || !attack.toVillage) return
+
+    const nightState = await NightPolicyService.evaluate(attack.arrivalAt)
 
     // Final protection check (in case protection expired after attack was launched)
     if (attack.type !== "SCOUT") {
@@ -262,13 +358,7 @@ export class CombatService {
           data: { status: "CANCELLED" as AttackStatus },
         })
 
-        // Return troops to attacker
-        for (const unit of attack.attackUnits) {
-          await prisma.troop.update({
-            where: { id: unit.troop.id },
-            data: { quantity: { increment: unit.quantity } },
-          })
-        }
+        await this.refundAttackStacks(attack.attackUnits)
 
         // Send message to attacker
         await prisma.message.create({
@@ -287,7 +377,7 @@ export class CombatService {
       // Check for troop evasion (Gold Club feature)
       // For now, assume evasion is enabled for capital villages
       const isCapitalVillage = attack.toVillage.isCapital
-      const hasGoldClub = true // TODO: Check player's gold club membership
+      const hasGoldClub = hasActiveGoldClubMembership(attack.toVillage.player as { hasGoldClubMembership: boolean; goldClubExpiresAt: Date | null } | undefined)
 
       if (isCapitalVillage && hasGoldClub && attack.toVillage.troopEvasionEnabled) {
         // Check if no other troops are returning within 10 seconds
@@ -311,59 +401,138 @@ export class CombatService {
       }
     }
 
-    // Handle scouting separately
-    if (attack.type === "SCOUT") {
-      await this.processScoutingAttack(attackId, attack)
+    if (nightState.mode === "TRUCE" && nightState.active && nightState.windowBounds?.end) {
+      const resumeAt = nightState.windowBounds.end
+      if (nightState.config.trucePolicy === "BLOCK_SEND") {
+        await prisma.attack.update({
+          where: { id: attackId },
+          data: { status: "CANCELLED" as AttackStatus },
+        })
+
+        if (attack.movement) {
+          await prisma.movement.update({
+            where: { id: attack.movementId },
+            data: { status: "CANCELLED", cancelledAt: new Date() },
+          })
+        }
+
+        await this.refundAttackStacks(attack.attackUnits)
+
+        await prisma.message.create({
+          data: {
+            senderId: attack.fromVillage.playerId,
+            villageId: attack.fromVillageId,
+            type: "SYSTEM",
+            subject: "Night Truce Blocked Attack",
+            content: `Your attack was cancelled because it would land during the active night truce window. Troops have returned home. Next eligible landing: ${formatWorldTime(resumeAt, nightState.config.timezone)} (${nightState.config.timezone}).`,
+          },
+        })
+
+        return
+      }
+
+      await prisma.attack.update({
+        where: { id: attackId },
+        data: { status: "IN_PROGRESS", arrivalAt: resumeAt },
+      })
+      if (attack.movement) {
+        await prisma.movement.update({
+          where: { id: attack.movementId },
+          data: { status: "IN_PROGRESS", arrivalAt: resumeAt },
+        })
+      }
+
+      await prisma.message.create({
+        data: {
+          senderId: attack.fromVillage.playerId,
+          villageId: attack.fromVillageId,
+          type: "SYSTEM",
+          subject: "Night Truce Delay",
+          content: `Night truce delayed your attack. New landing time: ${formatWorldTime(resumeAt, nightState.config.timezone)} (${nightState.config.timezone}).`,
+        },
+      })
+
       return
     }
+
+    // Handle scouting separately
+    if (attack.type === "SCOUT") {
+      await this.processScoutingAttack(attackId, attack, nightState)
+      return
+    }
+
+    const attackerSmithy = resolveSmithyLevels(attack.fromVillage as unknown as VillageWithOwner)
+    const defenderSmithy = resolveSmithyLevels(attack.toVillage as unknown as VillageWithOwner)
 
     // Get wall level (includes WALL, STONE_WALL, EARTH_WALL)
     const wallBuilding = attack.toVillage.buildings.find((b) => b.type === "WALL" || b.type === "STONE_WALL" || b.type === "EARTH_WALL")
     const wallLevel = wallBuilding?.level || 0
-    const wallType = wallBuilding?.type || "WALL"
+    const wallType = normalizeWallType(wallBuilding?.type)
 
-    // Calculate offense/defense
-    const attackerOffense = TroopService.calculatePower(
-      attack.attackUnits.map((u) => u.troop),
-      "attack",
-    )
-    const defenderDefense = TroopService.calculatePower(
-      attack.defenseUnits.map((u) => u.troop),
-      "defense",
-    )
+    const attackerStacksForCombat: CombatTroopStack[] = attack.attackUnits.map((u) => ({
+      id: u.troop.id,
+      quantity: u.quantity,
+      attack: u.troop.attack,
+      defense: u.troop.defense,
+      type: u.troop.type,
+      smithyAttackLevel: attackerSmithy.attack,
+      smithyDefenseLevel: attackerSmithy.defense,
+    }))
 
-    // Check for siege units (RAM and CATAPULT)
-    const hasSiege = attack.attackUnits.some(
-      (u) => u.troop.type === "RAM" || u.troop.type === "CATAPULT",
-    )
+    const defenderStacksForCombat: CombatTroopStack[] = attack.defenseUnits.map((u) => ({
+      id: u.troop.id,
+      quantity: u.quantity,
+      attack: u.troop.attack,
+      defense: u.troop.defense,
+      type: u.troop.type,
+      smithyAttackLevel: defenderSmithy.attack,
+      smithyDefenseLevel: defenderSmithy.defense,
+    }))
 
     // Resolve combat
-    const result = await this.resolveCombat(
-      attackerOffense,
-      defenderDefense,
+    const result = await this.resolveCombat({
+      attackerTroops: attackerStacksForCombat,
+      defenderTroops: defenderStacksForCombat,
       wallLevel,
-      attack.attackUnits.map((u) => ({
-        id: u.troop.id,
-        quantity: u.quantity,
-        attack: u.troop.attack,
-        type: u.troop.type,
-      })),
-      attack.defenseUnits.map((u) => ({
-        id: u.troop.id,
-        quantity: u.quantity,
-        defense: u.troop.defense,
-      })),
-      hasSiege,
-      attack.type,
-    )
+      wallType,
+      attackType: attack.type,
+      attackerSize: attack.fromVillage.player?.totalPoints,
+      defenderSize: attack.toVillage.player?.totalPoints,
+      seedComponents: [attack.id, attack.arrivalAt.toISOString(), attack.fromVillageId, attack.toVillageId ?? "wildcard"],
+    })
 
     // Apply wall damage
-    if (result.wallDamage && wallBuilding) {
-      const newWallLevel = Math.max(0, wallLevel - result.wallDamage)
+    const wallDamage = calculateWallDamageFromCasualties(attackerStacksForCombat, result.attackerCasualties, wallLevel, wallType, attack.type)
+    result.wallDamage = wallDamage
+    if (wallDamage > 0 && wallBuilding) {
+      const newWallLevel = Math.max(0, wallLevel - wallDamage)
       await prisma.building.update({
         where: { id: wallBuilding.id },
         data: { level: newWallLevel },
       })
+    }
+
+    const survivingCatapults = countSurvivingByType(attackerStacksForCombat, result.attackerCasualties, "CATAPULT")
+    if (result.attackerWon && attack.type !== "RAID" && survivingCatapults > 0) {
+      const defenderVillage = await prisma.village.findUnique({
+        where: { id: attack.toVillageId! },
+        include: { buildings: true },
+      })
+
+      if (defenderVillage) {
+        const targetPopulationReduction = survivingCatapults * 10
+        const destructionResult = await VillageDestructionService.destroyBuildingsAndReducePopulation(
+          defenderVillage.id,
+          targetPopulationReduction,
+        )
+
+        result.populationDamage = destructionResult.populationReduced
+        result.buildingsDestroyed = destructionResult.buildingsDestroyed.map((b) => ({
+          id: b.id,
+          type: b.type,
+          level: b.level,
+        }))
+      }
     }
 
     // Apply population damage and check for village destruction
@@ -395,15 +564,21 @@ export class CombatService {
       food: attack.toVillage.food,
     }
 
-    // Calculate cranny protection
-    const attackerTribe = attack.fromVillage.player.tribe?.name
-    const crannyProtection = await CrannyService.calculateTotalProtection(
-      attack.toVillage.id,
-      attackerTribe
-    )
+    const attackerTribe =
+      attack.fromVillage.player.gameTribe ?? attack.fromVillage.player.tribe?.name ?? undefined
+    const defenderTribe =
+      attack.toVillage.player?.gameTribe ?? attack.toVillage.player?.tribe?.name ?? undefined
 
-    // Calculate effective lootable resources (defender storage minus cranny protection)
-    const effectiveStorage = CrannyService.calculateEffectiveLoot(defenderStorage, crannyProtection)
+    const crannyBreakdown = await CrannyService.getProtectionBreakdown(attack.toVillage.id)
+
+    const lootOutcome = computeCrannyLoot({
+      storage: defenderStorage,
+      baseProtection: crannyBreakdown.base,
+      defenderTribe,
+      attackerTribe,
+    })
+
+    const effectiveStorage = lootOutcome.lootable
 
     let lootWood = 0
     let lootStone = 0
@@ -464,65 +639,49 @@ export class CombatService {
     }
 
     // Handle loyalty and conquest
-    if (result.attackerWon) {
-      if (attack.type === "CONQUEST") {
-        // Check for nobleman and nomarch attacks (only for conquests, not raids)
-        const nobleCount = attack.attackUnits
-          .filter((u) => u.troop.type === "NOBLEMAN")
-          .reduce((sum, u) => sum + u.quantity, 0)
+    if (result.attackerWon && attack.type === "CONQUEST") {
+      const attackerStacks = attack.attackUnits.map((u) => ({
+        id: u.troop.id,
+        quantity: u.quantity,
+        type: u.troop.type,
+      }))
 
-        const nomarchCount = attack.attackUnits
-          .filter((u) => u.troop.type === "NOMARCH")
-          .reduce((sum, u) => sum + u.quantity, 0)
+      const administratorTypes: TroopType[] = ["NOBLEMAN", "NOMARCH", "LOGADES", "CHIEF", "SENATOR"]
+      const survivingAdmins = administratorTypes
+        .map((type) => ({
+          type,
+          count: countSurvivingByType(attackerStacks, result.attackerCasualties, type),
+        }))
+        .filter((entry) => entry.count > 0) as AdministratorSummary
 
-        const logadesCount = attack.attackUnits
-          .filter((u) => u.troop.type === "LOGADES")
-          .reduce((sum, u) => sum + u.quantity, 0)
-
-        let totalLoyaltyReduction = 0
-
-        if (nobleCount > 0) {
-          // Noble hit reduces 20-35 loyalty points (random)
-          totalLoyaltyReduction += 20 + Math.floor(Math.random() * 16) // 20-35
-        }
-
-        if (nomarchCount > 0) {
-          // Egyptian Nomarch reduces 20-25 loyalty points (random)
-          totalLoyaltyReduction += 20 + Math.floor(Math.random() * 6) // 20-25
-        }
-
-        if (logadesCount > 0) {
-          // Huns Logades reduces 15-30 loyalty points (random)
-          totalLoyaltyReduction += 15 + Math.floor(Math.random() * 16) // 15-30
-        }
-
+      if (survivingAdmins.length > 0) {
+        const totalLoyaltyReduction = LoyaltyService.rollAdministratorDamage(survivingAdmins, attack.toVillage.buildings)
         if (totalLoyaltyReduction > 0) {
-          const newLoyalty = Math.max(0, attack.toVillage.loyalty - totalLoyaltyReduction)
-
-          await prisma.village.update({
+          const updatedVillage = await prisma.village.update({
             where: { id: attack.toVillageId! },
-            data: { loyalty: newLoyalty },
+            data: {
+              loyalty: Math.max(0, attack.toVillage.loyalty - totalLoyaltyReduction),
+              loyaltyUpdatedAt: new Date(),
+              lastLoyaltyAttackAt: new Date(),
+            },
           })
 
-          // Conquest at ≤0 loyalty transfers ownership
-          if (newLoyalty <= 0) {
-            await this.transferVillageOwnership(attack.toVillageId!, attack.fromVillageId)
+          attack.toVillage.loyalty = updatedVillage.loyalty
+
+          if (updatedVillage.loyalty <= 0) {
+            const conquestResult = await ExpansionService.attemptConquestTransfer({
+              targetVillage: attack.toVillage as unknown as VillageWithOwner,
+              attackerVillage: attack.fromVillage as unknown as VillageWithOwner,
+            })
+
+            if (conquestResult !== "SUCCESS") {
+              await prisma.village.update({
+                where: { id: attack.toVillageId! },
+                data: { loyalty: LoyaltyService.getConfig().loyaltyFloorOnBlockedConquest },
+              })
+            }
           }
-        } else {
-          // Regular conquest reduces loyalty by 5
-          const newLoyalty = Math.max(0, attack.toVillage.loyalty - 5)
-          await prisma.village.update({
-            where: { id: attack.toVillageId! },
-            data: { loyalty: newLoyalty },
-          })
         }
-      } else if (attack.type === "RAID") {
-        // Raid reduces loyalty by 2 (no chiefs/nobles affect loyalty)
-        const newLoyalty = Math.max(0, attack.toVillage.loyalty - 2)
-        await prisma.village.update({
-          where: { id: attack.toVillageId! },
-          data: { loyalty: newLoyalty },
-        })
       }
     }
 
@@ -557,60 +716,53 @@ export class CombatService {
   /**
    * Process scouting attack
    */
-  static async processScoutingAttack(attackId: string, attack: any): Promise<void> {
-    const attackerScouts = attack.attackUnits
-      .filter((u: any) => u.troop.type === "BOWMAN")
-      .reduce((sum: number, u: any) => sum + u.quantity, 0)
-
-    const defenderScouts = attack.toVillage.troops
-      .filter((t: any) => t.type === "BOWMAN")
-      .reduce((sum: number, t: any) => sum + t.quantity, 0)
-
-    const scoutingResult = await this.resolveScouting(attackerScouts, defenderScouts, attack.toVillageId!)
-
-    if (scoutingResult.success) {
-      // Success: store scouting data
+  static async processScoutingAttack(attackId: string, attack: any, nightState: NightState): Promise<void> {
+    if (!attack.toVillageId) {
       await prisma.attack.update({
         where: { id: attackId },
-        data: {
-          status: "RESOLVED" as AttackStatus,
-          attackerWon: true,
-          scoutingData: JSON.stringify(scoutingResult),
-          resolvedAt: new Date(),
-        },
+        data: { status: "CANCELLED" as AttackStatus, resolvedAt: new Date() },
       })
-
-      // Send message to attacker with scouting results
-      await prisma.message.create({
-        data: {
-          senderId: attack.fromVillage.playerId,
-          villageId: attack.fromVillageId,
-          type: "SCOUT_RESULT",
-          subject: `Scouting Report: ${attack.toVillage.name}`,
-          content: JSON.stringify(scoutingResult),
-        },
-      })
-    } else {
-      // Failed: inform defender
-      await prisma.attack.update({
-        where: { id: attackId },
-        data: {
-          status: "RESOLVED" as AttackStatus,
-          attackerWon: false,
-          resolvedAt: new Date(),
-        },
-      })
-
-      await prisma.message.create({
-        data: {
-          senderId: attack.toVillage.playerId,
-          villageId: attack.toVillageId!,
-          type: "SCOUT_DETECTED",
-          subject: `Scout Detected at ${attack.toVillage.name}`,
-          content: `Enemy scouts were detected and repelled at your village.`,
-        },
-      })
+      return
     }
+
+    const report = await ScoutingService.generateReport(attack, nightState)
+
+    await prisma.attack.update({
+      where: { id: attackId },
+      data: {
+        status: "RESOLVED" as AttackStatus,
+        attackerWon: report.summary.success,
+        scoutingData: JSON.stringify(report),
+        resolvedAt: new Date(),
+      },
+    })
+
+    await prisma.message.create({
+      data: {
+        senderId: attack.fromVillage.playerId,
+        villageId: attack.fromVillageId,
+        type: "SCOUT_RESULT",
+        subject: `Scouting Report: ${attack.toVillage.name}`,
+        content: JSON.stringify(report),
+      },
+    })
+
+    await prisma.message.create({
+      data: {
+        senderId: attack.toVillage.playerId,
+        villageId: attack.toVillageId!,
+        type: "SCOUT_ALERT",
+        subject: `Counter-scout action at ${attack.toVillage.name}`,
+        content: JSON.stringify({
+          enemyVillage: attack.fromVillage.name,
+          scoutsSent: report.summary.attackersSent,
+          attackerLosses: report.summary.attackerLosses,
+          defenderLosses: report.summary.defenderLosses,
+          outcome: report.summary.band,
+          night: nightState.active ? nightState.activeWindow?.label ?? "night window" : null,
+        }),
+      },
+    })
   }
 
   /**
@@ -628,7 +780,7 @@ export class CombatService {
     if (!attack?.toVillage?.player?.tribe) return;
 
     // Find all alliance members of the attacked village
-    const alliances = await prisma.alliance.findMany({
+    const alliances = await prisma.tribeTreaty.findMany({
       where: {
         OR: [
           { tribe1Id: attack.toVillage.player.tribe.id },
@@ -673,31 +825,6 @@ export class CombatService {
     );
 
     await Promise.all(notificationPromises);
-  }
-
-  /**
-   * Transfer village ownership on conquest
-   */
-  static async transferVillageOwnership(villageId: string, newOwnerId: string): Promise<void> {
-    const village = await prisma.village.findUnique({
-      where: { id: villageId },
-    })
-
-    if (!village) return
-
-    // Transfer ownership
-    await prisma.village.update({
-      where: { id: villageId },
-      data: {
-        playerId: newOwnerId,
-        loyalty: 25 + Math.floor(Math.random() * 6), // Reset to 25-30
-      },
-    })
-
-    // Remove all defending troops (conquered)
-    await prisma.troop.deleteMany({
-      where: { villageId },
-    })
   }
 
   /**

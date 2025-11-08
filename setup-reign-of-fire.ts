@@ -28,7 +28,7 @@ async function setupReignOfFire() {
       () => prisma.barbarian.deleteMany(),
       () => prisma.region.deleteMany(),
       () => prisma.tribeInvite.deleteMany(),
-      () => prisma.alliance.deleteMany(),
+      () => prisma.tribeTreaty.deleteMany(),
       () => prisma.war.deleteMany(),
       () => prisma.tribe.deleteMany(),
       () => prisma.heroAdventure.deleteMany(),

@@ -39,8 +39,8 @@ describe("subsystem effects helpers", () => {
   })
 
   it("computes cranny lootable resources with tribe modifiers", () => {
-    const storage = { wood: 2000, clay: 2000, iron: 2000, crop: 2000 }
-    const baseProtection = { wood: 1000, clay: 1000, iron: 1000, crop: 1000 }
+    const storage = { wood: 2000, clay: 2000, iron: 2000, crop: 2000, food: 2000 }
+    const baseProtection = { wood: 1000, clay: 1000, iron: 1000, crop: 1000, food: 1000 }
 
     const result = computeCrannyLoot({
       storage,
@@ -52,6 +52,7 @@ describe("subsystem effects helpers", () => {
     expect(result.protected.wood).toBeCloseTo(1340, 0)
     expect(result.lootable.wood).toBeCloseTo(660, 0)
     expect(result.protected.crop).toBeCloseTo(1340, 0)
+    expect(result.protected.food).toBeCloseTo(1340, 0)
   })
 
   it("aggregates village production with hero and oasis bonuses", () => {

@@ -4,8 +4,8 @@ const TWO_POW_53 = 2 ** 53
 const UINT64_MAX = (1n << 64n) - 1n
 const DEFAULT_SEED = 0x4d595df4d0f33173n
 
-type UnitRole = "inf" | "cav" | "scout" | "ram" | "catapult" | "admin" | "settler"
-type Mission = "attack" | "raid" | "siege" | "admin_attack"
+export type UnitRole = "inf" | "cav" | "scout" | "ram" | "catapult" | "admin" | "settler"
+export type Mission = "attack" | "raid" | "siege" | "admin_attack"
 type RoundingMode = "bankers"
 
 export interface UnitStackInput {

@@ -31,59 +31,155 @@ interface BattleReportProps {
 export function BattleReport({ attack }: BattleReportProps) {
   if (attack.type === "SCOUT") {
     const scoutingData = attack.scoutingData ? JSON.parse(attack.scoutingData) : null
+    const summary = scoutingData?.summary
+    const formatHours = (value?: number | null) => {
+      if (value === null || value === undefined) return "—"
+      if (value === 0) return "now"
+      return `≈ ${value.toFixed(1)}h`
+    }
+    const formatBandOrLevel = (entry?: { level?: number; band?: { min: number; max: number } }) => {
+      if (!entry) return "—"
+      if (entry.level !== undefined) return entry.level
+      if (entry.band) return `${entry.band.min}–${entry.band.max}`
+      return "—"
+    }
+
     return (
       <div className="space-y-4">
         <h3 className="text-lg font-bold">Scouting Report</h3>
         <div className="text-sm space-y-2">
           <div>Target: {attack.toVillage?.name || "Unknown"}</div>
-          <div>Status: {attack.attackerWon ? "✅ Success" : "❌ Failed"}</div>
-          {scoutingData && attack.attackerWon && (
-            <div className="mt-4 space-y-2">
-              <h4 className="font-semibold">Revealed Information:</h4>
-              {scoutingData.units && (
+          {summary ? (
+            <>
+              <div>Outcome: {summary.success ? "✅ Success" : "❌ Failed"} ({summary.band})</div>
+              <div>
+                Scouts sent: {summary.attackersSent} | Survived: {summary.attackersSurvived} | Defending scouts:{" "}
+                {summary.defenderScouts}
+              </div>
+              <div>
+                Ratio: {summary.ratio.toFixed(2)} | Fidelity: {summary.fidelity} | Tiers unlocked:{" "}
+                {summary.unlockedTiers.length ? summary.unlockedTiers.join(", ") : "None"}
+              </div>
+            </>
+          ) : (
+            <div>Status: Pending</div>
+          )}
+          {scoutingData?.notes && <div className="text-xs text-yellow-600">{scoutingData.notes}</div>}
+          {scoutingData?.metadata?.night && (
+            <div className="text-xs text-muted-foreground">
+              Night policy: {scoutingData.metadata.night.active ? "active" : "inactive"} (
+              {scoutingData.metadata.night.mode}){" "}
+              {scoutingData.metadata.night.windowLabel && `• window ${scoutingData.metadata.night.windowLabel}`}
+            </div>
+          )}
+          {summary?.success && (
+            <div className="mt-4 space-y-3">
+              {scoutingData?.presence && (
                 <div>
-                  <h5 className="font-semibold">Troops:</h5>
-                  <TextTable
-                    headers={["Type", "Quantity"]}
-                    rows={scoutingData.units.map((u: any) => [u.type, u.quantity.toLocaleString()])}
-                  />
-                </div>
-              )}
-              {scoutingData.buildings && (
-                <div>
-                  <h5 className="font-semibold">Buildings:</h5>
-                  <TextTable
-                    headers={["Type", "Level"]}
-                    rows={scoutingData.buildings.map((b: any) => [b.type, b.level.toString()])}
-                  />
-                </div>
-              )}
-              {scoutingData.storage && (
-                <div>
-                  <h5 className="font-semibold">Resources:</h5>
+                  <h4 className="font-semibold">Presence & Loyalty</h4>
                   <div className="text-sm">
-                    🪵 Wood: {scoutingData.storage.wood.toLocaleString()}
+                    Occupied: {scoutingData.presence.occupied ? "Yes" : "No"}
+                    {scoutingData.presence.playerName && <> • Player: {scoutingData.presence.playerName}</>}
+                    {scoutingData.presence.tribe && <> • Tribe: {scoutingData.presence.tribe}</>}
                     <br />
-                    🧱 Stone: {scoutingData.storage.stone.toLocaleString()}
-                    <br />
-                    ⛓ Iron: {scoutingData.storage.iron.toLocaleString()}
-                    <br />
-                    🪙 Gold: {scoutingData.storage.gold.toLocaleString()}
-                    <br />
-                    🌾 Food: {scoutingData.storage.food.toLocaleString()}
+                    Population: {scoutingData.presence.population.toLocaleString()} • Loyalty:{" "}
+                    {scoutingData.presence.loyalty}
                   </div>
                 </div>
               )}
-              {scoutingData.cranny && (
+
+              {scoutingData?.economy?.stocks && (
                 <div>
-                  <h5 className="font-semibold">Cranny Protection:</h5>
-                  <div className="text-sm">
-                    <div>🛡️ Cranny Count: {scoutingData.cranny.crannyCount}</div>
-                    <div>🛡️ Total Capacity: {scoutingData.cranny.totalCapacity.toLocaleString()} per resource</div>
-                    {scoutingData.cranny.tribeBonus && (
-                      <div className="text-green-600">🎯 {scoutingData.cranny.tribeBonus}</div>
+                  <h4 className="font-semibold">Economy</h4>
+                  <TextTable
+                    headers={["Resource", "Amount/Band", "Capacity", "Time to full", "Time to empty"]}
+                    rows={Object.entries(scoutingData.economy.stocks).map(([resource, entry]: [string, any]) => [
+                      resource.toUpperCase(),
+                      entry.amount !== undefined ? entry.amount.toLocaleString() : entry.band?.label ?? "—",
+                      entry.capacity.toLocaleString(),
+                      formatHours(entry.timeToFullHours),
+                      formatHours(entry.timeToEmptyHours),
+                    ])}
+                  />
+                </div>
+              )}
+
+              {scoutingData?.defenses && (
+                <div>
+                  <h4 className="font-semibold">Defenses</h4>
+                  <div className="text-sm space-y-1">
+                    {scoutingData.defenses.wall && (
+                      <div>
+                        Wall ({scoutingData.defenses.wall.type || "unknown"}):{" "}
+                        {formatBandOrLevel(scoutingData.defenses.wall)}
+                      </div>
+                    )}
+                    {scoutingData.defenses.watchtower && (
+                      <div>Watchtower: {formatBandOrLevel(scoutingData.defenses.watchtower)}</div>
+                    )}
+                    {scoutingData.defenses.cranny && (
+                      <div>
+                        Cranny capacity: {scoutingData.defenses.cranny.totalCapacity.toLocaleString()} (count{" "}
+                        {scoutingData.defenses.cranny.crannyCount})
+                      </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {scoutingData?.garrison && (
+                <div>
+                  <h4 className="font-semibold">Garrison</h4>
+                  <div className="text-sm mb-2">
+                    Hero present: {scoutingData.garrison.heroPresent ? "Yes" : "No"}
+                  </div>
+                  <TextTable
+                    headers={["Class", "Count/Band"]}
+                    rows={scoutingData.garrison.classes.map((cls: any) => [
+                      cls.class,
+                      cls.band ? cls.band.label : cls.count.toLocaleString(),
+                    ])}
+                  />
+                  {scoutingData.garrison.units && (
+                    <div className="mt-2">
+                      <TextTable
+                        headers={["Unit", "Quantity"]}
+                        rows={scoutingData.garrison.units.map((unit: any) => [
+                          unit.type,
+                          unit.quantity.toLocaleString(),
+                        ])}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {scoutingData?.reinforcements?.entries?.length > 0 && (
+                <div>
+                  <h4 className="font-semibold">Reinforcements</h4>
+                  <TextTable
+                    headers={["Owner", "Total", "Breakdown"]}
+                    rows={scoutingData.reinforcements.entries.map((entry: any) => [
+                      entry.ownerName,
+                      entry.total.toLocaleString(),
+                      entry.classes.map((cls: any) =>
+                        cls.band ? `${cls.class}: ${cls.band.label}` : `${cls.class}: ${cls.count.toLocaleString()}`,
+                      ).join(", "),
+                    ])}
+                  />
+                </div>
+              )}
+
+              {scoutingData?.infrastructure?.buildings?.length > 0 && (
+                <div>
+                  <h4 className="font-semibold">Infrastructure Snapshot</h4>
+                  <TextTable
+                    headers={["Building", "Level/Band"]}
+                      rows={scoutingData.infrastructure.buildings.map((building: any) => [
+                        building.type,
+                        formatBandOrLevel(building),
+                      ])}
+                  />
                 </div>
               )}
             </div>

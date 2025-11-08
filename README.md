@@ -186,9 +186,6 @@ Combat uses a power-based algorithm with randomness:
 - \`POST /api/admin/world/config\` - Update world settings
 - \`GET /api/admin/speed-templates\` - Speed templates
 - \`POST /api/admin/speed-templates\` - Apply speed configurations
-- \`POST /api/admin/map/spawn-barbarian\` - Spawn barbarian villages
-- \`POST /api/admin/map/relocate-tile\` - Move villages
-- \`POST /api/admin/map/wipe-empty\` - Clean up empty villages
 
 ### Leaderboard
 - \`GET /api/leaderboard\` - Get global rankings

@@ -18,7 +18,7 @@ export class AllianceService {
     }
 
     // Find active alliances for this player's tribe
-    const alliances = await prisma.alliance.findMany({
+    const alliances = await prisma.tribeTreaty.findMany({
       where: {
         OR: [
           { tribe1Id: player.tribe.id },
@@ -91,7 +91,7 @@ export class AllianceService {
 
     if (!player1?.tribe || !player2?.tribe) return false;
 
-    const alliance = await prisma.alliance.findFirst({
+    const alliance = await prisma.tribeTreaty.findFirst({
       where: {
         OR: [
           { tribe1Id: player1.tribe.id, tribe2Id: player2.tribe.id },
@@ -144,7 +144,7 @@ export class AllianceService {
       };
     }
 
-    const alliances = await prisma.alliance.findMany({
+    const alliances = await prisma.tribeTreaty.findMany({
       where: {
         OR: [
           { tribe1Id: player.tribe.id },

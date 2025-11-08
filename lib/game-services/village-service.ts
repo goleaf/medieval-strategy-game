@@ -3,6 +3,8 @@ import { VillageDestructionService } from "./village-destruction-service"
 import { createTasksForVillage } from "./task-service"
 import { CapacityService } from "./capacity-service"
 import { StorageService } from "./storage-service"
+import { LoyaltyService } from "./loyalty-service"
+import { CulturePointService } from "./culture-point-service"
 import type { StorageLedgerReason, Village } from "@prisma/client"
 
 export class VillageService {
@@ -17,6 +19,10 @@ export class VillageService {
     y: number,
     isCapital?: boolean,
     selectedTribe?: string, // Reign of Fire: allow tribe selection for first 3 villages
+    options?: {
+      skipCultureCheck?: boolean
+      foundedByVillageId?: string
+    },
   ): Promise<Village> {
     // Check if this is the player's first village
     const existingVillages = await prisma.village.findMany({
@@ -33,11 +39,10 @@ export class VillageService {
     if (!player) throw new Error("Player not found")
 
     // Check culture point requirements for village expansion (not capital)
-    if (!shouldBeCapital) {
-      const requiredCP = player.gameWorld?.requirementForSecondVillage || 2000
-      if (player.culturePoints < requiredCP) {
-        throw new Error(`Insufficient culture points. Required: ${requiredCP}, You have: ${player.culturePoints}`)
-      }
+    const skipCultureCheck = options?.skipCultureCheck ?? false
+
+    if (!shouldBeCapital && !skipCultureCheck) {
+      await CulturePointService.assertExpansionSlot(playerId, player.gameWorld)
     }
 
     const village = await prisma.village.create({
@@ -48,11 +53,14 @@ export class VillageService {
         x,
         y,
         isCapital: shouldBeCapital,
+        foundedByVillageId: options?.foundedByVillageId ?? null,
       },
     })
 
     // Create default buildings
     await this.initializeBuildings(village.id)
+    await CulturePointService.recalculateVillageContribution(village.id)
+    await CulturePointService.refreshAccount(playerId, player.gameWorld)
 
     // Create village-specific tasks
     await createTasksForVillage(village.id, playerId)
@@ -72,6 +80,8 @@ export class VillageService {
         });
       }
     }
+
+    await LoyaltyService.syncVillageMaxLoyalty(village.id)
 
     return village
   }
@@ -160,7 +170,7 @@ export class VillageService {
     if (!village) return
 
     // Calculate production based on loyalty
-    const loyaltyMultiplier = village.loyalty / 100
+    const loyaltyMultiplier = Math.max(0, village.loyalty) / Math.max(1, village.maxLoyalty || 100)
 
     // Get hero resource production bonus
     let heroBonus = 0
@@ -225,11 +235,12 @@ export class VillageService {
 
     if (!village) return
 
-    const newLoyalty = Math.max(0, Math.min(100, village.loyalty + delta))
+    const maxLoyalty = village.maxLoyalty || 100
+    const newLoyalty = Math.max(0, Math.min(maxLoyalty, village.loyalty + delta))
 
     await prisma.village.update({
       where: { id: villageId },
-      data: { loyalty: newLoyalty },
+      data: { loyalty: newLoyalty, loyaltyUpdatedAt: new Date() },
     })
   }
 

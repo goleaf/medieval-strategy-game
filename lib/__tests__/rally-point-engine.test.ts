@@ -1,15 +1,40 @@
-import { describe, expect, it, beforeEach } from "vitest"
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest"
 
 import { InMemoryRallyPointRepository } from "@/lib/rally-point/testing/in-memory-repository"
 import { RallyPointEngine } from "@/lib/rally-point"
 import { SimpleCombatResolver } from "@/lib/rally-point/combat"
 import type { UnitStats } from "@/lib/rally-point"
+import { NightPolicyService } from "@/lib/game-services/night-policy-service"
+import type { NightState } from "@/lib/game-services/night-policy-service"
 
 const UNIT_CATALOG: Record<string, UnitStats> = {
-  INF: { id: "INF", role: "inf", speed: 6, carry: 50, attack: 40, defense: 35 },
-  CAV: { id: "CAV", role: "cav", speed: 12, carry: 70, attack: 70, defense: 30 },
-  RAM: { id: "RAM", role: "ram", speed: 5, carry: 0, attack: 30, defense: 20, siege: "ram" },
-  CAT: { id: "CAT", role: "catapult", speed: 4, carry: 0, attack: 60, defense: 30, siege: "catapult" },
+  INF: { id: "INF", role: "inf", speed: 6, carry: 50, attack: 40, defense: 35, defInf: 35, defCav: 25 },
+  CAV: { id: "CAV", role: "cav", speed: 12, carry: 70, attack: 70, defense: 30, defInf: 20, defCav: 40 },
+  RAM: { id: "RAM", role: "ram", speed: 5, carry: 0, attack: 30, defense: 20, defInf: 20, defCav: 10, siege: "ram" },
+  CAT: {
+    id: "CAT",
+    role: "catapult",
+    speed: 4,
+    carry: 0,
+    attack: 60,
+    defense: 30,
+    defInf: 30,
+    defCav: 15,
+    siege: "catapult",
+  },
+}
+
+const MOCK_NIGHT_STATE: NightState = {
+  config: {
+    mode: "NONE",
+    defenseMultiplier: 1,
+    timezone: "UTC",
+    windows: [],
+    trucePolicy: "BLOCK_SEND",
+  },
+  active: false,
+  mode: "NONE",
+  defenseMultiplier: 1,
 }
 
 const START_TIME = new Date("2024-11-10T00:00:00.000Z").getTime()
@@ -30,10 +55,15 @@ describe("RallyPointEngine", () => {
   let engine: RallyPointEngine
   let advance: (ms: number) => void
 
-  beforeEach(() => {
-    repo = new InMemoryRallyPointRepository()
-    ;({ engine, advance } = createEngine(repo))
-  })
+beforeEach(() => {
+  vi.spyOn(NightPolicyService, "evaluate").mockResolvedValue(MOCK_NIGHT_STATE)
+  repo = new InMemoryRallyPointRepository()
+  ;({ engine, advance } = createEngine(repo))
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
   it("rejects siege missions without siege units", async () => {
     const attacker = repo.seedVillage({ id: "A", ownerAccountId: "attacker", x: 0, y: 0 })
@@ -192,6 +222,8 @@ describe("RallyPointEngine", () => {
     const results = await engine.resolveDueMovements()
     expect(results[0].movement.mission).toBe("reinforce")
     expect(results[1].movement.mission).toBe("attack")
+    const combatReport = results.find((entry) => entry.report)?.report
+    expect(combatReport?.battleReport).toBeDefined()
   })
 
   it("cancels movements within the grace window and refunds units", async () => {
@@ -233,5 +265,30 @@ describe("RallyPointEngine", () => {
     expect(movement.mission).toBe("return")
     const stacks = await repo.withTransaction((trx) => trx.getOwnerGarrison(host.id, "owner"))
     expect(stacks.find((s) => s.unitTypeId === "INF")?.count).toBe(10)
+  })
+
+  it("stores per-unit tech levels on outgoing missions", async () => {
+    const attacker = repo.seedVillage({ id: "A", ownerAccountId: "attacker", x: 0, y: 0 })
+    const defender = repo.seedVillage({ id: "D", ownerAccountId: "defender", x: 5, y: 0 })
+    repo.seedRallyPoint({ villageId: attacker.id, level: 10, waveWindowMs: 150, options: {} })
+    repo.seedGarrison({
+      villageId: attacker.id,
+      ownerAccountId: attacker.ownerAccountId,
+      unitTypeId: "INF",
+      count: 20,
+      smithyAttackLevel: 4,
+      smithyDefenseLevel: 2,
+    })
+
+    const { movement } = await engine.sendMission({
+      sourceVillageId: attacker.id,
+      sourceAccountId: attacker.ownerAccountId,
+      mission: "attack",
+      target: { type: "village", villageId: defender.id },
+      units: { INF: 10 },
+      idempotencyKey: "idem-tech",
+    })
+
+    expect(movement.payload.techLevels?.INF).toEqual({ attack: 4, defense: 2 })
   })
 })

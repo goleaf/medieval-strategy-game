@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { CrannyService } from "@/lib/game-services/cranny-service"
 
-const prismaMock = {
+const prismaMock = vi.hoisted(() => ({
   village: {
     findUnique: vi.fn(),
   },
   crannyProtectionCurve: {
     findMany: vi.fn(),
   },
-}
+}))
 
 vi.mock("@/lib/db", () => ({
   prisma: prismaMock,
@@ -50,5 +50,18 @@ describe("CrannyService", () => {
 
     const protection = await CrannyService.calculateTotalProtection("village-roman", "TEUTONS")
     expect(protection.wood).toBe(120) // (200 + 400) * 0.2
+  })
+
+  it("provides base vs adjusted protection breakdown", async () => {
+    prismaMock.village.findUnique.mockResolvedValue({
+      buildings: [{ type: "CRANNY", level: 1 }],
+      player: { gameTribe: "GAULS" },
+    })
+
+    const breakdown = await CrannyService.getProtectionBreakdown("village-gaul")
+    expect(breakdown.base.wood).toBe(200)
+    expect(breakdown.adjusted.wood).toBe(300)
+    expect(breakdown.defenderTribe).toBe("GAULS")
+    expect(breakdown.crannyCount).toBe(1)
   })
 })

@@ -1,26 +1,32 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { StorageLedgerReason } from "@prisma/client"
 import { StorageService } from "@/lib/game-services/storage-service"
 import { CapacityService } from "@/lib/game-services/capacity-service"
 
-const villageModel = {
-  findUnique: vi.fn(),
-  update: vi.fn(),
-}
+const prismaModule = vi.hoisted(() => {
+  const villageModel = {
+    findUnique: vi.fn(),
+    update: vi.fn(),
+  }
 
-const ledgerModel = {
-  create: vi.fn(),
-}
+  const ledgerModel = {
+    create: vi.fn(),
+  }
 
-const prismaMock = {
-  village: villageModel,
-  villageStorageLedger: ledgerModel,
-  $transaction: vi.fn(async (cb: any) => cb(prismaMock as any)),
-}
+  const prismaMock = {
+    village: villageModel,
+    villageStorageLedger: ledgerModel,
+    $transaction: vi.fn(async (cb: any) => cb(prismaMock as any)),
+  }
+
+  return { villageModel, ledgerModel, prismaMock }
+})
 
 vi.mock("@/lib/db", () => ({
-  prisma: prismaMock,
+  prisma: prismaModule.prismaMock,
 }))
+
+const { villageModel, ledgerModel, prismaMock } = prismaModule
 
 describe("StorageService", () => {
   beforeEach(() => {

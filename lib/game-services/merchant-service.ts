@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { getSubsystemEffectsConfig } from "@/lib/config/subsystem-effects"
 import type { GameTribe, Prisma } from "@prisma/client"
 import type { ResourceBundle } from "./storage-service"
 
@@ -7,9 +8,13 @@ type PrismaCtx = Prisma.TransactionClient | typeof prisma
 const BASE_MERCHANTS = 2
 const MERCHANTS_PER_LEVEL = 2
 
+const SUBSYSTEM_EFFECTS = getSubsystemEffectsConfig()
+const TEUTON_MERCHANT_CAPACITY = SUBSYSTEM_EFFECTS.teuton_raid_focus?.merchant_capacity ?? 1000
+const TEUTON_MERCHANT_SPEED = SUBSYSTEM_EFFECTS.teuton_raid_focus?.merchant_tiles_per_hour ?? 12
+
 const MERCHANT_CONFIG: Record<GameTribe, { capacity: number; tilesPerHour: number }> = {
   ROMANS: { capacity: 500, tilesPerHour: 16 },
-  TEUTONS: { capacity: 1000, tilesPerHour: 12 },
+  TEUTONS: { capacity: TEUTON_MERCHANT_CAPACITY, tilesPerHour: TEUTON_MERCHANT_SPEED },
   GAULS: { capacity: 750, tilesPerHour: 14 },
   HUNS: { capacity: 800, tilesPerHour: 18 },
   EGYPTIANS: { capacity: 900, tilesPerHour: 14 },

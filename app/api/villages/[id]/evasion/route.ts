@@ -29,8 +29,10 @@ export async function PUT(
       return errorResponse("Troop evasion is only available for capital villages", 400)
     }
 
-    // TODO: Check if player has Gold Club membership
-    const hasGoldClub = true // For now, assume all players have gold club
+    const now = new Date()
+    const hasGoldClub =
+      village.player.hasGoldClubMembership &&
+      (!village.player.goldClubExpiresAt || village.player.goldClubExpiresAt > now)
 
     if (!hasGoldClub) {
       return errorResponse("Troop evasion requires Gold Club membership", 403)
@@ -77,4 +79,3 @@ export async function GET(
     return serverErrorResponse(error)
   }
 }
-

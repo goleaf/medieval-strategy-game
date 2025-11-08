@@ -1,0 +1,24 @@
+stateDiagram-v2
+  [*] --> Forming
+  Forming --> Active : creationComplete
+  Active --> Disbanding : disbandRequested
+  Disbanding --> Disbanded : guardrailsPass
+  Active --> Disbanded : forceDisband
+
+stateDiagram-v2
+  Invited --> Probation : accepted
+  Invited --> Former : expired/revoked
+  Applicant --> Probation : approved
+  Applicant --> Former : declined/expired
+  Probation --> Active : timerElapsed
+  Active --> Suspended : violation
+  Suspended --> Active : appeal
+  Active --> Former : leave/kick
+
+stateDiagram-v2
+  Draft --> Scheduled : schedule
+  Draft --> Sending : sendNow
+  Scheduled --> Sending : windowReached
+  Sending --> Sent : success
+  Sending --> Failed : deliveryError
+  Scheduled --> Cancelled : leaderAbort

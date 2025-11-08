@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Map, Swords, ShoppingCart, MessageCircle, Users, Trophy, Eye, Hammer, Shield, LogOut, Settings } from "lucide-react"
+import { Swords, ShoppingCart, MessageCircle, Users, Trophy, Eye, Hammer, Shield, LogOut, Settings } from "lucide-react"
 import { VillageOverview } from "@/components/game/village-overview"
 import { ResourceDisplay } from "@/components/game/resource-display"
 import { BuildingQueue } from "@/components/game/building-queue"
 import { Navbar } from "@/components/game/navbar"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/hooks/use-auth"
 // Types inferred from API responses
 type VillageWithRelations = {
   id: string
@@ -34,6 +35,18 @@ type VillageWithRelations = {
     isBuilding: boolean
     completionAt: string | null
     queuePosition: number | null
+    research?: { isResearching: boolean } | null
+  }>
+  buildQueueTasks: Array<{
+    id: string
+    buildingId: string | null
+    entityKey: string
+    fromLevel: number
+    toLevel: number
+    status: string
+    position: number
+    startedAt: string | null
+    finishesAt: string | null
   }>
   troops: Array<{
     id: string
@@ -50,53 +63,44 @@ export default function Dashboard() {
   const [villages, setVillages] = useState<VillageWithRelations[]>([])
   const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const { auth, initialized, clearAuth } = useAuth({ redirectOnMissing: true, redirectTo: "/login" })
 
   const fetchVillages = useCallback(async () => {
-      try {
-        setLoading(true)
-        const authToken = localStorage.getItem("authToken")
-        const playerId = localStorage.getItem("playerId")
-
-        if (!authToken || !playerId) {
-          console.error("No auth token or player ID found")
-          setVillages([])
-          setLoading(false)
-          return
-        }
-
-        const res = await fetch(`/api/villages?playerId=${playerId}`, {
-          headers: {
-            "Authorization": `Bearer ${authToken}`,
-          },
+    if (!auth) return
+    try {
+      setLoading(true)
+      const res = await fetch(`/api/villages?playerId=${auth.playerId}`, {
+        headers: {
+          "Authorization": `Bearer ${auth.token}`,
+        },
+      })
+      const data = await res.json()
+      if (data.success && data.data) {
+        setVillages(data.data)
+        setSelectedVillageId((prev) => {
+          if (!prev && data.data.length > 0) {
+            return data.data[0].id
+          }
+          return prev
         })
-        const data = await res.json()
-        if (data.success && data.data) {
-          setVillages(data.data)
-          setSelectedVillageId((prev) => {
-            if (!prev && data.data.length > 0) {
-              return data.data[0].id
-            }
-            return prev
-          })
-        } else {
-          setVillages([])
-        }
-      } catch (error) {
-        console.error("Failed to fetch villages:", error)
+      } else {
         setVillages([])
-      } finally {
-        setLoading(false)
       }
-  }, [])
+    } catch (error) {
+      console.error("Failed to fetch villages:", error)
+      setVillages([])
+    } finally {
+      setLoading(false)
+    }
+  }, [auth])
 
   const handleLogout = useCallback(async () => {
     try {
-      const authToken = localStorage.getItem("authToken")
-      if (authToken) {
+      if (auth?.token) {
         await fetch("/api/auth/logout", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${authToken}`,
+            "Authorization": `Bearer ${auth.token}`,
           },
         })
       }
@@ -105,15 +109,14 @@ export default function Dashboard() {
       // Continue with logout even if API call fails
     }
 
-    // Clear localStorage
-    localStorage.removeItem("authToken")
-    localStorage.removeItem("playerId")
+    clearAuth()
 
     // Redirect to login page
     router.push("/login")
-  }, [router])
+  }, [auth, clearAuth, router])
 
   useEffect(() => {
+    if (!auth) return
     fetchVillages()
     const interval = setInterval(fetchVillages, 30000) // Refresh every 30 seconds
     if (typeof window !== "undefined") {
@@ -131,7 +134,7 @@ export default function Dashboard() {
         delete (window as any).__dashboardLogoutHandler
       }
     }
-  }, [fetchVillages, handleLogout])
+  }, [auth, fetchVillages, handleLogout])
 
   useEffect(() => {
     // Sync Alpine.js state when React state changes
@@ -151,6 +154,22 @@ export default function Dashboard() {
       }
     }
   }, [selectedVillageId, loading, villages.length])
+
+  if (!initialized) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        Loading dashboard...
+      </div>
+    )
+  }
+
+  if (!auth) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        Redirecting to login...
+      </div>
+    )
+  }
 
   return (
     <div
@@ -175,10 +194,6 @@ export default function Dashboard() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">🏰 Medieval Strategy</h1>
           <nav className="flex gap-2 text-sm">
-            <Link href="/map" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
-              <Map className="w-4 h-4" />
-              Map
-            </Link>
             <Link href="/attacks" className="flex items-center gap-1 px-2 py-1 hover:bg-secondary rounded">
               <Swords className="w-4 h-4" />
               Attacks
@@ -231,7 +246,7 @@ export default function Dashboard() {
                 villages={villages}
                 currentVillageId={selectedVillageId}
                 onVillageChange={setSelectedVillageId}
-                playerId={localStorage.getItem("playerId") || ""}
+                playerId={auth.playerId}
                 notificationCount={0}
               />
             {(() => {
@@ -264,15 +279,16 @@ export default function Dashboard() {
 
                   <section>
                     <BuildingQueue
-                      buildings={currentVillage.buildings}
+                      tasks={currentVillage.buildQueueTasks}
+                      activeResearchCount={currentVillage.buildings.filter((b: any) => b.research?.isResearching).length}
+                      villageId={currentVillage.id}
                       onCancel={async (buildingId) => {
                         try {
-                          const authToken = localStorage.getItem("authToken")
                           const res = await fetch("/api/buildings/cancel", {
                             method: "POST",
                             headers: {
                               "Content-Type": "application/json",
-                              "Authorization": `Bearer ${authToken}`,
+                              "Authorization": `Bearer ${auth.token}`,
                             },
                             body: JSON.stringify({ buildingId }),
                           })
@@ -287,6 +303,9 @@ export default function Dashboard() {
                           alert("Failed to cancel building")
                         }
                       }}
+                      onInstantComplete={async () => {
+                        await fetchVillages()
+                      }}
                     />
                   </section>
 
@@ -295,12 +314,11 @@ export default function Dashboard() {
                       village={currentVillage}
                       onUpgrade={async (buildingId) => {
                         try {
-                          const authToken = localStorage.getItem("authToken")
                           const res = await fetch("/api/buildings/upgrade", {
                             method: "POST",
                             headers: {
                               "Content-Type": "application/json",
-                              "Authorization": `Bearer ${authToken}`,
+                              "Authorization": `Bearer ${auth.token}`,
                             },
                             body: JSON.stringify({ buildingId }),
                           })

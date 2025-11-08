@@ -67,11 +67,6 @@ Errors bubble up through `lib/errors.ts` helpers and are also captured by `app/a
 - `POST /api/admin/players/[id]/move-village` – Teleport a village to provided coordinates.
 - `POST /api/admin/players/bulk` – Execute scripted batch actions (import, ban, resource grants).
 
-### Map Operations
-- `POST /api/admin/map/spawn-barbarian` – Spawn a barbarian-controlled village with custom troops.
-- `POST /api/admin/map/relocate-tile` – Move any village to new coordinates.
-- `POST /api/admin/map/wipe-empty` – Remove inactive low-level villages.
-
 ### Observability
 - `GET /api/admin/stats` – Returns online players, queue depths, and error log snapshots.
 - `GET /api/admin/error-logs` – Paginated error log view for the dashboard.

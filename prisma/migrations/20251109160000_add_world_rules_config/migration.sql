@@ -1,0 +1,3 @@
+-- No-op: WorldConfig already carries scouting/night policy columns after
+-- the construction-system migration rewrote the table. This placeholder
+-- migration remains to keep history alignment.

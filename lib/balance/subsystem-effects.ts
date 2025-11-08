@@ -6,7 +6,7 @@ export const RESOURCES = ["wood", "clay", "iron", "crop"] as const
 export type Resource = (typeof RESOURCES)[number]
 export type TribeId = string
 
-export type ResourceMap = Record<Resource, number>
+export type ResourceMap = Record<string, number>
 
 export interface HeroEconomicProfile {
   alive: boolean
@@ -32,8 +32,8 @@ export interface VillageProductionInput {
 }
 
 export interface CrannyLootInput {
-  storage: Partial<Record<Resource, number>>
-  baseProtection: Partial<Record<Resource, number>>
+  storage: Record<string, number>
+  baseProtection: Record<string, number>
   defenderTribe?: string | null
   attackerTribe?: string | null
 }
@@ -47,13 +47,11 @@ export interface CrannyLootResult {
   }
 }
 
-function createResourceMap(initial = 0): ResourceMap {
-  return {
-    wood: initial,
-    clay: initial,
-    iron: initial,
-    crop: initial,
-  }
+function createResourceMap(initial = 0, keys: string[] = [...RESOURCES]): ResourceMap {
+  return keys.reduce((acc, key) => {
+    acc[key] = initial
+    return acc
+  }, {} as ResourceMap)
 }
 
 function normalizeTribe(value?: string | null): TribeId | undefined {
@@ -208,13 +206,18 @@ export function computeCrannyLoot(input: CrannyLootInput): CrannyLootResult {
   const attackerMult = getAttackerMultiplier(input.attackerTribe)
   const cap = Number.isFinite(crannyCfg.village_cap ?? NaN) ? (crannyCfg.village_cap as number) : Number.POSITIVE_INFINITY
 
-  const protectedMap = createResourceMap()
-  const lootableMap = createResourceMap()
+  const resourceKeys = Array.from(
+    new Set([...Object.keys(baseProtection ?? {}), ...Object.keys(storage ?? {}), ...RESOURCES]),
+  )
 
-  for (const resource of RESOURCES) {
+  const protectedMap: ResourceMap = {}
+  const lootableMap: ResourceMap = {}
+
+  for (const resource of resourceKeys) {
     const available = Math.max(0, storage[resource] ?? 0)
     let base = Math.max(0, baseProtection[resource] ?? 0)
-    if (resource === "crop" && !crannyCfg.protects_crop) {
+    const isCropResource = resource === "crop" || resource === "food"
+    if (isCropResource && !crannyCfg.protects_crop) {
       base = 0
     }
 

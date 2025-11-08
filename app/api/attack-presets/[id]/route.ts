@@ -3,6 +3,7 @@ import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
 import { attackPresetUpdateSchema } from "@/lib/utils/validation"
 import { Prisma } from "@prisma/client"
+import { getTroopSystemConfig } from "@/lib/troop-system/config"
 
 interface RouteParams {
   params: { id: string }
@@ -49,6 +50,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     if (data.villageId !== undefined) updateData.villageId = data.villageId ?? null
     if (data.type !== undefined) updateData.type = data.type
     if (data.requiresGoldClub !== undefined) updateData.requiresGoldClub = data.requiresGoldClub
+    if (data.mission !== undefined) updateData.mission = data.mission
     if (data.targetVillageId !== undefined) updateData.targetVillageId = data.targetVillageId ?? null
     if (data.targetX !== undefined) updateData.targetX = data.targetX ?? null
     if (data.targetY !== undefined) updateData.targetY = data.targetY ?? null

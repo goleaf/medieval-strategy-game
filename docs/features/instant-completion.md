@@ -155,7 +155,7 @@ Potential improvements:
 
 ## Related Features
 
-- **Construction Queue**: Standard building system
+- **Construction Queue**: See [Construction & Culture Point System](./construction-system.md)
 - **Research System**: Technology advancement
 - **Gold Economy**: Premium currency management
 - **Audit Logging**: Administrative monitoring
@@ -170,5 +170,4 @@ Potential improvements:
 - [ ] Error handling for edge cases
 - [ ] Admin statistics accuracy
 - [ ] Audit logging completeness
-
 

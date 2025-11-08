@@ -37,15 +37,7 @@ This document describes the admin features implemented for the Medieval Strategy
   - **Rename Player**: `/api/admin/players/[id]/rename` - Change player name (with validation)
   - **Move Village**: `/api/admin/players/[id]/move-village` - Relocate player's village to new coordinates
 
-### 4. Map Tools
-- **Location**: `/app/api/admin/map/`
-- **UI**: Admin Dashboard → Map Tools tab
-- **Features**:
-  - **Spawn Barbarian**: `/api/admin/map/spawn-barbarian` - Create barbarian village at coordinates with custom troop counts
-  - **Relocate Tile**: `/api/admin/map/relocate-tile` - Move any village to new coordinates
-  - **Wipe Empty**: `/api/admin/map/wipe-empty` - Delete empty villages (no buildings > level 1, no troops, minimal resources)
-
-### 5. Speed Templates
+### 4. Speed Templates
 - **Location**: `/app/api/admin/speed-templates/route.ts`
 - **UI**: Admin Dashboard → Speed Templates tab
 - **Features**:
@@ -55,7 +47,7 @@ This document describes the admin features implemented for the Medieval Strategy
   - Each template adjusts: game speed, unit speed, production multiplier, resources per tick, tick interval
   - Real-time application with immediate effect on game world
 
-### 6. Stats Dashboard
+### 5. Stats Dashboard
 - **Location**: `/app/api/admin/stats/route.ts`
 - **UI**: Admin Dashboard → Stats tab
 - **Features**:
@@ -98,11 +90,6 @@ Added field:
 - `POST /api/admin/players/[id]/rename` - Rename a player
 - `POST /api/admin/players/[id]/move-village` - Move player's village
 
-### Map Tools
-- `POST /api/admin/map/spawn-barbarian` - Spawn barbarian village
-- `POST /api/admin/map/relocate-tile` - Relocate village tile
-- `POST /api/admin/map/wipe-empty` - Wipe empty villages
-
 ### Speed Templates
 - `GET /api/admin/speed-templates` - Get all available speed templates
 - `POST /api/admin/speed-templates` - Apply a speed template
@@ -118,9 +105,8 @@ The admin dashboard (`/app/admin/dashboard/page.tsx`) includes:
 2. **World Config Tab**: Form to update all world configuration settings
 3. **Unit Balance Tab**: Read-only view of all troop types and their stats
 4. **Players Tab**: Player search, ban/unban, rename, and move village actions
-5. **Map Tools Tab**: Tools for spawning barbarians, relocating tiles, and wiping empty villages
-6. **Speed Templates Tab**: Apply predefined speed configurations to adjust game pace
-7. **Error Logs Tab**: View recent error logs
+5. **Speed Templates Tab**: Apply predefined speed configurations to adjust game pace
+6. **Error Logs Tab**: View recent error logs
 
 ## Validation & Guardrails
 
@@ -135,11 +121,6 @@ The admin dashboard (`/app/admin/dashboard/page.tsx`) includes:
 - Coordinates must be within world bounds
 - Village must belong to player before moving
 
-### Map Tools Validation
-- Coordinates must be within world bounds
-- Position must not be occupied
-- Wipe empty requires confirmation
-
 ### Speed Templates Validation
 - Template ID must be provided and valid
 - Template ID must be a string
@@ -148,23 +129,19 @@ The admin dashboard (`/app/admin/dashboard/page.tsx`) includes:
 
 ## Notes
 
-1. **Barbarian Spawning**: Creates a reusable barbarian player if one doesn't exist. All barbarian villages share the same player ID.
+1. **Action Tracking**: The stats API includes action tracking, but to fully implement this, you should call `trackAction()` from other API routes. This is currently not implemented but the infrastructure exists.
 
-2. **Action Tracking**: The stats API includes action tracking, but to fully implement this, you should call `trackAction()` from other API routes. This is currently not implemented but the infrastructure exists.
+2. **Database Migration**: Run `npx prisma migrate dev` to apply schema changes for the new WorldConfig and Player fields.
 
-3. **Database Migration**: Run `npx prisma migrate dev` to apply schema changes for the new WorldConfig and Player fields.
+3. **Audit Logging**: All admin actions are logged to the `AuditLog` table for tracking purposes.
 
-4. **Audit Logging**: All admin actions are logged to the `AuditLog` table for tracking purposes.
-
-5. **Error Tracking**: Errors are tracked in-memory (last 100). For production, consider using a proper logging service.
+4. **Error Tracking**: Errors are tracked in-memory (last 100). For production, consider using a proper logging service.
 
 ## Future Enhancements
 
-- Add map visualization tools with interactive world map
 - Implement real-time statistics via WebSocket connections
 - Add advanced player analytics and behavior tracking
 - Create automated balance testing tools
 - Implement scheduled maintenance operations
 - Add multi-admin collaboration features
 - Create custom reporting and analytics dashboards
-

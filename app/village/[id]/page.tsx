@@ -14,7 +14,36 @@ type VillageWithRelations = {
   name: string
   x: number
   y: number
-  buildings: Array<{ id: string; type: string; level: number; isBuilding: boolean; completionAt: string | null; queuePosition: number | null }>
+  wood: number
+  stone: number
+  iron: number
+  gold: number
+  food: number
+  woodProduction: number
+  stoneProduction: number
+  ironProduction: number
+  goldProduction: number
+  foodProduction: number
+  buildings: Array<{
+    id: string
+    type: string
+    level: number
+    isBuilding: boolean
+    completionAt: string | null
+    queuePosition: number | null
+    research?: { isResearching: boolean } | null
+  }>
+  buildQueueTasks: Array<{
+    id: string
+    buildingId: string | null
+    entityKey: string
+    fromLevel: number
+    toLevel: number
+    status: string
+    position: number
+    startedAt: string | null
+    finishesAt: string | null
+  }>
   troops: Array<{ id: string; type: string; quantity: number }>
   population: number
   loyalty: number
@@ -129,7 +158,8 @@ export default function VillageDetailPage() {
 
           <section>
             <BuildingQueue
-              buildings={village.buildings}
+              tasks={village.buildQueueTasks}
+              activeResearchCount={village.buildings.filter((b) => (b as any).research?.isResearching).length}
               villageId={villageId}
               onInstantComplete={fetchVillage}
             />

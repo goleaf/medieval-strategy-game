@@ -4,10 +4,14 @@ import { ResourceProductionService } from "@/lib/game-services/resource-producti
 import { CombatService } from "@/lib/game-services/combat-service"
 import { BuildingService } from "@/lib/game-services/building-service"
 import { TroopService } from "@/lib/game-services/troop-service"
+import { UnitSystemService } from "@/lib/game-services/unit-system-service"
 import { ReinforcementService } from "@/lib/game-services/reinforcement-service"
 import { MovementService } from "@/lib/game-services/movement-service"
 import { ShipmentService } from "@/lib/game-services/shipment-service"
 import { TradeRouteService } from "@/lib/game-services/trade-route-service"
+import { ExpansionService } from "@/lib/game-services/expansion-service"
+import { LoyaltyService } from "@/lib/game-services/loyalty-service"
+import { getRallyPointEngine } from "@/lib/rally-point/server"
 
 /**
  * Main game tick job
@@ -89,6 +93,15 @@ export async function processGameTick() {
       await TroopService.completeTroopTraining(production.id)
     }
 
+    const modernTrainingCompleted = await UnitSystemService.completeFinishedTraining(now)
+    if (modernTrainingCompleted > 0) {
+      console.log(`[v0] Completed ${modernTrainingCompleted} unit-system training jobs`)
+    }
+
+    // Process new rally point movements
+    console.log("[v0] Resolving rally point movements")
+    await processRallyPointMovements(now)
+
     // Process arrived movements
     const arrivedMovements = await prisma.movement.findMany({
       where: {
@@ -120,6 +133,11 @@ export async function processGameTick() {
           where: { id: movement.reinforcement.id },
           data: { status: "ARRIVED" },
         })
+      }
+
+      if (movement.kind === "SETTLER_FOUND") {
+        await ExpansionService.handleSettlerArrival(movement.id)
+        continue
       }
 
       // Handle troop forwarding (Reign of Fire feature)
@@ -187,6 +205,8 @@ export async function processGameTick() {
     // Update player rankings (points = building levels + villages)
     await updatePlayerRankings()
 
+    await LoyaltyService.processRegenTick(now)
+
     console.log("[v0] Game tick completed successfully")
   } catch (error) {
     console.error("[v0] Error processing game tick:", error)
@@ -246,6 +266,18 @@ async function updatePlayerRankings() {
   })
 
   console.log(`[v0] Updated rankings for ${sortedPlayers.length} players`)
+}
+
+async function processRallyPointMovements(now: Date) {
+  try {
+    const engine = getRallyPointEngine()
+    const resolved = await engine.resolveDueMovements()
+    if (resolved.length > 0) {
+      console.log(`[v0] Processed ${resolved.length} rally point movements due by ${now.toISOString()}`)
+    }
+  } catch (error) {
+    console.error("[v0] Rally point movement resolution error:", error)
+  }
 }
 
 /**

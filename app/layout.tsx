@@ -20,8 +20,16 @@ export const metadata: Metadata = {
     generator: 'v0.app'
 }
 
-if (process.env.NODE_ENV === "production") {
-  startScheduler()
+const shouldStartScheduler =
+  typeof window === "undefined" &&
+  process.env.NODE_ENV === "production" &&
+  process.env.NEXT_PHASE !== "phase-production-build" &&
+  process.env.NEXT_RUNTIME !== "edge"
+
+if (shouldStartScheduler) {
+  startScheduler().catch((error) => {
+    console.error("[v0] Failed to initialize scheduler:", error)
+  })
 }
 
 export default function RootLayout({

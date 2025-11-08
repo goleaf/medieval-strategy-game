@@ -3,10 +3,13 @@ import type {
   MovementRecord,
   MovementReportRecord,
   RallyPointState,
+  TrapPrisonerCreateInput,
+  TrapPrisonerRecord,
   VillageRecord,
   WaveGroupRecord,
   WaveMemberRecord,
 } from "./types"
+import type { VillageSiegeSnapshot } from "@/lib/combat/catapult/types"
 
 export interface RallyPointTransaction {
   getVillageById(id: string): Promise<VillageRecord | null>
@@ -24,6 +27,13 @@ export interface RallyPointTransaction {
   listWaveMembersByGroup(groupId: string): Promise<WaveMemberRecord[]>
   updateWaveMember(memberId: string, changes: Partial<WaveMemberRecord>): Promise<void>
   saveBattleReport(report: MovementReportRecord): Promise<void>
+  getVillageSiegeSnapshot(villageId: string): Promise<VillageSiegeSnapshot | null>
+  updateBuildingLevel(buildingId: string, level: number): Promise<void>
+  updateResourceFieldLevel(fieldId: string, level: number): Promise<void>
+  listActiveTrapPrisoners(villageId: string): Promise<TrapPrisonerRecord[]>
+  createTrapPrisoners(records: TrapPrisonerCreateInput[]): Promise<void>
+  updateTrapPrisonerCount(prisonerId: string, count: number): Promise<void>
+  deleteTrapPrisoner(prisonerId: string): Promise<void>
 }
 
 export interface DueMovementFilter {

@@ -34,9 +34,9 @@
 - [ ] Failed scout informs defender
 
 ## Priority 7: Loyalty & Conquest
-- [ ] Noble hit reduces 20-35 loyalty points (random)
-- [ ] Conquest at ≤0 loyalty transfers ownership
-- [ ] Reset loyalty to 25-30 on conquest
+- [x] Noble hit reduces 20-35 loyalty points (random)
+- [x] Conquest at ≤0 loyalty transfers ownership
+- [x] Reset loyalty to 25-30 on conquest
 
 ## Priority 8: Ranking System
 - [ ] Update ranking calculation: points = building levels + villages
@@ -50,4 +50,3 @@
   - Village conquest task transfer logic
   - API endpoints and frontend components
   - Comprehensive documentation
-

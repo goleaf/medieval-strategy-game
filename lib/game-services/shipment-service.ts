@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db"
-import type { Prisma, Shipment, ShipmentCreatedBy, StorageLedgerReason } from "@prisma/client"
+import { Prisma, Shipment, ShipmentCreatedBy, StorageLedgerReason } from "@prisma/client"
 import { MerchantService } from "./merchant-service"
 import { StorageService, type ResourceBundle } from "./storage-service"
 

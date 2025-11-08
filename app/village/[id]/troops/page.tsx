@@ -23,6 +23,8 @@ export default function TroopsPage() {
   const villageId = params.id as string
   const [village, setVillage] = useState<VillageWithTroops | null>(null)
   const [playerTribe, setPlayerTribe] = useState<string>("TEUTONS")
+  const [playerId, setPlayerId] = useState<string | null>(null)
+  const [hasGoldClub, setHasGoldClub] = useState(false)
 
   const fetchVillage = useCallback(async () => {
     try {
@@ -35,8 +37,12 @@ export default function TroopsPage() {
           },
         })
         const playerData = await playerRes.json()
-        if (playerData.success && playerData.data.player.tribe) {
-          setPlayerTribe(playerData.data.player.tribe)
+        if (playerData.success && playerData.data.player) {
+          if (playerData.data.player.tribe) {
+            setPlayerTribe(playerData.data.player.tribe)
+          }
+          setHasGoldClub(Boolean(playerData.data.player.hasGoldClubMembership))
+          setPlayerId(playerData.data.player.id ?? null)
         }
       }
 
@@ -142,12 +148,7 @@ export default function TroopsPage() {
                   villageId={villageId}
                   tribe={playerTribe as any}
                   onTrain={async () => {
-                    const res = await fetch("/api/villages?playerId=temp-player-id")
-                    const data = await res.json()
-                    if (data.success && data.data) {
-                      const found = data.data.find((v: any) => v.id === villageId)
-                      setVillage(found || null)
-                    }
+                    await fetchVillage()
                   }}
                 />
               </section>
@@ -156,8 +157,11 @@ export default function TroopsPage() {
             <TabsContent value="rally" className="mt-4">
               <RallyPoint
                 villageId={villageId}
+                ownerAccountId={playerId ?? undefined}
                 isCapital={village.isCapital}
                 troopEvasionEnabled={village.troopEvasionEnabled}
+                hasGoldClub={hasGoldClub}
+                availableTroops={village.troops}
                 onEvasionToggle={async (enabled: boolean) => {
                   const res = await fetch(`/api/villages/${villageId}/evasion`, {
                     method: 'PUT',

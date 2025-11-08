@@ -43,6 +43,37 @@ export interface SubsystemEffectsConfig {
     annex_radius_tiles: number
     mansion_slots: Record<string, number>
   }
+  trapper: {
+    max_level: number
+    capacity_per_level: number
+    capture_priority: string[]
+    eligible_units: {
+      hero: boolean
+      siege: boolean
+      administrators: boolean
+      settlers: boolean
+    }
+    prisoner_upkeep_policy: "attacker_home" | "defender_home" | "suspended"
+    release_cooldown_seconds: number
+  }
+  roman_build_queue: {
+    field_lane_slots: number
+    inner_lane_slots: number
+    other_tribes_slot_count: number
+    payment_policy: "pay_on_queue" | "pay_on_start"
+    active_cancel_policy: "disabled" | "linear_refund"
+    waiting_cancel_policy: "full_refund" | "partial_refund"
+  }
+  teuton_raid_focus: {
+    cranny_penetration_multiplier: number
+    merchant_capacity: number
+    merchant_tiles_per_hour: number
+    cheap_raider_roi: {
+      min_successful_raids: number
+      max_successful_raids: number
+    }
+    fake_attack_population_modifier: number
+  }
 }
 
 const config = subsystemEffectsRaw as SubsystemEffectsConfig
