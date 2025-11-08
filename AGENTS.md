@@ -5,6 +5,7 @@
 - `components/` splits into `ui`, `game`, and `admin`; colocate feature files and re-export from each folder’s `index.ts`.
 - `hooks/` stores shared state and client utilities, while `scripts/` reuses `lib/` helpers for seeding, data repair, or simulation tooling.
 - `prisma/` owns the schema, migrations, and seeds—update `docs/` in tandem so gameplay/admin expectations match the database.
+- Printable gameplay references (e.g., building checklists) live under `docs/features/`; keep them self-contained and single-page friendly with both snapshot tables and actionable checkbox audits when applicable.
 
 ## Build, Test, and Development Commands
 - `npm run dev`: start the dev server on `http://localhost:3000`.

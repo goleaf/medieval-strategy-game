@@ -19,6 +19,7 @@ docs/
 │   └── action-tracking.md
 ├── features/              # Game features
 │   ├── beginner-protection.md
+│   ├── core-buildings-checklist.md  # Printable table + checkbox audit for core buildings
 │   ├── resource-system.md
 │   ├── subsystem-effects.md
 │   ├── troop-system.md
@@ -114,6 +115,7 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 
 - **Gaul/Roman/Teuton asymmetric mechanics**: see `docs/features/asymmetric-mechanics.md` for the authoritative trapping, double build-queue, and raid-focus spec.
 - **Map & Fog-of-War Vision System**: see `docs/features/map-vision-system.md` for the combined design + implementation plan covering topology, vision sources, recon, contacts, and rollout.
+- **Core building audit checklist**: grab `docs/features/core-buildings-checklist.md` for a printable table plus per-building checkbox audit covering HQ, troop, economy, and toggle structures.
 - `GET /api/protection` - Get player protection status
 - `POST /api/protection` - Extend beginner protection
 
