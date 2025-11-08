@@ -18,6 +18,7 @@
 - Components use PascalCase, utilities camelCase, files kebab-case, and constants `UPPER_SNAKE_CASE`.
 - Prefer server components for loading, keep client hooks in `hooks/`, never touch Prisma from browser bundles, and rely on Tailwind + shadcn/ui primitives.
 - Comment only around non-obvious combat/admin orchestration; leave straightforward code uncluttered.
+- **Override (current tasks):** Maintain inline comments for new logic blocks so downstream reviewers can trace the freshly introduced endgame engine easily.
 
 ## Testing Guidelines
 - Smoke tests follow the `test-<feature>.js` pattern; execute them with `node test-combat-system.js` (or similar) once `npm run dev` is running.

@@ -338,6 +338,7 @@ export class CombatService {
             troops: true,
             garrisonStacks: { include: { owner: true } },
             player: { include: { tribe: true, hero: true } },
+            runeVillage: true,
           },
         },
         movement: true,
@@ -479,11 +480,19 @@ export class CombatService {
       smithyDefenseLevel: attackerSmithy.defense,
     }))
 
+    // Rune villages impose a permanent defense penalty after capture so the controlling tribe must actively support them.
+    const runeDefenseMultiplier = attack.toVillage.runeVillage
+      ? attack.toVillage.runeVillage.defenseMultiplier ?? 1
+      : 1
+
     const defenderStacksForCombat: CombatTroopStack[] = attack.defenseUnits.map((u) => ({
       id: u.troop.id,
       quantity: u.quantity,
       attack: u.troop.attack,
-      defense: u.troop.defense,
+      defense: Math.max(
+        0,
+        Math.round(u.troop.defense * runeDefenseMultiplier),
+      ),
       type: u.troop.type,
       smithyAttackLevel: defenderSmithy.attack,
       smithyDefenseLevel: defenderSmithy.defense,

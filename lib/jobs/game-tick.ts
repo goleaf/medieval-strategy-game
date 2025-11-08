@@ -12,6 +12,7 @@ import { TradeRouteService } from "@/lib/game-services/trade-route-service"
 import { ExpansionService } from "@/lib/game-services/expansion-service"
 import { LoyaltyService } from "@/lib/game-services/loyalty-service"
 import { getRallyPointEngine } from "@/lib/rally-point/server"
+import { EndgameService } from "@/lib/game-services/endgame-service"
 
 /**
  * Main game tick job
@@ -101,6 +102,9 @@ export async function processGameTick() {
     // Process new rally point movements
     console.log("Resolving rally point movements")
     await processRallyPointMovements(now)
+
+    // Evaluate endgame progress once per tick so warnings and hold timers stay in sync.
+    await EndgameService.evaluateWorldEndgame(now)
 
     // Process arrived movements
     const arrivedMovements = await prisma.movement.findMany({

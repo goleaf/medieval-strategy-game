@@ -315,6 +315,8 @@ model Player {
   ownedVisionSources   VisionSource[]           @relation("VisionSourceOwnerPlayer")
   reconMissions        ReconMission[]           @relation("ReconMissionOwnerPlayer")
   contactLogEntries    ContactLogEntry[]        @relation("ContactLogViewerPlayer")
+  relics               Relic[]
+  relicPlacements      RelicPlacement[]         @relation("RelicPlacementOwner")
 
   @@index([userId])
   @@index([gameWorldId])
@@ -360,10 +362,198 @@ model WorldConfig {
   nightPolicyConfig         Json?   @default("{}")
   siegeRulesConfig          Json?   @default("{}")
 
+  endgameConfig EndgameConfig?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([gameWorldId])
+}
+
+enum EndgameType {
+  NONE
+  DOMINATION
+  RUNE_WARS
+}
+
+enum EndgameBaseline {
+  PLAYER_OWNED
+  PLAYER_AND_BARBARIAN
+  ALL_VILLAGES
+}
+
+enum EndgameStatus {
+  IDLE
+  WARNING
+  HOLDING
+  COMPLETED
+}
+
+enum RuneTimerBehavior {
+  RESET_ON_LOSS
+  PAUSE_ON_LOSS
+}
+
+enum RuneType {
+  WAR
+  FORTITUDE
+  PROSPERITY
+  SWIFTNESS
+}
+
+enum RelicClass {
+  SHODDY
+  BASIC
+  ENHANCED
+  SUPERIOR
+  RENOWNED
+}
+
+enum RelicType {
+  OFFENSE
+  DEFENSE
+  RECRUITMENT
+  ECONOMY
+  HAUL
+}
+
+model EndgameConfig {
+  id String @id @default(cuid())
+
+  worldConfigId String  @unique
+  worldConfig   WorldConfig @relation(fields: [worldConfigId], references: [id], onDelete: Cascade)
+
+  type EndgameType        @default(DOMINATION)
+  dominanceThreshold      Float   @default(0.7)
+  dominanceHoldHours      Int     @default(0)
+  dominanceBaseline       EndgameBaseline @default(PLAYER_OWNED)
+  dominanceWarningDistance Float  @default(0.05)
+  earliestStart           DateTime?
+
+  runeRequirement   Int     @default(0)
+  runeHoldHours     Int     @default(0)
+  runeTimerBehavior RuneTimerBehavior @default(RESET_ON_LOSS)
+  runeWarningDistance Float @default(0.1)
+
+  relicsEnabled       Boolean @default(false)
+  relicPlacementLimit Int     @default(10)
+  relicCooldownHours  Int     @default(24)
+  relicStackCap       Float   @default(0.1)
+  relicSubstatCap     Float   @default(0.05)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  states       EndgameState[]
+  runeVillages EndgameRuneVillage[]
+
+  @@index([type])
+}
+
+model EndgameState {
+  id String @id @default(cuid())
+
+  endgameConfigId String
+  endgameConfig   EndgameConfig @relation(fields: [endgameConfigId], references: [id], onDelete: Cascade)
+
+  status         EndgameStatus @default(IDLE)
+  leadingTribeId String?
+  leadingTribe   Tribe? @relation(fields: [leadingTribeId], references: [id], onDelete: SetNull)
+  leadingPercent Float   @default(0)
+  countedVillages Int    @default(0)
+  runeControlCount Int   @default(0)
+
+  warningEmittedAt DateTime?
+  holdStartedAt    DateTime?
+  holdEndsAt       DateTime?
+  completedAt      DateTime?
+  metadata         Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([endgameConfigId])
+  @@index([status])
+  @@index([leadingTribeId])
+}
+
+model EndgameRuneVillage {
+  id String @id @default(cuid())
+
+  endgameConfigId String
+  endgameConfig   EndgameConfig @relation(fields: [endgameConfigId], references: [id], onDelete: Cascade)
+
+  villageId String @unique
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  runeType           RuneType @default(WAR)
+  defenseMultiplier  Float    @default(0.5)
+  required           Boolean  @default(true)
+  holdRequirementHours Int    @default(0)
+
+  holdStartedAt      DateTime?
+  holdEndsAt         DateTime?
+  controllingTribeId String?
+  controllingTribe   Tribe? @relation(fields: [controllingTribeId], references: [id], onDelete: SetNull)
+  lastContestedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([endgameConfigId])
+  @@index([controllingTribeId])
+  @@index([runeType])
+}
+
+model Relic {
+  id String @id @default(cuid())
+
+  ownerId String
+  owner   Player @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  relicType  RelicType  @default(OFFENSE)
+  relicClass RelicClass @default(SHODDY)
+  mainValue  Float      @default(0)
+  subValue   Float?
+  name       String?
+  discoveredAt DateTime @default(now())
+  lastMergedAt DateTime?
+  metadata     Json?
+
+  placements RelicPlacement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([relicType])
+  @@index([relicClass])
+}
+
+model RelicPlacement {
+  id String @id @default(cuid())
+
+  relicId String
+  relic   Relic @relation(fields: [relicId], references: [id], onDelete: Cascade)
+
+  villageId String
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  placedById String
+  placedBy   Player @relation("RelicPlacementOwner", fields: [placedById], references: [id], onDelete: Cascade)
+
+  placedAt    DateTime @default(now())
+  removableAt DateTime
+  isActive    Boolean  @default(true)
+  mainBonus   Float
+  subBonus    Float?
+  radius      Int      @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([villageId, isActive])
+  @@index([placedById, isActive])
 }
 
 model Continent {
@@ -671,6 +861,8 @@ model Village {
   unitStacks          UnitStack[]
   trainingQueueItems  TrainingQueueItem[]
   queueLimit          VillageQueueLimit?
+  runeVillage         EndgameRuneVillage?
+  relicPlacements     RelicPlacement[]
 
   @@unique([x, y])
   @@index([playerId])

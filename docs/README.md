@@ -24,6 +24,8 @@ docs/
 │   ├── troop-system.md
 │   ├── asymmetric-mechanics.md   # Gaul/Roman/Teuton asymmetric spec
 │   ├── map-vision-system.md      # Fog-of-war & recon design
+│   ├── tribal-wars-endgames.md   # Domination, Rune Wars, and Relics reference
+│   ├── tribal-wars-endgame-checklist.md  # Printable configuration worksheet
 │   ├── ui-ux-tools.md
 ├── api/                   # API documentation (future)
 └── development/           # Development guides (future)
@@ -114,8 +116,10 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 
 - **Gaul/Roman/Teuton asymmetric mechanics**: see `docs/features/asymmetric-mechanics.md` for the authoritative trapping, double build-queue, and raid-focus spec.
 - **Map & Fog-of-War Vision System**: see `docs/features/map-vision-system.md` for the combined design + implementation plan covering topology, vision sources, recon, contacts, and rollout.
+- **Endgame Engine**: see `docs/features/tribal-wars-endgames.md` for the domination, rune, and relic blueprint. Runtime state is exposed through `lib/game-services/endgame-service.ts` and `/api/world/endgame`.
 - `GET /api/protection` - Get player protection status
 - `POST /api/protection` - Extend beginner protection
+- `GET /api/world/endgame` - Live domination, rune, and relic snapshot for clients
 
 ## 🚀 Deployment
 
