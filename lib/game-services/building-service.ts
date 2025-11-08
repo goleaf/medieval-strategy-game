@@ -147,8 +147,21 @@ export class BuildingService {
    */
   static calculatePopulationLimit(buildings: Array<{ type: BuildingType; level: number }>): number {
     const farm = buildings.find((b) => b.type === "FARM")
-    const farmLevel = farm?.level || 0
-    // Base 100 + 50 per farm level
+    const farmLevel = farm?.level ?? 0
+
+    if (farmLevel > 0) {
+      // Pull the configured population cap from the blueprint so game rules and docs stay in sync.
+      const blueprintKey = getBlueprintKeyForBuilding("FARM" as BuildingType)
+      if (blueprintKey) {
+        const levelData = getLevelData(blueprintKey, farmLevel)
+        const rawCap = levelData.effects ? (levelData.effects as Record<string, unknown>)["populationCap"] : undefined
+        if (typeof rawCap === "number" && rawCap > 0) {
+          return rawCap
+        }
+      }
+    }
+
+    // Fallback preserves the legacy behaviour if the blueprint is missing or misconfigured.
     return 100 + farmLevel * 50
   }
 
