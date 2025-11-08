@@ -1,43 +1,88 @@
-# Resource System Overview
+# Resource Economy
 
-This project now supports Travian-style wood/clay/iron/crop fields alongside the legacy economy. The new system is fully data-driven, backed by Prisma models, and surfaces UI hints for storage pressure and starvation risks.
+This page describes the canonical implementation of the Travian-style resource
+loop that powers village growth. The logic lives in
+`lib/game-services/resource-economy.ts` and is covered by
+`tests/resource-economy.test.ts`. The system models the three haulable
+resources (wood, clay, iron), the Farm population cap, the Warehouse storage
+limit, and the Hiding Place stash in a world-speed aware manner.
 
-## Data model quick reference
+## 1. Core resource flow
 
-- `VillageResourceField` — 10 rows per resource (`WOOD|CLAY|IRON|CROP`) that store slot + level.
-- `ResourceFieldLevel` — shared lookup generated from `config/resource-fields.json` (levels 1–20 with costs, build times, and hourly output).
-- `VillageResourceLedger` — authoritative balances, hourly/net production, and storage caps (Warehouse vs. Granary).
-- `ResourceProductionModifier` — oasis, hero, artifact, or admin buffs; supports `ALL_RESOURCES`, `SINGLE_RESOURCE`, and `NET_CROP_CONSUMPTION`.
-- `TroopBalance.cropUpkeep` — new Prisma column that drives upkeep math for the starvation loop.
+### Resource buildings
 
-Seed everything with:
+- **Timber Camp**, **Clay Pit**, and **Iron Mine** drive hourly output.
+- Each building has 10 plots per village. Level curves are defined in
+  `config/resource-fields.json` and consumed via
+  `calculateHourlyProduction()`.
+- Output accrues continuously; the UI rounds down to whole units.
 
-```bash
-npm run resource:seed        # Prisma bootstrap
-sqlite3 prisma/dev.db < prisma/seeds/resource_field_levels.sql
-```
+### Production calculation
 
-## Tick + Starvation flow
+1. Fetch the level data for each field using `getResourceLevelConfig()`.
+2. Multiply base output by:
+   - `gameSpeed` and `productionFactor` from the world.
+   - `globalPercentBonus` plus `additionalPercentBonuses` (events, relics).
+   - `perResourcePercentBonus` for flags/skins/quest rewards.
+3. Add any `flatPerHour` bonuses for quest rewards or scripted grants.
+4. The result is an hourly vector applied in `tickVillageResources()`.
 
-`ResourceProductionService.processVillageTick` executes every game tick (wired into `lib/jobs/game-tick.ts`):
+### Secondary inflows
 
-1. Bootstrap missing ledgers/fields for older villages.
-2. Sum per-field output via the shared config, add +2/h baseline, scale by loyalty + world speed.
-3. Apply hero, oasis, and artifact modifiers (multiplicative).
-4. Update ledger amounts with storage caps and persist per-resource `productionPerHour` + `netProductionPerHour`.
-5. Compute crop consumption (`troops.quantity × cropUpkeep`), apply Diet-style reductions, and resolve starvation if gross crop < consumption. Oldest troops die first until upkeep ≤ gross.
-6. Log starvation summaries in the server output so admins can trace deficits quickly.
+- **Plundering**: attackers steal from exposed stock produced via the same
+  tick helpers.
+- **Scavenging**: idle troops call back into `addInto()` to merge bundle
+  returns.
+- **Market trades** and **quests**: mutate the stock vector through
+  `spendResources()` and `addInto()`.
 
-Helper functions live in `lib/game-services/resource-production-helpers.ts` and are covered by `npm run test:resources`.
+### Spending & sinks
 
-## UI/UX guidelines
+- Construction, recruitment, smithy research, noble coins/packages, and event
+  crafting all spend via `spendResources()` to guarantee affordability checks.
+- Admin tooling uses `canAfford()` in validation layers so UI flows report
+  deficits before queueing work orders.
 
-- **Header widget:** display `current | hourly | time-to-full` for each resource by reading `VillageResourceLedger`. Use warning colors when `timeToFull < 3h`.
-- **Field screen cards:** include ROI text (`+X/h`, `Cost`, `Payback ~Yh`) using `getResourceLevelConfig()`.
-- **Storage banner:** show “Warehouse full in 1h 12m” when projected capacity is below three hours for any material, and “Granary empty in 45m” when `netCrop < 0` but troops remain.
-- **Starvation alert:** when `netProductionPerHour` for crop is negative, pin a red badge on the village list and surface casualty summaries from the server logs/admin panel.
-- **Trade helpers:** offer a shortcut to the Marketplace or NPC modal when one resource is capped and another is starving.
+## 2. Warehouse (storage)
 
-## PHP/Laravel parity
+- Warehouse capacity is shared across wood, clay, and iron. The helper
+  `getWarehouseCapacity(level)` uses a 1.2x growth curve seeded at 1200 units.
+- `tickVillageResources()` caps each resource to the warehouse limit every
+  tick and reports any waste for telemetry or alerts.
+- Trades, quests, and troop returns should query the helper first and defer
+  transfers if `warehouseCapacity` is already saturated.
 
-Standalone services under `php/app/Services` mirror the same formulas so backend agents can run hourly jobs outside Node. Run `composer install && composer test` to execute the Pest tests that cover gross production, storage capping, and starvation order.
+## 3. Farm (population cap)
+
+- The Farm controls how many buildings/units a village may support.
+- `getFarmPopulationCap(level)` returns the static cap using a 1.17x growth
+  curve starting at 60 population.
+- Queue systems call `hasFarmCapacity()` with the current population usage and
+  the pending cost; if it returns `false`, block the action.
+- Catapult damage to the Farm reduces future capacity but does not delete
+  existing troops/buildings. Players must rebuild before training more units.
+
+## 4. Hiding Place (unlootable stash)
+
+- Each Hiding Place level protects the same amount of wood, clay, and iron.
+- `getHidingPlaceProtection(level)` mirrors classic Travian numbers: 150 at
+  level 1 with 1.23x growth. The helper always returns an integer for clean UI
+  presentation.
+- `calculateLootableResources(stock, level)` subtracts the stash from current
+  stock to produce the haulable payload that raid resolution uses.
+- Scout reports can surface totals, but raiders only receive the exposed
+  vector from the helper.
+
+## 5. Operational guidance
+
+- Keep `warehouseLevel` at least one step ahead of production bursts to avoid
+  wasting ticks. The helper returns wasted production so admin dashboards can
+  highlight stale villages.
+- Align production ratios with your military plan by bumping specific field
+  levels and attaching `perResourcePercentBonus` modifiers.
+- Time Market shipments so arrivals land minutes before large build queues;
+  otherwise `tickVillageResources()` will clip the returns at the warehouse cap.
+- Lean on the Hiding Place early in hostile regions; stash sizes grow quickly
+  enough to force attackers into inefficient hauls.
+- Pair Farm upgrades with troop recruitment pushes—hitting the population cap
+  is the fastest way to stall both economy and defense.
