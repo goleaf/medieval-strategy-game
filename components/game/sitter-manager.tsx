@@ -262,6 +262,9 @@ export function SitterManager({ className }: SitterManagerProps) {
 
               <div>
                 <Label className="text-sm font-medium">Permissions</Label>
+                <p className="text-xs text-gray-500 mt-1">
+                  Choose what your sitter can do. Combat only allows sending raids/attacks. Standard adds resource usage and recalls. Full includes conquest, demolish, and troop dismissal.
+                </p>
                 <div className="flex gap-2 mt-2">
                   <Button
                     type="button"

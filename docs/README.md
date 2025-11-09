@@ -100,7 +100,8 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 - Use TypeScript for type safety
 - Implement proper error handling
 - Testing: see `docs/development/testing-strategy.md` for unit, smoke, UI, load, and security testing.
-- Document all features in `/docs`
+- Operations: see `docs/development/continuous-improvement.md` for performance monitoring, feedback triage, and iteration loops.
+ - Document all features in `/docs`
 
 ## 📊 API Reference
 
