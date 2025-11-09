@@ -21,19 +21,20 @@ export default function SmithyPage() {
   const [grid, setGrid] = useState<GridResponse | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [preset, setPreset] = useState<"offense" | "defense" | "balanced">("balanced")
 
   const load = useCallback(async () => {
     if (!playerId) return
     try {
       setError(null)
-      const res = await fetch(`/api/villages/${villageId}/smithy?playerId=${playerId}`)
+      const res = await fetch(`/api/villages/${villageId}/smithy?playerId=${playerId}&preset=${preset}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || "Failed to load smithy data")
       setGrid(data.data)
     } catch (e: any) {
       setError(e.message)
     }
-  }, [playerId, villageId])
+  }, [playerId, villageId, preset])
 
   useEffect(() => {
     load()
@@ -75,9 +76,13 @@ export default function SmithyPage() {
     <div className="p-6 text-amber-100">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Smithy Upgrades</h1>
-        <Button size="sm" variant="outline" onClick={load}>
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="text-sm text-amber-200/80">Preset:</div>
+          <Button size="sm" variant={preset === "offense" ? "default" : "outline"} onClick={() => setPreset("offense")}>Offense</Button>
+          <Button size="sm" variant={preset === "balanced" ? "default" : "outline"} onClick={() => setPreset("balanced")}>Balanced</Button>
+          <Button size="sm" variant={preset === "defense" ? "default" : "outline"} onClick={() => setPreset("defense")}>Defense</Button>
+          <Button size="sm" variant="outline" onClick={load}>Refresh</Button>
+        </div>
       </div>
       {error && <div className="mb-3 text-sm text-red-300">{error}</div>}
       {!grid ? (
@@ -94,4 +99,3 @@ export default function SmithyPage() {
     </div>
   )
 }
-

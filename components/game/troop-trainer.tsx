@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Sword, Check } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ interface TroopTrainerProps {
   villageId: string
   tribe: string
   onTrain: (unitTypeId: string, quantity: number) => Promise<void>
+  playerId?: string | null
 }
 
 type ConfigUnit = (typeof unitConfig)["units"][string]
@@ -44,13 +45,51 @@ const DISPLAY_UNITS: DisplayUnit[] = Object.entries(unitConfig.units).map(([unit
   cost: formatCost(definition),
 }))
 
-export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
+export function TroopTrainer({ villageId, onTrain, playerId }: TroopTrainerProps) {
   const { toast } = useToast()
   const [selected, setSelected] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [unlockedTech, setUnlockedTech] = useState<Set<string>>(new Set())
 
   const selectedUnit = selected ? DISPLAY_UNITS.find((unit) => unit.id === selected) : null
+
+  // Map units to technology keys required
+  const TECH_UNLOCKS: Record<string, string> = {
+    scout: "UNIT_SCOUT",
+    ram: "UNIT_RAM",
+    catapult: "UNIT_CATAPULT",
+    admin: "UNIT_NOBLE",
+    paladin: "SYSTEM_PALADIN",
+  }
+
+  const isUnitUnlocked = (unitId: string): boolean => {
+    const key = TECH_UNLOCKS[unitId]
+    if (!key) return true
+    return unlockedTech.has(key)
+  }
+
+  // Load completed techs to preemptively gate UI
+  React.useEffect(() => {
+    let cancelled = false
+    async function loadTech() {
+      if (!playerId) return
+      try {
+        const res = await fetch(`/api/villages/${villageId}/tech-tree?playerId=${playerId}`)
+        const data = await res.json()
+        if (!res.ok) return
+        const set = new Set<string>()
+        for (const node of data.data as Array<{ key: string; status: string }>) {
+          if (node.status === "COMPLETED") set.add(node.key)
+        }
+        if (!cancelled) setUnlockedTech(set)
+      } catch {}
+    }
+    loadTech()
+    return () => {
+      cancelled = true
+    }
+  }, [playerId, villageId])
 
   const handleTrain = async () => {
     if (!selectedUnit) return
@@ -91,23 +130,33 @@ export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
     <div className="w-full space-y-4">
       <TextTable
         headers={["Type", "Role", "Cost", "Action"]}
-        rows={DISPLAY_UNITS.map((unit) => [
-          unit.name,
-          unit.role.toUpperCase(),
-          <span key={`cost-${unit.id}`} className="text-sm">
-            {unit.cost}
-          </span>,
-          <button
-            key={`action-${unit.id}`}
-            onClick={() => setSelected(unit.id)}
-            className={`px-2 py-1 border border-border rounded hover:bg-secondary text-sm flex items-center gap-1 ${
-              selected === unit.id ? "bg-primary/10 font-bold" : ""
-            }`}
-          >
-            {selected === unit.id ? <Check className="w-3 h-3" /> : null}
-            {selected === unit.id ? "Selected" : "Select"}
-          </button>,
-        ])}
+        rows={DISPLAY_UNITS.map((unit) => {
+          const requiredKey = TECH_UNLOCKS[unit.id]
+          const unlocked = isUnitUnlocked(unit.id)
+          return [
+            unit.name,
+            unit.role.toUpperCase(),
+            <span key={`cost-${unit.id}`} className="text-sm">
+              {unit.cost}
+            </span>,
+            <div key={`action-${unit.id}`} className="flex flex-col items-start gap-1">
+              <button
+                onClick={() => unlocked && setSelected(unit.id)}
+                className={`px-2 py-1 border border-border rounded hover:bg-secondary text-sm flex items-center gap-1 ${
+                  selected === unit.id ? "bg-primary/10 font-bold" : ""
+                }`}
+                disabled={!unlocked}
+                title={!unlocked && requiredKey ? `Locked — requires ${requiredKey}` : undefined}
+              >
+                {selected === unit.id ? <Check className="w-3 h-3" /> : null}
+                {unlocked ? (selected === unit.id ? "Selected" : "Select") : "Locked"}
+              </button>
+              {!unlocked && requiredKey && (
+                <span className="text-[11px] text-red-300">Requires {requiredKey}</span>
+              )}
+            </div>,
+          ]
+        })}
       />
 
       {selectedUnit && (
@@ -136,6 +185,11 @@ export function TroopTrainer({ villageId, onTrain }: TroopTrainerProps) {
             <Sword className="w-4 h-4" />
             {loading ? "Training..." : `Train ${quantity} ${selectedUnit.name}`}
           </Button>
+          {!isUnitUnlocked(selectedUnit.id) && (
+            <p className="mt-2 text-xs text-red-300">
+              This unit is locked. Research {TECH_UNLOCKS[selectedUnit.id] ?? "the required technology"} in the <a className="underline" href={`/village/${villageId}/academy${playerId ? `?playerId=${playerId}` : ''}`}>Academy</a>.
+            </p>
+          )}
         </div>
       )}
     </div>

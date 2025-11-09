@@ -134,6 +134,9 @@ export function Footer() {
                 { id: "terms", sectionId: "support", label: "Terms of Service", href: "/terms", iconName: "FileText", order: 2, isActive: true, isExternal: false },
                 { id: "rules", sectionId: "support", label: "Game Rules", href: "/rules", iconName: "Crown", order: 3, isActive: true, isExternal: false },
                 { id: "support", sectionId: "support", label: "Support", href: "/support", iconName: "HelpCircle", order: 4, isActive: true, isExternal: false },
+                { id: "tutorial", sectionId: "support", label: "Beginner Quests", href: "/tutorial", iconName: "Book", order: 5, isActive: true, isExternal: false },
+                { id: "mentorship", sectionId: "support", label: "Mentorship", href: "/mentor", iconName: "Users", order: 6, isActive: true, isExternal: false },
+                { id: "report-player", sectionId: "support", label: "Report a Player", href: "/support/report", iconName: "FileText", order: 7, isActive: true, isExternal: false },
               ]
             },
             {

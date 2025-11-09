@@ -107,12 +107,24 @@ export default function CombatReportPage() {
   }, [playerId, fetchReport])
 
   const handleShare = async () => {
-    if (!report) return
+    if (!report || !playerId) return
     try {
-      await navigator.clipboard.writeText(window.location.href)
-      toast({ title: "Link copied", description: "Share this URL with allies to review the report." })
-    } catch {
-      toast({ title: "Unable to copy", description: "Copy the address bar manually.", variant: "destructive" })
+      const res = await fetch("/api/reports/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId, kind: "MOVEMENT", refId: report.id, expiresHours: 72 }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || "Failed to create share link")
+      const shareUrl = `${window.location.origin}/share/${json.data.token}`
+      await navigator.clipboard.writeText(shareUrl)
+      toast({ title: "Share link copied", description: "Anyone with the link can view this report until it expires." })
+    } catch (e) {
+      toast({
+        title: "Unable to create share link",
+        description: e instanceof Error ? e.message : "Try again later",
+        variant: "destructive",
+      })
     }
   }
 
@@ -176,6 +188,7 @@ export default function CombatReportPage() {
             <p className="text-xs text-muted-foreground">{formatDate(report.createdAt)}</p>
           </div>
           <div className="flex gap-2">
+            {report.context.loyalty?.after === 0 && <Badge variant="destructive">Conquered</Badge>}
             <Badge variant={report.direction === "sent" ? "default" : "secondary"}>{report.direction === "sent" ? "Sent" : "Received"}</Badge>
             <Badge variant="outline">{report.mission.toUpperCase()}</Badge>
           </div>
@@ -334,6 +347,16 @@ export default function CombatReportPage() {
                 Message
               </Button>
               <Button onClick={reviveAction}>Plan revenge attack</Button>
+              {report.attacker.playerId && (
+                <Button variant="outline" onClick={() => (window.location.href = `/players/${report.attacker.playerId}`)}>
+                  Attacker profile
+                </Button>
+              )}
+              {report.defender.playerId && (
+                <Button variant="outline" onClick={() => (window.location.href = `/players/${report.defender.playerId}`)}>
+                  Defender profile
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>

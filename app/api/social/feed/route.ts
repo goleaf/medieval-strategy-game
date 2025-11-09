@@ -1,118 +1,35 @@
-import type { NextRequest } from "next/server"
-import { authenticateRequest } from "@/app/api/auth/middleware"
-import { prisma } from "@/lib/db"
-import { playerSocialFeedPostSchema } from "@/lib/utils/validation"
-import {
-  errorResponse,
-  handleValidationError,
-  serverErrorResponse,
-  successResponse,
-  unauthorizedResponse,
-} from "@/lib/utils/api-response"
+import { type NextRequest } from "next/server"
+import { z } from "zod"
+import { getAuthUser } from "@/lib/auth"
+import { successResponse, errorResponse, serverErrorResponse, unauthorizedResponse } from "@/lib/utils/api-response"
+import { SocialService } from "@/lib/game-services/social-service"
+import { SocialActivityType, SocialActivityVisibility } from "@prisma/client"
 
-const actorSelect = {
-  id: true,
-  playerName: true,
-}
-
-export async function GET(req: NextRequest) {
-  try {
-    const viewer = await authenticateRequest(req).catch(() => null)
-    const viewerId = viewer?.playerId ?? null
-
-    const params = req.nextUrl.searchParams
-    const playerId = params.get("playerId")
-    if (!playerId) {
-      return errorResponse("playerId is required", 400)
-    }
-    const limit = Math.min(Number.parseInt(params.get("limit") || "15", 10), 50)
-
-    const player = await prisma.player.findUnique({
-      where: { id: playerId },
-      select: {
-        id: true,
-        socialFeedOptIn: true,
-      },
-    })
-    if (!player) {
-      return errorResponse("Player not found", 404)
-    }
-
-    const isOwner = viewerId === playerId
-    if (!player.socialFeedOptIn && !isOwner) {
-      return successResponse({ entries: [] })
-    }
-
-    let viewerIsFriend = false
-    if (viewerId && viewerId !== playerId) {
-      const friendship = await prisma.playerFriendship.findFirst({
-        where: {
-          status: "ACCEPTED",
-          OR: [
-            { requesterId: playerId, addresseeId: viewerId },
-            { requesterId: viewerId, addresseeId: playerId },
-          ],
-        },
-      })
-      viewerIsFriend = Boolean(friendship)
-    }
-
-    const visibilityFilter = isOwner
-      ? {}
-      : viewerIsFriend
-        ? { visibility: { in: ["PUBLIC", "FRIENDS"] } }
-        : { visibility: "PUBLIC" }
-
-    const entries = await prisma.playerSocialActivity.findMany({
-      where: {
-        playerId,
-        ...visibilityFilter,
-      },
-      include: {
-        actor: { select: actorSelect },
-      },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-    })
-
-    return successResponse({ entries })
-  } catch (error) {
-    return serverErrorResponse(error)
-  }
-}
+const feedSchema = z.object({
+  ownerId: z.string().min(1).optional(),
+  playerId: z.string().min(1).optional(), // alternate key used by client
+  actorId: z.string().min(1).nullable().optional(),
+  type: z.nativeEnum(SocialActivityType).optional(),
+  activityType: z.nativeEnum(SocialActivityType).optional(), // alternate key used by client
+  visibility: z.nativeEnum(SocialActivityVisibility).default("PUBLIC"),
+  summary: z.string().min(1).max(500),
+  payload: z.record(z.any()).optional(),
+})
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await authenticateRequest(req)
-    if (!auth?.playerId) {
-      return unauthorizedResponse()
-    }
-    const payload = playerSocialFeedPostSchema.parse(await req.json())
-    if (payload.actorId !== auth.playerId) {
-      return unauthorizedResponse()
-    }
-    if (payload.playerId !== payload.actorId) {
-      return errorResponse("You can only post updates to your own feed.", 400)
-    }
-
-    const entry = await prisma.playerSocialActivity.create({
-      data: {
-        playerId: payload.playerId,
-        actorId: payload.actorId,
-        summary: payload.summary,
-        activityType: payload.activityType,
-        visibility: payload.visibility ?? "PUBLIC",
-        payload: payload.payload ?? {},
-      },
-      include: {
-        actor: { select: actorSelect },
-      },
-    })
-
-    return successResponse({ entry })
+    const auth = await getAuthUser(req as unknown as Request)
+    if (!auth) return unauthorizedResponse()
+    const body = await req.json()
+    const parsed = feedSchema.parse(body)
+    const ownerId = parsed.ownerId ?? parsed.playerId ?? auth.playerId ?? ""
+    const type = parsed.type ?? parsed.activityType ?? SocialActivityType.SOCIAL
+    if (!ownerId) return errorResponse("ownerId required", 400)
+    if (auth.playerId && auth.playerId !== ownerId) return errorResponse("Owner mismatch", 403)
+    const result = await SocialService.postActivity(ownerId, parsed.actorId ?? null, type, parsed.visibility, parsed.summary, parsed.payload)
+    return successResponse({ ok: true, result })
   } catch (error) {
-    const validationError = handleValidationError(error)
-    if (validationError) return validationError
+    if (error instanceof z.ZodError) return errorResponse(error, 400)
     return serverErrorResponse(error)
   }
 }

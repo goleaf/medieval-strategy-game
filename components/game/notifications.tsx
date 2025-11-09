@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState, useCallback } from "react"
 import { Filter, RefreshCcw } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,6 +23,28 @@ export function NotificationCenter({ controller }: NotificationCenterProps) {
   }
 
   const { notifications, meta, filters, setFilters, markAsRead, markAllAsRead, isLoading, refresh } = controller
+  const [groupSimilar, setGroupSimilar] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    // Load current grouping preference
+    fetch('/api/settings/notifications').then(res => res.json()).then(json => {
+      if (json?.success && json.data) {
+        setGroupSimilar(Boolean(json.data.groupSimilar))
+      }
+    }).catch(() => setGroupSimilar(null))
+  }, [])
+
+  const toggleGrouping = useCallback(async (value: boolean) => {
+    setGroupSimilar(value)
+    try {
+      await fetch('/api/settings/notifications', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupSimilar: value })
+      })
+      await refresh()
+    } catch {}
+  }, [refresh])
 
   const handlePriorityChange = (priority: string) => {
     setFilters((prev) => ({ ...prev, priority: priority as typeof filters.priority }))
@@ -107,7 +130,7 @@ export function NotificationCenter({ controller }: NotificationCenterProps) {
               </Select>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <Label htmlFor="show-muted" className="text-sm">
               Show quiet-hour alerts
             </Label>
@@ -116,6 +139,10 @@ export function NotificationCenter({ controller }: NotificationCenterProps) {
               checked={filters.showMuted}
               onCheckedChange={(checked) => setFilters((prev) => ({ ...prev, showMuted: checked }))}
             />
+            <div className="flex items-center gap-2">
+              <Label htmlFor="group-similar" className="text-sm">Group similar</Label>
+              <Switch id="group-similar" checked={!!groupSimilar} onCheckedChange={(v) => toggleGrouping(!!v)} />
+            </div>
           </div>
         </div>
 
@@ -147,6 +174,9 @@ export function NotificationCenter({ controller }: NotificationCenterProps) {
                         <Badge variant="outline" className={config?.badgeClass}>
                           {notification.priority.toLowerCase()}
                         </Badge>
+                        {notification.groupCount && notification.groupCount > 1 && (
+                          <Badge variant="secondary">×{notification.groupCount}</Badge>
+                        )}
                         {notification.muted && <Badge variant="secondary">Muted</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">{notification.message}</p>

@@ -15,6 +15,7 @@ import { getRallyPointEngine } from "@/lib/rally-point/server"
 import { EndgameService } from "@/lib/game-services/endgame-service"
 import { EventQueueService } from "@/lib/game-services/event-queue-service"
 import { CapacityService } from "@/lib/game-services/capacity-service"
+import { NotificationService } from "@/lib/game-services/notification-service"
 import { TribeService } from "@/lib/game-services/tribe-service"
 import type { EventQueueItem, EventQueueType, Prisma, WorldConfig } from "@prisma/client"
 
@@ -335,6 +336,21 @@ async function handleResearchCompletionEvent(event: EventQueueItem, context: Tic
     })
     return state
   })
+
+  // Notify player
+  try {
+    await NotificationService.emit({
+      playerId: job.playerId,
+      type: "RESEARCH_COMPLETED",
+      title: "Technology Researched",
+      message: `A technology research finished at your Academy.`,
+      priority: "LOW",
+      actionUrl: `/village/${job.villageId}/academy`,
+      metadata: { jobId: job.id, villageId: job.villageId, technologyId: job.technologyId },
+    })
+  } catch (err) {
+    console.warn("[research] Notification emit failed:", err)
+  }
 }
 
 type SmithyEventPayload = { jobId: string }
@@ -377,6 +393,21 @@ async function handleSmithyUpgradeCompletionEvent(event: EventQueueItem, context
       })
     }
   })
+
+  // Notify player
+  try {
+    await NotificationService.emit({
+      playerId: job.playerId,
+      type: "SMITHY_UPGRADE_COMPLETED",
+      title: "Smithy Upgrade Completed",
+      message: `${job.unitTypeId} ${job.kind.toLowerCase()} upgrade reached level ${job.targetLevel}.`,
+      priority: "LOW",
+      actionUrl: `/village/${job.villageId}/smithy`,
+      metadata: { jobId: job.id, villageId: job.villageId, unitTypeId: job.unitTypeId, kind: job.kind, level: job.targetLevel },
+    })
+  } catch (err) {
+    console.warn("[smithy] Notification emit failed:", err)
+  }
 }
 
 // ---------------------------------------------------------------------------

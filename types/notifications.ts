@@ -20,6 +20,7 @@ export type GameNotification = {
   actionUrl?: string | null
   metadata?: Record<string, unknown>
   channels?: Record<string, unknown> | null
+  groupCount?: number
 }
 
 export type NotificationCountSummary = {

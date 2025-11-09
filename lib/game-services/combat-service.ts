@@ -869,6 +869,14 @@ export class CombatService {
       toVillageId: attack.toVillageId,
     }
 
+    // Prepare siege metadata for notifications (legacy path)
+    const siegeMeta = {
+      wallDrop: result.wallDamage ?? 0,
+      buildingDamage: result.buildingDamage ?? undefined,
+      buildingsDestroyed: result.buildingsDestroyed ?? undefined,
+      populationDamage: result.populationDamage ?? undefined,
+    }
+
     await Promise.all([
       NotificationService.emit({
         playerId: attack.fromVillage.playerId,
@@ -878,6 +886,7 @@ export class CombatService {
         metadata: {
           ...reportMetadata,
           role: "ATTACKER",
+          siege: siegeMeta,
         },
         actionUrl: "/reports",
       }).catch((error) => {
@@ -894,6 +903,7 @@ export class CombatService {
             metadata: {
               ...reportMetadata,
               role: "DEFENDER",
+              siege: siegeMeta,
             },
             actionUrl: "/reports",
           }).catch((error) => {

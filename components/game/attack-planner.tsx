@@ -15,7 +15,13 @@ interface AttackPlannerProps {
   troops: Troop[]
   playerId?: string | null
   playerHasGoldClub?: boolean
-  onLaunchAttack: (toX: number, toY: number, selection: Record<string, number>, type: AttackType) => Promise<void>
+  onLaunchAttack: (
+    toX: number,
+    toY: number,
+    selection: Record<string, number>,
+    type: AttackType,
+    options?: { catapultTargets?: string[]; arriveAt?: string | null }
+  ) => Promise<void>
   prefillTarget?: { x?: number | null; y?: number | null }
 }
 
@@ -35,6 +41,11 @@ export function AttackPlanner({
   const [attackType, setAttackType] = useState<AttackType>('RAID')
   const [troopSelection, setTroopSelection] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(false)
+  const [catapultTargetA, setCatapultTargetA] = useState("")
+  const [catapultTargetB, setCatapultTargetB] = useState("")
+  const [arrivalAt, setArrivalAt] = useState<string>("")
+  const [moralePct, setMoralePct] = useState<number | null>(null)
+  const [moraleLoading, setMoraleLoading] = useState(false)
   const [presetName, setPresetName] = useState("")
   const [presetRequiresGoldClub, setPresetRequiresGoldClub] = useState(false)
   const [presetSaving, setPresetSaving] = useState(false)
@@ -79,22 +90,70 @@ export function AttackPlanner({
     if (!targetX || !targetY || Object.keys(troopSelection).length === 0) return
     setLoading(true)
     try {
+      const targets = [catapultTargetA.trim(), catapultTargetB.trim()].filter(Boolean)
       await onLaunchAttack(
         parseInt(targetX),
         parseInt(targetY),
         troopSelection,
-        attackType
+        attackType,
+        {
+          catapultTargets: targets.length ? targets : undefined,
+          arriveAt: arrivalAt.trim() ? arrivalAt.trim() : null,
+        }
       )
       setMode('inactive')
       setTargetX('')
       setTargetY('')
       setTroopSelection({})
+      setCatapultTargetA("")
+      setCatapultTargetB("")
+      setArrivalAt("")
+      setMoralePct(null)
     } catch (error) {
-      console.error('Failed to launch attack:', error)
+      const msg = error instanceof Error ? error.message : String(error)
+      if (msg.toLowerCase().includes('end your beginner protection')) {
+        // UI confirmation handled by caller
+      } else {
+        console.error('Failed to launch attack:', error)
+        alert(msg)
+      }
     } finally {
       setLoading(false)
     }
   }
+
+  // Morale preview — fetch once X/Y present and change
+  useEffect(() => {
+    const x = Number.parseInt(targetX)
+    const y = Number.parseInt(targetY)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      setMoralePct(null)
+      return
+    }
+    let cancelled = false
+    async function loadMorale() {
+      try {
+        setMoraleLoading(true)
+        const res = await fetch(`/api/attacks/morale?fromVillageId=${encodeURIComponent(villageId)}&toX=${x}&toY=${y}`)
+        const json = await res.json()
+        if (!cancelled) {
+          if (res.ok && json.success && typeof json.data?.moralePct === 'number') {
+            setMoralePct(json.data.moralePct)
+          } else {
+            setMoralePct(null)
+          }
+        }
+      } catch {
+        if (!cancelled) setMoralePct(null)
+      } finally {
+        if (!cancelled) setMoraleLoading(false)
+      }
+    }
+    void loadMorale()
+    return () => {
+      cancelled = true
+    }
+  }, [targetX, targetY, villageId])
 
   const applyPreset = (presetId: string) => {
     const preset = presets.find((p) => p.id === presetId)
@@ -265,6 +324,15 @@ export function AttackPlanner({
                 className="flex-1 p-2 border border-border rounded bg-background"
               />
             </div>
+            <div className="mt-2 text-xs text-muted-foreground">
+              {moraleLoading ? (
+                <span>Calculating morale…</span>
+              ) : moralePct != null ? (
+                <span>Morale: {(moralePct * 100).toFixed(0)}%</span>
+              ) : (
+                <span>Morale: —</span>
+              )}
+            </div>
           </div>
 
           <div>
@@ -281,6 +349,43 @@ export function AttackPlanner({
               <option value="CONQUEST">Conquest (take village)</option>
               <option value="SUPPRESSION">Suppression</option>
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold block">Catapult Targets (optional)</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="e.g., smithy or field:wood:0"
+                value={catapultTargetA}
+                onChange={(e) => setCatapultTargetA(e.target.value)}
+                className="w-full p-2 border border-border rounded bg-background"
+              />
+              <input
+                type="text"
+                placeholder="Second target (RP≥20)"
+                value={catapultTargetB}
+                onChange={(e) => setCatapultTargetB(e.target.value)}
+                className="w-full p-2 border border-border rounded bg-background"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Tip: Use building names (e.g., smithy, market) or resource fields like field:wood:0. RP level limits number of targets.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="arrival-at" className="text-sm font-bold block mb-2">
+              Desired Arrival Time (optional)
+            </label>
+            <input
+              id="arrival-at"
+              type="datetime-local"
+              value={arrivalAt}
+              onChange={(e) => setArrivalAt(e.target.value)}
+              className="w-full p-2 border border-border rounded bg-background"
+            />
+            <p className="text-xs text-muted-foreground mt-1">If set, we will schedule the send time for this arrival (RP precision applies).</p>
           </div>
 
           <div className="flex gap-2">
@@ -305,6 +410,9 @@ export function AttackPlanner({
           <div className="p-3 border border-border rounded bg-secondary">
             <p className="font-bold">Target: ({targetX}, {targetY})</p>
             <p className="text-sm text-muted-foreground">Type: {attackType}</p>
+            {moralePct != null && (
+              <p className="text-xs text-muted-foreground mt-1">Morale at landing: {(moralePct * 100).toFixed(0)}%</p>
+            )}
           </div>
 
           <TextTable

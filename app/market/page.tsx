@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { NpcMerchant } from "@/components/game/npc-merchant"
+import { AdvisorHints } from "@/components/advisor/AdvisorHints"
 
 type ResourceBundle = {
   wood: number
@@ -898,6 +899,7 @@ export default function MarketPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <AdvisorHints scope="market" />
       <header className="border-b border-border p-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link href="/dashboard" className="text-sm hover:underline">

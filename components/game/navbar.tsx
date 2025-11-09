@@ -425,6 +425,13 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
             👥 Sitters
           </Link>
           <Link
+            href="/settings"
+            className="px-3 py-2 bg-secondary rounded border border-border hover:bg-accent transition"
+            aria-label="Account Settings"
+          >
+            ⚙️ Settings
+          </Link>
+          <Link
             href="/reports"
             className="px-3 py-2 bg-secondary rounded border border-border hover:bg-accent transition"
             aria-label={`Notifications${notificationCount > 0 ? ` (${notificationCount} unread)` : ""}`}

@@ -68,11 +68,13 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const tribeId = req.nextUrl.searchParams.get("tribeId")
+    const tagParam = req.nextUrl.searchParams.get("tag")
     const managerId = req.nextUrl.searchParams.get("managerId")
 
-    if (tribeId) {
+    if (tribeId || tagParam) {
+      const by = tribeId ? { id: tribeId } : { tag: tagParam!.toUpperCase() }
       const tribe = await prisma.tribe.findUnique({
-        where: { id: tribeId },
+        where: by as any,
         include: {
           leader: { select: { id: true, playerName: true } },
           members: {

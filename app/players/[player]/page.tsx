@@ -145,6 +145,20 @@ type PlayerProfileResponse = {
       endorsement: { id: string; status: string; strength: number; message: string | null } | null
     } | null
   }
+  achievements?: {
+    showcase: Array<{
+      key: string
+      title: string
+      description?: string | null
+      category: string
+      status: string
+      progress: number
+      target: number
+      favorite: boolean
+      claimed: boolean
+      rarity: string
+    }>
+  }
 }
 
 type TerritoryVillages = NonNullable<PlayerProfileResponse["territory"]>["villages"]
@@ -506,11 +520,14 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
               </h1>
               <p className="text-muted-foreground text-sm">{profile.player.profileHeadline ?? "No headline yet"}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               {viewerIsOwner && (
                 <Badge variant="outline">Your profile</Badge>
               )}
               <Badge variant="outline">{profile.access.visibility.replace("_", " ")} view</Badge>
+              <Link href={`/players/${profile.player.id}/achievements`} className="text-sm text-primary hover:underline">
+                View Achievements
+              </Link>
             </div>
           </div>
         </header>
@@ -604,6 +621,18 @@ export default function PlayerProfilePage({ params }: PlayerProfilePageProps) {
                   <span className="text-xs text-muted-foreground">No badges yet</span>
                 )}
               </div>
+              {profile.achievements?.showcase?.length ? (
+                <div className="pt-2 border-t border-border/60">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Achievement Showcase</p>
+                  <div className="flex flex-wrap gap-2">
+                    {profile.achievements.showcase.map((ach) => (
+                      <Badge key={ach.key} variant={ach.claimed ? "default" : "outline"}>
+                        <Star className="h-3 w-3 mr-1" /> {ach.title}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </section>

@@ -16,6 +16,7 @@ import type {
   ScoutIntelReport,
   SupportStatusPayload,
 } from "@/lib/reports/types"
+import type { SystemFolderKey } from "@/lib/reports/manage"
 
 type PlayerResponse = {
   success: boolean
@@ -64,11 +65,25 @@ export default function ReportsPage() {
   const [reportError, setReportError] = useState<string | null>(null)
   const [supportError, setSupportError] = useState<string | null>(null)
   const [intelError, setIntelError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"combat" | "support">("combat")
+  const [activeTab, setActiveTab] = useState<"combat" | "support" | "intel" | "analytics">("combat")
+  const [analytics, setAnalytics] = useState<{
+    totals: { sent: number; received: number; attackerVictories: number; defenderVictories: number; mutualLosses: number }
+    rates: { attackSuccess: number; defenseSuccess: number }
+    losses: { attacker: number; defender: number }
+    timeline: Array<{ day: string; sent: number; received: number }>
+  } | null>(null)
   const [directionFilter, setDirectionFilter] = useState<string>("all")
   const [missionFilter, setMissionFilter] = useState<string>("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [folderOverview, setFolderOverview] = useState<{
+    system: Array<{ id: string; name: string; count: number; key?: SystemFolderKey }>
+    custom: Array<{ id: string; name: string; count: number }>
+    tags: Array<{ id: string; label: string; count: number; color?: string | null }>
+  } | null>(null)
+  const [activeSystemFolder, setActiveSystemFolder] = useState<SystemFolderKey | null>(null)
+  const [activeCustomFolderId, setActiveCustomFolderId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400)
@@ -89,6 +104,28 @@ export default function ReportsPage() {
       setPlayerId("temp-player-id")
     }
   }, [])
+
+  const fetchFolders = useCallback(
+    async (pid: string) => {
+      try {
+        const res = await fetch(`/api/reports/manage/folders?playerId=${pid}`)
+        const json = await res.json()
+        if (json.success && json.data) setFolderOverview(json.data)
+      } catch {}
+    },
+    [],
+  )
+
+  const fetchAnalytics = useCallback(
+    async (pid: string) => {
+      try {
+        const res = await fetch(`/api/reports/analytics?playerId=${pid}`)
+        const json = await res.json()
+        if (json.success && json.data) setAnalytics(json.data)
+      } catch {}
+    },
+    [],
+  )
 
   const fetchReports = useCallback(
     async (pid: string) => {
@@ -140,6 +177,29 @@ export default function ReportsPage() {
     [],
   )
 
+  const fetchIntel = useCallback(
+    async (pid: string) => {
+      setLoadingIntel(true)
+      setIntelError(null)
+      try {
+        const response = await fetch(`/api/reports/intel?playerId=${pid}`)
+        const json: IntelResponse = await response.json()
+        if (!json.success || !json.data) {
+          setIntelError(json.error ?? "Failed to load scouting intel.")
+          setIntelReports([])
+        } else {
+          setIntelReports(json.data)
+        }
+      } catch (error) {
+        setIntelError(error instanceof Error ? error.message : "Failed to load scouting intel.")
+        setIntelReports([])
+      } finally {
+        setLoadingIntel(false)
+      }
+    },
+    [],
+  )
+
   useEffect(() => {
     fetchPlayer()
   }, [fetchPlayer])
@@ -148,8 +208,11 @@ export default function ReportsPage() {
     if (playerId) {
       fetchReports(playerId)
       fetchSupport(playerId)
+      fetchIntel(playerId)
+      fetchFolders(playerId)
+      fetchAnalytics(playerId)
     }
-  }, [playerId, fetchReports, fetchSupport])
+  }, [playerId, fetchReports, fetchSupport, fetchIntel, fetchFolders, fetchAnalytics])
 
   const summary = useMemo(() => {
     const total = reports.length
@@ -184,11 +247,50 @@ export default function ReportsPage() {
         <div className="max-w-6xl mx-auto space-y-6">
           <SummaryStrip summary={summary} loading={loadingReports} />
 
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "combat" | "support")}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="combat">Combat Reports</TabsTrigger>
-              <TabsTrigger value="support">Support & Returns</TabsTrigger>
-            </TabsList>
+          <div className="grid gap-4 md:grid-cols-[240px_1fr]">
+            <aside className="space-y-4">
+              <FolderTree
+                overview={folderOverview}
+                activeSystem={activeSystemFolder}
+                onSelectSystem={(key) => {
+                  setActiveSystemFolder(key)
+                  setActiveCustomFolderId(null)
+                  if (key === "scouting") setActiveTab("intel")
+                  else if (key === "support") setActiveTab("support")
+                  else setActiveTab("combat")
+                  if (key === "attacks_sent") setDirectionFilter("sent")
+                  else if (key === "attacks_received") setDirectionFilter("received")
+                }}
+                activeCustomId={activeCustomFolderId}
+                onSelectCustom={(id) => {
+                  setActiveCustomFolderId(id)
+                  setActiveSystemFolder(null)
+                  setActiveTab("combat")
+                }}
+              />
+            </aside>
+            <section className="space-y-6">
+              <BulkBar selected={selected} onAction={async (action) => {
+                if (!playerId) return
+                const items = Object.entries(selected)
+                  .filter(([, v]) => v)
+                  .map(([id]) => ({ kind: "MOVEMENT" as const, refId: id }))
+                if (!items.length) return
+                await fetch("/api/reports/manage/meta", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ playerId, items, action }),
+                })
+                setSelected({})
+                fetchFolders(playerId)
+              }} />
+              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="combat">Combat Reports</TabsTrigger>
+                  <TabsTrigger value="support">Support & Returns</TabsTrigger>
+                  <TabsTrigger value="intel">Scouting</TabsTrigger>
+                  <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                </TabsList>
 
             <TabsContent value="combat" className="space-y-4">
               <FiltersBar
@@ -224,7 +326,50 @@ export default function ReportsPage() {
                   ) : (
                     <div className="space-y-2">
                       {reports.map((report) => (
-                        <ReportRow key={report.id} report={report} />
+                        <div key={report.id} className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            className="mt-2"
+                            checked={Boolean(selected[report.id])}
+                            onChange={(e) => setSelected((prev) => ({ ...prev, [report.id]: e.target.checked }))}
+                          />
+                          <ReportRow report={report} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="analytics" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Performance Overview</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-3">
+                  <Stat label="Attacks sent" value={analytics?.totals.sent ?? 0} />
+                  <Stat label="Attacks received" value={analytics?.totals.received ?? 0} />
+                  <Stat label="Attack success rate" value={formatRate(analytics?.rates.attackSuccess)} />
+                  <Stat label="Defense success rate" value={formatRate(analytics?.rates.defenseSuccess)} />
+                  <Stat label="Losses (attacker)" value={(analytics?.losses.attacker ?? 0).toLocaleString()} />
+                  <Stat label="Losses (defender)" value={(analytics?.losses.defender ?? 0).toLocaleString()} />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Activity Timeline</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {!analytics?.timeline?.length ? (
+                    <p className="text-sm text-muted-foreground">No data available.</p>
+                  ) : (
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      {analytics.timeline.slice(-14).map((p) => (
+                        <div key={p.day} className="flex items-center justify-between">
+                          <span>{p.day}</span>
+                          <span>Sent {p.sent} • Received {p.received}</span>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -253,7 +398,45 @@ export default function ReportsPage() {
                 </CardContent>
               </Card>
             </TabsContent>
-          </Tabs>
+
+            <TabsContent value="intel" className="space-y-4">
+              <Card>
+                <CardHeader className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Search className="w-5 h-5 text-primary" />
+                      Scouting Intel (24h)
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">Latest scouting results with deltas.</p>
+                  </div>
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => playerId && fetchIntel(playerId)}>
+                    <RefreshIcon loading={loadingIntel} />
+                    Refresh
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {loadingIntel ? (
+                    <div className="flex items-center justify-center py-10 text-muted-foreground gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading scouting intel…
+                    </div>
+                  ) : intelError ? (
+                    <p className="text-sm text-destructive">{intelError}</p>
+                  ) : intelReports.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No recent scouting intel found.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {intelReports.map((entry) => (
+                        <IntelRow key={entry.id} report={entry} />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+              </Tabs>
+            </section>
+          </div>
         </div>
       </main>
     </div>
@@ -478,6 +661,388 @@ function SupportOverview({ status, loading }: { status: SupportStatusPayload | n
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+function IntelRow({ report }: { report: ScoutIntelReport }) {
+  const [expanded, setExpanded] = useState(false)
+  const reliabilityLabel =
+    report.reliability === "full" ? "High confidence" : report.reliability === "partial" ? "Partial" : "Failed"
+  const badgeVariant = report.reliability === "full" ? "default" : report.reliability === "partial" ? "secondary" : "outline"
+  const expiresIn = timeUntil(report.expiresAt)
+  return (
+    <div className={`border border-border rounded-lg px-4 py-3 bg-card/30 ${report.superseded ? "opacity-70" : ""}`}>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <p className="font-semibold">
+              {report.defender.villageName ?? report.defender.coordsLabel ?? report.defender.villageId}
+            </p>
+            <Badge variant={badgeVariant}>{reliabilityLabel}</Badge>
+            <span className="text-xs text-muted-foreground">{timeAgo(report.resolvedAt)}</span>
+            {report.superseded && <Badge variant="outline">Superseded</Badge>}
+          </div>
+          <p className="text-sm text-muted-foreground flex flex-wrap items-center gap-1">
+            <ParticipantLink participant={report.attacker} />
+            <span>→</span>
+            <ParticipantLink participant={report.defender} />
+          </p>
+          <p className="text-xs text-muted-foreground">Expires in {expiresIn}</p>
+        </div>
+        <div className="text-sm space-y-1 min-w-[260px]">
+          <div className="flex items-center justify-between">
+            <span>Troops</span>
+            <span>
+              {report.summary.troopCount != null ? report.summary.troopCount.toLocaleString() : "—"}
+              {report.deltas.troopCount != null && <Delta value={report.deltas.troopCount} />}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Resources</span>
+            <span>
+              {report.summary.resourceTotal != null ? report.summary.resourceTotal.toLocaleString() : "—"}
+              {report.deltas.resourceTotal != null && <Delta value={report.deltas.resourceTotal} />}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Wall</span>
+            <span>
+              {report.summary.wallLevel != null ? report.summary.wallLevel : "—"}
+              {report.deltas.wallLevel != null && <Delta value={report.deltas.wallLevel} />}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 self-start md:self-center">
+          <Button size="sm" variant="outline" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? "Hide details" : "Show details"}
+          </Button>
+          <Button size="sm" onClick={() => (window.location.href = `/attacks?targetX=${report.defender.x ?? ""}&targetY=${report.defender.y ?? ""}`)}>
+            Plan attack
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => (window.location.href = `/attacks?mission=scout&targetX=${report.defender.x ?? ""}&targetY=${report.defender.y ?? ""}`)}>
+            Send scouts
+          </Button>
+        </div>
+      </div>
+      <div className="text-xs text-muted-foreground mt-2">{report.actionSuggestion}</div>
+      {expanded && (
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <IntelSection title="Defending Troops">
+            {renderTroopsSection(report)}
+          </IntelSection>
+          <IntelSection title="Resources">
+            {renderEconomySection(report)}
+          </IntelSection>
+          <IntelSection title="Defenses & Buildings">
+            {renderInfrastructureSection(report)}
+          </IntelSection>
+          <IntelSection title="Mission Summary">
+            {renderSummarySection(report)}
+          </IntelSection>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function IntelSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="border border-border rounded-lg p-3 bg-card/40">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{title}</p>
+      <div className="mt-2 text-sm space-y-2">{children}</div>
+    </div>
+  )
+}
+
+function renderSummarySection(report: ScoutIntelReport) {
+  const s = report.payload?.summary
+  if (!s) return <p>No mission summary data.</p>
+  const fidelity = report.payload?.summary.fidelity
+  return (
+    <>
+      <div className="flex items-center justify-between"><span>Outcome</span><span>{report.reliability === "failed" ? "Failed" : fidelity === "exact" ? "Full intelligence" : "Partial intelligence"}</span></div>
+      <div className="flex items-center justify-between"><span>Scouts sent</span><span>{s.attackersSent}</span></div>
+      <div className="flex items-center justify-between"><span>Scouts survived</span><span>{s.attackersSurvived}</span></div>
+      <div className="flex items-center justify-between"><span>Enemy scouts lost</span><span>{s.defenderLosses}</span></div>
+      {report.payload?.notes && <p className="text-xs text-yellow-600">{report.payload.notes}</p>}
+    </>
+  )
+}
+
+function renderTroopsSection(report: ScoutIntelReport) {
+  const fidelity = report.payload?.summary.fidelity
+  if (report.reliability === "failed" || fidelity === "none") {
+    const s = report.payload?.summary
+    return <p>Scouts were defeated. Losses: {s?.attackerLosses ?? "?"}. No intel returned.</p>
+  }
+  const garrison = report.payload?.garrison
+  const reinf = report.payload?.reinforcements
+  const items: React.ReactNode[] = []
+  if (garrison?.units?.length) {
+    items.push(
+      <div key="own">
+        <p className="font-medium">Village garrison</p>
+        <div className="grid grid-cols-2 gap-1 mt-1">
+          {garrison.units.map((u) => (
+            <div key={String(u.type)} className="flex items-center justify-between">
+              <span>{formatUnitType(String(u.type))}</span>
+              <span className="font-medium">{u.quantity.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      </div>,
+    )
+  } else if (garrison?.classes?.length) {
+    items.push(
+      <div key="own-classes">
+        <p className="font-medium">Village garrison (by class)</p>
+        <div className="grid grid-cols-2 gap-1 mt-1">
+          {garrison.classes.map((c) => (
+            <div key={c.class} className="flex items-center justify-between">
+              <span className="capitalize">{c.class}</span>
+              <span className="font-medium">{formatBandOrCount(c.count, (c as any).band)}</span>
+            </div>
+          ))}
+        </div>
+      </div>,
+    )
+  }
+  if (reinf?.entries?.length) {
+    if (report.reliability === "full" && fidelity === "exact") {
+      items.push(
+        <div key="sup">
+          <p className="font-medium">Supporting troops</p>
+          <div className="space-y-1 mt-1">
+            {reinf.entries.map((e) => (
+              <div key={e.ownerId} className="flex items-center justify-between">
+                <span>{e.ownerName}</span>
+                <span className="text-muted-foreground">{e.total.toLocaleString()} units</span>
+              </div>
+            ))}
+          </div>
+        </div>,
+      )
+    } else {
+      const totalSupporters = reinf.entries.length
+      const totalUnits = reinf.entries.reduce((sum, e) => sum + e.total, 0)
+      items.push(
+        <div key="sup-agg">
+          <p className="font-medium">Supporting troops</p>
+          <p className="text-muted-foreground">{totalSupporters} supporters, {totalUnits.toLocaleString()} units (names hidden)</p>
+        </div>,
+      )
+    }
+  }
+  return items.length ? <>{items}</> : <p>No troop information returned.</p>
+}
+
+function renderEconomySection(report: ScoutIntelReport) {
+  const stocks = report.payload?.economy?.stocks
+  if (!stocks) return <p>No resource information available.</p>
+  const keys: Array<keyof typeof stocks> = Object.keys(stocks) as any
+  const rows = keys
+    .filter((k) => stocks[k])
+    .map((k) => {
+      const entry = stocks[k]!
+      return (
+        <div key={k as string} className="flex items-center justify-between">
+          <span className="capitalize">{k}</span>
+          <span>{typeof entry.amount === "number" ? entry.amount.toLocaleString() : formatBand(entry.band)}</span>
+        </div>
+      )
+    })
+  return <div className="space-y-1">{rows}</div>
+}
+
+function renderInfrastructureSection(report: ScoutIntelReport) {
+  const wall = report.payload?.defenses?.wall
+  const wt = report.payload?.defenses?.watchtower
+  const infra = report.payload?.infrastructure?.buildings
+  const blocks: React.ReactNode[] = []
+  if (wall) {
+    blocks.push(
+      <div key="wall" className="flex items-center justify-between">
+        <span>Wall</span>
+        <span>{typeof wall.level === "number" ? `Lv ${wall.level}` : wall.band ? formatBand(wall.band) : "—"}</span>
+      </div>,
+    )
+  }
+  if (wt) {
+    blocks.push(
+      <div key="wt" className="flex items-center justify-between">
+        <span>Watchtower</span>
+        <span>{typeof wt.level === "number" ? `Lv ${wt.level}` : wt.band ? formatBand(wt.band) : "—"}</span>
+      </div>,
+    )
+  }
+  if (infra?.length) {
+    blocks.push(
+      <div key="infra" className="mt-1">
+        <p className="font-medium">Buildings</p>
+        <div className="grid grid-cols-2 gap-1 mt-1">
+          {infra.map((b, idx) => (
+            <div key={`${String(b.type)}-${idx}`} className="flex items-center justify-between">
+              <span>{formatBuildingType(String(b.type))}</span>
+              <span>{typeof (b as any).level === "number" ? `Lv ${(b as any).level}` : (b as any).band ? formatBand((b as any).band) : "—"}</span>
+            </div>
+          ))}
+        </div>
+      </div>,
+    )
+  }
+  return blocks.length ? <>{blocks}</> : <p>No defensive or building intel.</p>
+}
+
+function formatBand(band?: { min: number; max?: number | null }) {
+  if (!band) return "—"
+  const max = band.max ?? band.min
+  return `${band.min}–${max}`
+}
+
+function formatBandOrCount(count: number, band?: { min: number; max?: number | null }) {
+  return band ? formatBand(band) : count.toLocaleString()
+}
+
+function formatUnitType(type: string) {
+  return type
+    .toLowerCase()
+    .split("_")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ")
+}
+
+function formatBuildingType(type: string) {
+  return type
+    .toLowerCase()
+    .split("_")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ")
+}
+
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const sec = Math.floor(diff / 1000)
+  const min = Math.floor(sec / 60)
+  const hr = Math.floor(min / 60)
+  const day = Math.floor(hr / 24)
+  if (day > 0) return `${day} day${day === 1 ? "" : "s"} ago`
+  if (hr > 0) return `${hr} hour${hr === 1 ? "" : "s"} ago`
+  if (min > 0) return `${min} minute${min === 1 ? "" : "s"} ago`
+  return `just now`
+}
+
+function timeUntil(iso: string) {
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return "expired"
+  const sec = Math.floor(diff / 1000)
+  const min = Math.floor(sec / 60)
+  const hr = Math.floor(min / 60)
+  const day = Math.floor(hr / 24)
+  if (day > 0) return `${day} day${day === 1 ? "" : "s"}`
+  if (hr > 0) return `${hr} hour${hr === 1 ? "" : "s"}`
+  if (min > 0) return `${min} minute${min === 1 ? "" : "s"}`
+  return `${sec} sec`
+}
+
+function Delta({ value }: { value: number }) {
+  const positive = value > 0
+  const label = `${positive ? "+" : ""}${value.toLocaleString()}`
+  return <span className={`ml-2 ${positive ? "text-green-600" : value < 0 ? "text-destructive" : "text-muted-foreground"}`}>{label}</span>
+}
+
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="border border-border rounded-lg p-3 bg-card/40">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-base font-semibold mt-1">{typeof value === "number" ? value.toLocaleString() : value}</p>
+    </div>
+  )
+}
+
+function formatRate(v?: number) {
+  if (v == null) return "—"
+  return `${Math.round(v * 100)}%`
+}
+
+function FolderTree({
+  overview,
+  activeSystem,
+  onSelectSystem,
+  activeCustomId,
+  onSelectCustom,
+}: {
+  overview: {
+    system: Array<{ id: string; name: string; count: number; key?: SystemFolderKey }>
+    custom: Array<{ id: string; name: string; count: number }>
+    tags: Array<{ id: string; label: string; count: number; color?: string | null }>
+  } | null
+  activeSystem: SystemFolderKey | null
+  onSelectSystem: (key: SystemFolderKey) => void
+  activeCustomId: string | null
+  onSelectCustom: (id: string) => void
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Folders</p>
+        <div className="space-y-1">
+          {(overview?.system ?? []).map((f) => (
+            <button
+              key={f.id}
+              className={`w-full text-left text-sm px-2 py-1 rounded hover:bg-muted ${activeSystem === f.key ? "bg-muted" : ""}`}
+              onClick={() => f.key && onSelectSystem(f.key)}
+            >
+              <span>{f.name}</span>
+              <span className="float-right text-xs text-muted-foreground">{f.count}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Custom</p>
+        <div className="space-y-1">
+          {(overview?.custom ?? []).map((f) => (
+            <button
+              key={f.id}
+              className={`w-full text-left text-sm px-2 py-1 rounded hover:bg-muted ${activeCustomId === f.id ? "bg-muted" : ""}`}
+              onClick={() => onSelectCustom(f.id)}
+            >
+              <span>{f.name}</span>
+              <span className="float-right text-xs text-muted-foreground">{f.count}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Tags</p>
+        <div className="flex flex-wrap gap-1">
+          {(overview?.tags ?? []).map((t) => (
+            <span key={t.id} className="text-xs border border-border rounded px-1.5 py-0.5">
+              {t.label} <span className="text-muted-foreground">{t.count}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BulkBar({ selected, onAction }: { selected: Record<string, boolean>; onAction: (action: string) => Promise<void> }) {
+  const count = Object.values(selected).filter(Boolean).length
+  if (count === 0) return null
+  return (
+    <div className="flex items-center justify-between border border-border rounded-lg p-2 bg-card/40">
+      <span className="text-sm">Selected: {count}</span>
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={() => onAction("star")}>Star</Button>
+        <Button size="sm" variant="outline" onClick={() => onAction("unstar")}>Unstar</Button>
+        <Button size="sm" variant="outline" onClick={() => onAction("archive")}>Archive</Button>
+        <Button size="sm" variant="outline" onClick={() => onAction("unarchive")}>Unarchive</Button>
+        <Button size="sm" onClick={() => onAction("mark_read")}>
+          Mark read
+        </Button>
+      </div>
     </div>
   )
 }

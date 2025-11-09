@@ -513,6 +513,16 @@ export class RallyPointEngine {
     if (!movement.toVillageId) {
       return
     }
+    // Enforce support limitations: cap distinct supporters per village.
+    // We cap by distinct owner accounts present in garrisons for the target village.
+    // This approximates "supporting villages" without tracking origin village IDs.
+    const SUPPORTER_CAP = 1000
+    const existingStacks = await trx.getAllGarrisons(movement.toVillageId)
+    const distinctOwners = new Set(existingStacks.map((s) => s.ownerAccountId))
+    const alreadySupports = distinctOwners.has(movement.ownerAccountId)
+    if (!alreadySupports && distinctOwners.size >= SUPPORTER_CAP) {
+      throw new Error("Support limit reached: maximum supporters for this village")
+    }
     const stacks = await trx.getOwnerGarrison(movement.toVillageId, movement.ownerAccountId)
     const ledger = new GarrisonLedger(stacks)
     ledger.add(movement.payload.units)

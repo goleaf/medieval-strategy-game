@@ -22,6 +22,8 @@ export const NOTIFICATION_TYPE_IDS = [
   "SMALL_TRADE_COMPLETE",
   "MINOR_BUILDING_COMPLETE",
   "GAME_UPDATE",
+  "RESEARCH_COMPLETED",
+  "SMITHY_UPGRADE_COMPLETED",
 ] as const
 export type PlayerNotificationType = (typeof NOTIFICATION_TYPE_IDS)[number]
 
@@ -308,6 +310,32 @@ export const NOTIFICATION_TYPE_CONFIG: Record<PlayerNotificationType, Notificati
     recommendedAction: "Review patch notes or admin posts.",
     defaultSound: "chime",
     defaultChannels: { popup: false, sound: false, desktop: false, push: false, email: "digest", autoDismiss: 6000 },
+  },
+  RESEARCH_COMPLETED: {
+    id: "RESEARCH_COMPLETED",
+    label: "Technology Researched",
+    description: "A technology finished at your Academy.",
+    priority: "LOW",
+    accent: "border-sky-400",
+    badgeClass: "bg-sky-400 text-neutral-900",
+    highlightClass: "bg-sky-50",
+    icon: "BookCheck",
+    recommendedAction: "Review the tech tree and plan the next research.",
+    defaultSound: "chime",
+    defaultChannels: { popup: true, sound: false, desktop: false, push: false, email: "digest", autoDismiss: 6000 },
+  },
+  SMITHY_UPGRADE_COMPLETED: {
+    id: "SMITHY_UPGRADE_COMPLETED",
+    label: "Smithy Upgrade Complete",
+    description: "A smithy upgrade reached a new level.",
+    priority: "LOW",
+    accent: "border-sky-400",
+    badgeClass: "bg-sky-400 text-neutral-900",
+    highlightClass: "bg-sky-50",
+    icon: "Hammer",
+    recommendedAction: "Queue the next upgrade or switch to other priorities.",
+    defaultSound: "chime",
+    defaultChannels: { popup: true, sound: false, desktop: false, push: false, email: "none", autoDismiss: 6000 },
   },
 }
 

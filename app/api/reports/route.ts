@@ -29,12 +29,16 @@ export async function GET(req: NextRequest) {
 
   if (search) {
     items = items.filter((item) => {
+      const coordsA = item.attacker.x != null && item.attacker.y != null ? `(${item.attacker.x}|${item.attacker.y})` : ""
+      const coordsD = item.defender.x != null && item.defender.y != null ? `(${item.defender.x}|${item.defender.y})` : ""
       const haystack = [
         item.subject,
         item.attacker.playerName,
         item.attacker.villageName,
         item.defender.playerName,
         item.defender.villageName,
+        coordsA,
+        coordsD,
       ]
         .filter(Boolean)
         .join(" ")

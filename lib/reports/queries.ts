@@ -390,6 +390,36 @@ export async function fetchCombatReportDetail(reportId: string, playerId: string
   }
   const playerMap = await fetchPlayerNameMap(defenderUserIds)
 
+  // Back-compat: adapt legacy buildingDamage into a catapult-like structure if present
+  const legacyBuildingDamage = (summary as any)?.buildingDamage as
+    | Array<{ buildingId?: string; structureId?: string; damage?: number }>
+    | undefined
+
+  const catapultContext =
+    (summary as any)?.catapultDamage ??
+    (legacyBuildingDamage && legacyBuildingDamage.length
+      ? {
+          totalCatapults: 0,
+          totalShots: 0,
+          mode: "single",
+          targets: legacyBuildingDamage.map((hit) => ({
+            selection: undefined,
+            targetId: hit.buildingId ?? hit.structureId ?? "unknown",
+            targetLabel: "Structure",
+            targetKind: "building",
+            structureId: hit.buildingId ?? hit.structureId,
+            beforeLevel: (hit.damage ?? 0),
+            afterLevel: 0,
+            drop: (hit.damage ?? 0),
+            allocatedShots: 0,
+            shotsUsed: 0,
+            wastedShots: 0,
+            modifiers: { variancePct: 0 },
+          })),
+          wastedShots: 0,
+        }
+      : undefined)
+
   const context = {
     totalCarryCapacity: carryCapacity,
     loot: (summary as any)?.loot as Nullable<Record<string, number>>,
@@ -400,7 +430,7 @@ export async function fetchCombatReportDetail(reportId: string, playerId: string
     defenderSupport: mapSupportersToNames(supporters, playerMap),
     wall: buildWallContext(summary),
     loyalty: buildLoyaltyContext(summary),
-    catapult: summary?.catapultDamage,
+    catapult: catapultContext,
     trap: summary?.trap,
   }
 

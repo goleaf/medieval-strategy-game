@@ -99,7 +99,7 @@ The game includes a comprehensive admin dashboard with the following capabilitie
 - Follow the `.cursorrules` for consistent code style
 - Use TypeScript for type safety
 - Implement proper error handling
-- Write comprehensive tests (future)
+- Testing: see `docs/development/testing-strategy.md` for unit, smoke, UI, load, and security testing.
 - Document all features in `/docs`
 
 ## 📊 API Reference
@@ -170,6 +170,8 @@ npm start
 
 ### Key Metrics
 - Player activity and retention
+- Account settings and preferences (display, gameplay, privacy, performance)
+- Notification preferences (global enable, DND, grouping, retention)
 - System performance and response times
 - Error rates and types
 - Database query performance

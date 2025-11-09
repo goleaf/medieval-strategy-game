@@ -392,6 +392,29 @@ export class UnitSystemService {
 
       this.assertBuildingRequirements(village, definition)
 
+      // Enforce technology unlocks for specific unit types (account-wide)
+      const TECH_UNLOCKS: Record<string, string> = {
+        scout: "UNIT_SCOUT",
+        ram: "UNIT_RAM",
+        catapult: "UNIT_CATAPULT",
+        admin: "UNIT_NOBLE",
+        paladin: "SYSTEM_PALADIN",
+      }
+      const requiredTechKey = TECH_UNLOCKS[input.unitTypeId]
+      if (requiredTechKey) {
+        const unlocked = await tx.playerTechnology.findFirst({
+          where: {
+            playerId: village.playerId,
+            technology: { key: requiredTechKey },
+            completedAt: { not: null },
+          },
+          select: { id: true },
+        })
+        if (!unlocked) {
+          throw new Error(`Requires technology ${requiredTechKey}`)
+        }
+      }
+
       // Enforce paladin uniqueness across player's account
       if (input.unitTypeId === "paladin") {
         const allVillages = await tx.village.findMany({ where: { playerId: village.player?.id }, select: { id: true } })

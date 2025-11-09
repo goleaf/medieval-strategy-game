@@ -74,6 +74,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
+    // Enforcement: owner creating orders must not be trade-restricted
+    {
+      const { checkPermission } = await import("@/lib/moderation/enforcement")
+      const permission = await checkPermission(auth.playerId, "TRADE")
+      if (!permission.allowed) {
+        return errorResponse(permission.reason || "Trading restricted", 403)
+      }
+    }
     const validated = marketOrderSchema.parse(body)
 
     const village = await prisma.village.findUnique({
@@ -220,6 +228,15 @@ export async function PATCH(req: NextRequest) {
 
       if (!acceptingVillage || acceptingVillage.playerId !== auth.playerId) {
         return errorResponse("Accepting village not found or unauthorized", 403)
+      }
+
+      // Enforcement: acceptor must not be trade-restricted
+      {
+        const { checkPermission } = await import("@/lib/moderation/enforcement")
+        const permission = await checkPermission(auth.playerId, "TRADE")
+        if (!permission.allowed) {
+          return errorResponse(permission.reason || "Trading restricted", 403)
+        }
       }
 
       const acceptingBundle = toBundle(order.requestResource, order.requestAmount)

@@ -37,8 +37,12 @@ import { ResourceDisplay, type ResourceLedgerSnapshot } from "@/components/game/
 import { BuildingQueue } from "@/components/game/building-queue"
 import { VillageOverview } from "@/components/game/village-overview"
 import { NotificationBell } from "@/components/game/notification-bell"
+import { NotificationAlerts } from "@/components/game/notification-alerts"
 import { NotificationCenter } from "@/components/game/notifications"
 import { cn } from "@/lib/utils"
+import { ProtectionStatus } from "@/components/game/protection-status"
+import { ProtectionInfobox } from "@/components/game/protection-infobox"
+import { AdvisorHints } from "@/components/advisor/AdvisorHints"
 import { useNotificationFeed } from "@/hooks/use-notifications"
 import type { NotificationController } from "@/types/notifications"
 // Types inferred from API responses
@@ -90,6 +94,9 @@ type VillageWithRelations = {
   resourceLedgers: ResourceLedgerSnapshot[]
   tribeTag?: string | null
   tribeName?: string | null
+  // Protection decorators from API
+  isProtected?: boolean
+  protectionHoursRemaining?: number | null
 }
 
 type ActivityItem = {
@@ -535,6 +542,8 @@ export default function Dashboard() {
         prefersReducedMotion={prefersReducedMotion}
         tribeAccentColor={tribeAccentColor}
       />
+      {/* Live alerts for critical/high notifications */}
+      {notificationController && <NotificationAlerts controller={notificationController} />}
 
       <div className="flex flex-1 overflow-hidden bg-gradient-to-b from-[#140a03] via-[#0c0501] to-[#1d1006]">
         <aside className="hidden w-full max-w-sm border-r border-amber-900/40 lg:flex">
@@ -588,6 +597,9 @@ export default function Dashboard() {
                       Coordinates {currentVillage.x}|{currentVillage.y}
                     </span>
                     <Badge variant="secondary">Village HQ</Badge>
+                    {currentVillage.isProtected && (
+                      <Badge variant="outline" className="border-green-600/60 text-green-400">Protected</Badge>
+                    )}
                     {!isRightSidebarOpen && (
                       <Button
                         size="sm"
@@ -603,6 +615,24 @@ export default function Dashboard() {
 
                 <TabsContent value="village" className="flex-1 overflow-y-auto pt-4">
                   <div className="space-y-4 pb-6">
+                    {/* Advisor coachmarks on first visit */}
+                    <AdvisorHints scope="dashboard" enabled={Boolean(currentVillage?.isProtected)} />
+                    {/* Beginner protection status and guidance */}
+                    {auth?.playerId && (
+                      <section className={`${panelClass} p-4`}>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <ProtectionStatus playerId={auth.playerId} />
+                          <div>
+                            <ProtectionInfobox playerId={auth.playerId} />
+                            <div className="mt-3 text-xs text-muted-foreground">
+                              New to the game? Visit the Beginner Quests to learn core mechanics and earn rewards.
+                              <br />
+                              <Link href="/tutorial" className="text-primary underline">Open Beginner Quests</Link>
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+                    )}
                     {notificationController && (
                       <section className={`${panelClass} p-4`}>
                         <NotificationCenter controller={notificationController} />
@@ -997,6 +1027,9 @@ function TopNavigationBar({
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/tutorial">
+              <Button size="sm" variant="outline" title="Beginner help">Help</Button>
+            </Link>
             <Button
               variant="ghost"
               size="icon"

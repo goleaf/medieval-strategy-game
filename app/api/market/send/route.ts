@@ -12,6 +12,14 @@ export async function POST(req: NextRequest) {
     }
 
     const payload = directResourceSendSchema.parse(await req.json())
+    // Enforcement: restrict trading if needed
+    {
+      const { checkPermission } = await import("@/lib/moderation/enforcement")
+      const permission = await checkPermission(auth.playerId, "TRADE")
+      if (!permission.allowed) {
+        return errorResponse(permission.reason || "Trading restricted", 403)
+      }
+    }
     const destination = payload.toVillageId
       ? { villageId: payload.toVillageId }
       : { coordinates: { x: payload.toX!, y: payload.toY! } }

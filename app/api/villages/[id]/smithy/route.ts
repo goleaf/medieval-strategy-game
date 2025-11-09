@@ -6,9 +6,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const villageId = params.id
     const playerId = req.nextUrl.searchParams.get("playerId")
+    const preset = (req.nextUrl.searchParams.get("preset") as "offense" | "defense" | "balanced" | null) ?? "balanced"
     if (!playerId) return errorResponse("Player ID required", 400)
 
-    const grid = await SmithyUpgradeService.getGrid(playerId, villageId)
+    const grid = await SmithyUpgradeService.getGrid(playerId, villageId, preset)
     return successResponse(grid)
   } catch (error) {
     return serverErrorResponse(error)
@@ -30,4 +31,3 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return serverErrorResponse(error)
   }
 }
-

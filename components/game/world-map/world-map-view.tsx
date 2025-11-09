@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import Link from "next/link"
 import {
   Badge,
@@ -28,6 +28,8 @@ import { useWorldMapViewport, type ZoomLevel } from "@/hooks/use-world-map-viewp
 import { cn } from "@/lib/utils"
 import { Filter, Map as MapIcon, MousePointerClick, Save, X, Zap, ZoomIn, ZoomOut } from "lucide-react"
 import type { Coordinate, CoordinateRange } from "@/lib/map-vision/types"
+import { buildUnitCatalog } from "@/lib/rally-point/unit-catalog"
+import { IntelPanel } from "@/components/game/world-map/intel-panel"
 
 export interface PlayerVillageMeta {
   id: string
@@ -148,6 +150,19 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
     maxDistance: 20,
     origin: "",
   })
+  const [coordSearch, setCoordSearch] = useState("")
+  const [distanceTool, setDistanceTool] = useState<{ from: string; to: string; result?: { distance: number; times: Array<{ unit: string; minutes: number }> } | null }>({ from: "", to: "", result: null })
+  const unitCatalog = useMemo(() => buildUnitCatalog(), [])
+
+  const computeTravelTimes = useCallback((distance: number) => {
+    const entries: Array<{ unit: string; minutes: number }> = []
+    Object.values(unitCatalog).forEach((unit) => {
+      if (!unit.speed || unit.speed <= 0) return
+      const minutes = Math.ceil((distance / unit.speed) * 60)
+      entries.push({ unit: unit.id, minutes })
+    })
+    return entries.sort((a, b) => a.minutes - b.minutes)
+  }, [unitCatalog])
 
   const mapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -302,6 +317,27 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
     viewport.setCenter(coord)
   }
 
+  const handleCoordSearch = () => {
+    const coord = parseCoordinateInput(coordSearch)
+    if (coord) {
+      viewport.setCenter(coord)
+    }
+  }
+
+  const computeDistanceTool = () => {
+    const from = parseCoordinateInput(distanceTool.from)
+    const to = parseCoordinateInput(distanceTool.to)
+    if (!from || !to) {
+      setDistanceTool((prev) => ({ ...prev, result: null }))
+      return
+    }
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const distance = Math.ceil(Math.hypot(dx, dy))
+    const times = computeTravelTimes(distance)
+    setDistanceTool((prev) => ({ ...prev, result: { distance, times } }))
+  }
+
   const handleSavePreset = () => {
     filters.savePreset(presetName)
     setPresetName("")
@@ -433,6 +469,19 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
                     Loading blocks {loadingBlocks.join(", ") || "…"}...
                   </div>
                 )}
+                <div className="mt-1 flex items-center gap-2">
+                  <Input
+                    placeholder="Go to NNN|NNN"
+                    value={coordSearch}
+                    onChange={(e) => setCoordSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleCoordSearch()
+                    }}
+                  />
+                  <Button size="sm" variant="outline" onClick={handleCoordSearch}>
+                    Jump
+                  </Button>
+                </div>
               </div>
 
               <div className="absolute bottom-4 right-4 flex flex-col gap-2 rounded-lg bg-background/80 p-3 shadow-lg backdrop-blur">
@@ -491,7 +540,15 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
                     {hoverVillage.population} pts • {hoverVillage.tribeTag ?? "No tribe"}
                   </p>
                   <p className="text-muted-foreground">
-                    ({hoverVillage.x}|{hoverVillage.y}) • K{hoverVillage.blockId.slice(1)}
+                    <button
+                      type="button"
+                      className="underline underline-offset-2"
+                      onClick={() => viewport.setCenter({ x: hoverVillage.x, y: hoverVillage.y })}
+                    >
+                      ({hoverVillage.x}|{hoverVillage.y})
+                    </button>
+                    
+                    • K{hoverVillage.blockId.slice(1)}
                   </p>
                 </div>
               )}
@@ -584,6 +641,23 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
               </div>
 
               <div className="space-y-1">
+                <Label>Coordinate search</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="e.g. 500|500"
+                    value={coordSearch}
+                    onChange={(e) => setCoordSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleCoordSearch()
+                    }}
+                  />
+                  <Button variant="outline" onClick={handleCoordSearch}>
+                    Jump
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <Label>Distance filter</Label>
                   <Button variant="ghost" size="sm" onClick={clearDistanceFilter}>
@@ -669,8 +743,56 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
                   </Button>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Distance & Travel</CardTitle>
+            <CardDescription>Compute distance and travel times.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex gap-2">
+              <Input
+                placeholder="From (NNN|NNN)"
+                value={distanceTool.from}
+                onChange={(e) => setDistanceTool((p) => ({ ...p, from: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") computeDistanceTool()
+                }}
+              />
+              <Input
+                placeholder="To (NNN|NNN)"
+                value={distanceTool.to}
+                onChange={(e) => setDistanceTool((p) => ({ ...p, to: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") computeDistanceTool()
+                }}
+              />
+              <Button variant="outline" onClick={computeDistanceTool}>
+                Compute
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Tip: click any coordinate in this panel to center the map.
+            </div>
+            {distanceTool.result && (
+              <div className="space-y-2 text-sm">
+                <div>
+                  Distance: <span className="font-semibold">{distanceTool.result.distance} tiles</span>
+                </div>
+                <div className="max-h-40 overflow-auto rounded border p-2">
+                  {distanceTool.result.times.map((entry) => (
+                    <div key={entry.unit} className="flex justify-between">
+                      <span className="text-muted-foreground">{entry.unit}</span>
+                      <span>{formatMinutes(entry.minutes)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
           <Card>
             <CardHeader className="pb-2">
@@ -712,7 +834,15 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
                   Village details
                 </CardTitle>
                 <CardDescription>
-                  {selectedVillage.name} • ({selectedVillage.x}|{selectedVillage.y})
+                  {selectedVillage.name} •
+                  <button
+                    type="button"
+                    className="ml-1 underline underline-offset-2"
+                    onClick={() => viewport.setCenter({ x: selectedVillage.x, y: selectedVillage.y })}
+                    title="Center map here"
+                  >
+                    ({selectedVillage.x}|{selectedVillage.y})
+                  </button>
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
@@ -729,6 +859,10 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
                   <span>{selectedVillage.population.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-muted-foreground">Rank</span>
+                  <span>—</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-muted-foreground">Loyalty</span>
                   <span>{selectedVillage.loyalty ?? 100}%</span>
                 </div>
@@ -737,9 +871,24 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
                     Open village
                   </Button>
                 </Link>
+                <VillageActions
+                  selected={selectedVillage}
+                  origin={filters.distanceFilter?.origin ?? null}
+                  playerId={playerContext.playerId}
+                  onBookmark={() => bookmarkVillage(selectedVillage)}
+                />
               </CardContent>
             </Card>
           )}
+
+          <IntelPanel
+            authToken={authToken}
+            origin={filters.distanceFilter?.origin ?? undefined}
+            onHighlightTribe={(tag) => {
+              filters.setTribeHighlight(tag)
+              if (tag) filters.setViewMode("TRIBE")
+            }}
+          />
         </div>
       </div>
     </div>
@@ -1000,4 +1149,226 @@ function parseCoordinateInput(value: string): { x: number; y: number } | null {
   const match = value.trim().match(/^(-?\d+)\|(-?\d+)$/)
   if (!match) return null
   return { x: Number(match[1]), y: Number(match[2]) }
+}
+
+function formatMinutes(total: number): string {
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (h <= 0) return `${m}m`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}
+
+function bookmarkVillage(v: MapVillageSummary) {
+  try {
+    const key = "world-map-bookmarks"
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(key) : null
+    const list: Array<{ id: string; name: string; x: number; y: number; blockId: string; savedAt: number }> = raw ? JSON.parse(raw) : []
+    const entry = { id: v.id, name: v.name, x: v.x, y: v.y, blockId: v.blockId, savedAt: Date.now() }
+    const next = [entry, ...list.filter((e) => e.id !== v.id)].slice(0, 50)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(key, JSON.stringify(next))
+    }
+  } catch (err) {
+    console.warn("Failed to bookmark village", err)
+  }
+}
+
+interface VillageActionsProps {
+  selected: MapVillageSummary
+  origin: { x: number; y: number; label?: string; villageId?: string } | null
+  playerId?: string
+  onBookmark?: () => void
+}
+
+function VillageActions({ selected, origin, playerId, onBookmark }: VillageActionsProps) {
+  const isOwn = selected.playerId === playerId
+
+  const distanceFromOrigin = useMemo(() => {
+    if (!origin) return null
+    return Math.ceil(Math.hypot(selected.x - origin.x, selected.y - origin.y))
+  }, [origin, selected.x, selected.y])
+
+  const [supportInfo, setSupportInfo] = useState<{
+    totalSupport?: number
+    contributors?: number
+    returning?: number
+  } | null>(null)
+  const [ownDetails, setOwnDetails] = useState<{
+    troopsTotal?: number
+    topBuildings?: Array<{ type: string; level: number }>
+  } | null>(null)
+
+  useEffect(() => {
+    let active = true
+    async function loadSupport() {
+      if (!isOwn || !playerId) return
+      try {
+        const res = await fetch(`/api/reports/support?playerId=${playerId}`)
+        const json = await res.json()
+        if (!active || !json.success || !json.data) return
+        const support = json.data.supportReceived.find((e: any) => e.villageId === selected.id)
+        const returning = (json.data.returningMissions || []).filter((m: any) => m.toVillageId === selected.id).length
+        setSupportInfo({
+          totalSupport: support?.totalTroops ?? 0,
+          contributors: support?.contributors?.length ?? 0,
+          returning,
+        })
+      } catch (e) {
+        // ignore
+      }
+    }
+    loadSupport()
+    return () => {
+      active = false
+    }
+  }, [isOwn, playerId, selected.id])
+
+  useEffect(() => {
+    let active = true
+    async function loadOwnDetails() {
+      if (!isOwn || !playerId) return
+      try {
+        const res = await fetch(`/api/villages?playerId=${playerId}`)
+        const json = await res.json()
+        if (!active || !json.success || !Array.isArray(json.data)) return
+        const v = json.data.find((entry: any) => entry.id === selected.id)
+        if (!v) return
+        const troopsTotal = Array.isArray(v.troops) ? v.troops.reduce((sum: number, t: any) => sum + (t.quantity || 0), 0) : 0
+        const topBuildings = Array.isArray(v.buildings)
+          ? v.buildings
+              .map((b: any) => ({ type: b.type, level: b.level }))
+              .sort((a: any, b: any) => b.level - a.level)
+              .slice(0, 5)
+          : []
+        setOwnDetails({ troopsTotal, topBuildings })
+      } catch (e) {
+        // ignore
+      }
+    }
+    loadOwnDetails()
+    return () => {
+      active = false
+    }
+  }, [isOwn, playerId, selected.id])
+
+  const [intel, setIntel] = useState<{
+    resolvedAt?: string
+    troopCount?: number | null
+    wallLevel?: number | null
+    resourceTotal?: number | null
+  } | null>(null)
+
+  useEffect(() => {
+    let active = true
+    async function loadIntel() {
+      if (isOwn || !playerId) return
+      try {
+        const res = await fetch(`/api/reports/intel?playerId=${playerId}`)
+        const json = await res.json()
+        if (!active || !json.success || !Array.isArray(json.data)) return
+        const report = json.data.find((r: any) => r.defender?.villageId === selected.id)
+        if (report) {
+          setIntel({
+            resolvedAt: report.resolvedAt,
+            troopCount: report.summary?.troopCount ?? null,
+            wallLevel: report.summary?.wallLevel ?? null,
+            resourceTotal: report.summary?.resourceTotal ?? null,
+          })
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    loadIntel()
+    return () => {
+      active = false
+    }
+  }, [isOwn, playerId, selected.id])
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <Link href={`/attacks?targetX=${selected.x}&targetY=${selected.y}`}>
+          <Button variant="default" className="w-full" size="sm">Attack</Button>
+        </Link>
+        <Link href={`/attacks?targetX=${selected.x}&targetY=${selected.y}`}>
+          <Button variant="outline" className="w-full" size="sm">Support</Button>
+        </Link>
+        <Link href={`/market?targetX=${selected.x}&targetY=${selected.y}`}>
+          <Button variant="outline" className="w-full" size="sm">Trade</Button>
+        </Link>
+        <Button variant="outline" className="w-full" size="sm" onClick={onBookmark}>Add bookmark</Button>
+      </div>
+
+      {isOwn ? (
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Incoming support</span>
+            <span>{supportInfo?.totalSupport ?? 0} troops from {supportInfo?.contributors ?? 0} allies</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Stationed troops</span>
+            <span>{ownDetails?.troopsTotal ?? 0}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Returning missions</span>
+            <span>{supportInfo?.returning ?? 0}</span>
+          </div>
+          {ownDetails?.topBuildings && ownDetails.topBuildings.length > 0 && (
+            <div className="pt-1">
+              <div className="text-muted-foreground">Top buildings</div>
+              <div className="text-xs">
+                {ownDetails.topBuildings.map((b) => (
+                  <span key={b.type} className="mr-2">{b.type} {b.level}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2 pt-1">
+            <Link href={`/village/${selected.id}/buildings`} className="underline text-xs">Buildings</Link>
+            <Link href={`/village/${selected.id}`} className="underline text-xs">Production</Link>
+            <Link href={`/village/${selected.id}/troops`} className="underline text-xs">Troops</Link>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-1 text-sm">
+          {intel && (
+            <>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Last scout</span>
+                <span>{new Date(intel.resolvedAt!).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Garrison size</span>
+                <span>{intel.troopCount ?? "?"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Wall level</span>
+                <span>{intel.wallLevel ?? "?"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Resources</span>
+                <span>{intel.resourceTotal != null ? intel.resourceTotal.toLocaleString() : "?"}</span>
+              </div>
+            </>
+          )}
+          {origin && (
+            <div className="pt-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Distance from {origin.label ?? "origin"}</span>
+                <span>{distanceFromOrigin} tiles</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {selected.tribeTag == null && (
+        <div className="text-xs text-muted-foreground">
+          Barbarian village: difficulty and treasure scale with points.
+        </div>
+      )}
+    </div>
+  )
 }

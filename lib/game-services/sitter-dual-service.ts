@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db"
-import type { Player, Sitter, Dual } from "@prisma/client"
+import type { Player, Sitter, Dual, AccountActorType, SitterSession } from "@prisma/client"
 
 export class SitterDualService {
   /**
@@ -92,14 +92,14 @@ export class SitterDualService {
       data: { isActive: false }
     })
 
-    // Log the deactivation
-    await prisma.auditLog.create({
+    // Notify owner via system message
+    await prisma.message.create({
       data: {
-        adminId: "system", // System action
-        action: "SITTER_DEACTIVATED_INACTIVITY",
-        details: `All sitters deactivated for player ${ownerId} due to inactivity allowance depletion`,
-        targetType: "Player",
-        targetId: ownerId
+        senderId: ownerId,
+        recipientId: ownerId,
+        type: "SYSTEM",
+        subject: "Sitters Deactivated",
+        content: "All sitters were deactivated because inactivity allowance reached 0.",
       }
     })
   }
@@ -110,11 +110,11 @@ export class SitterDualService {
   private static async sendInactivityWarning(player: Player): Promise<void> {
     await prisma.message.create({
       data: {
-        senderId: player.id, // System message
+        senderId: player.id,
+        recipientId: player.id,
+        type: "SYSTEM",
         subject: "Inactivity Warning",
         content: "Your inactivity allowance has dropped to 3 days. If it reaches 0, all your sitters will be deactivated.",
-        type: "SYSTEM",
-        villageId: player.villages[0]?.id // Send to first village if available
       }
     })
   }
@@ -141,6 +141,10 @@ export class SitterDualService {
       canSendRaids: boolean
       canUseResources: boolean
       canBuyAndSpendGold: boolean
+      canDemolishBuildings?: boolean
+      canRecallReinforcements?: boolean
+      canLaunchConquest?: boolean
+      canDismissTroops?: boolean
     }
   ): Promise<Sitter> {
     // Validate that sitter is in the same tribe/confederacy
@@ -209,6 +213,65 @@ export class SitterDualService {
   }
 
   /**
+   * Create a time-bound sitter session and return its record
+   */
+  static async beginSitterSession(params: {
+    ownerId: string
+    sitterId: string
+    durationHours: number
+    ipAddress?: string | null
+    userAgent?: string | null
+  }): Promise<SitterSession> {
+    const sitRel = await prisma.sitter.findFirst({
+      where: { ownerId: params.ownerId, sitterId: params.sitterId, isActive: true }
+    })
+
+    if (!sitRel) {
+      throw new Error("Active sitter relationship not found")
+    }
+
+    const expiresAt = new Date(Date.now() + params.durationHours * 60 * 60 * 1000)
+    const session = await prisma.sitterSession.create({
+      data: {
+        sitterRelId: sitRel.id,
+        ownerId: params.ownerId,
+        sitterId: params.sitterId,
+        startedAt: new Date(),
+        expiresAt,
+        permissionSnapshot: {
+          canSendRaids: sitRel.canSendRaids,
+          canUseResources: sitRel.canUseResources,
+          canBuyAndSpendGold: sitRel.canBuyAndSpendGold,
+        },
+        ipAddress: params.ipAddress ?? null,
+        userAgent: params.userAgent ?? null,
+      }
+    })
+
+    // Notify tribe (if any) that sitting has begun
+    try {
+      const owner = await prisma.player.findUnique({ where: { id: params.ownerId }, include: { tribe: { include: { members: true } }, user: true } })
+      const sitter = await prisma.player.findUnique({ where: { id: params.sitterId }, include: { user: true } })
+      if (owner?.tribe) {
+        const notifications = owner.tribe.members.map(member => ({
+          senderId: owner.id,
+          recipientId: member.id,
+          type: "TRIBE_BROADCAST" as const,
+          subject: "Sitting Activated",
+          content: `${sitter?.playerName ?? "A player"} is now sitting for ${owner.playerName}.`,
+        }))
+        if (notifications.length) {
+          await prisma.message.createMany({ data: notifications })
+        }
+      }
+    } catch (e) {
+      console.error("Failed to send tribe sitting notification", e)
+    }
+
+    return session
+  }
+
+  /**
    * Invite a dual
    */
   static async inviteDual(playerId: string, lobbyUserId: string, lobbyUsername: string): Promise<Dual> {
@@ -273,7 +336,14 @@ export class SitterDualService {
   static async validateSitterPermissions(
     sitterId: string,
     ownerId: string,
-    action: 'sendRaids' | 'useResources' | 'buyAndSpendGold'
+    action:
+      | 'sendRaids'
+      | 'useResources'
+      | 'buyAndSpendGold'
+      | 'demolishBuildings'
+      | 'recallReinforcements'
+      | 'launchConquest'
+      | 'dismissTroops'
   ): Promise<boolean> {
     const sitter = await prisma.sitter.findFirst({
       where: {
@@ -294,6 +364,14 @@ export class SitterDualService {
         return sitter.canUseResources
       case 'buyAndSpendGold':
         return sitter.canBuyAndSpendGold
+      case 'demolishBuildings':
+        return sitter.canDemolishBuildings
+      case 'recallReinforcements':
+        return sitter.canRecallReinforcements
+      case 'launchConquest':
+        return sitter.canLaunchConquest
+      case 'dismissTroops':
+        return sitter.canDismissTroops
       default:
         return false
     }
@@ -437,5 +515,32 @@ export class SitterDualService {
         villages: player.villages.length
       }
     }
+  }
+
+  /** Log an account action (owner/sitter/dual) */
+  static async logAction(params: {
+    playerId: string
+    actorType: AccountActorType
+    actorUserId?: string | null
+    actorPlayerId?: string | null
+    actorLabel?: string | null
+    action: string
+    metadata?: any
+    ipAddress?: string | null
+    userAgent?: string | null
+  }): Promise<void> {
+    await prisma.accountActionLog.create({
+      data: {
+        playerId: params.playerId,
+        actorType: params.actorType,
+        actorUserId: params.actorUserId ?? null,
+        actorPlayerId: params.actorPlayerId ?? null,
+        actorLabel: params.actorLabel ?? null,
+        action: params.action,
+        metadata: params.metadata ?? null,
+        ipAddress: params.ipAddress ?? null,
+        userAgent: params.userAgent ?? null,
+      }
+    })
   }
 }

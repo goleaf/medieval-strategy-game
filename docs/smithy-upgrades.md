@@ -14,13 +14,15 @@ Data Model
 API
 - GET `/api/villages/:id/smithy?playerId=...` → smithy grid with unit levels, next upgrade costs/times, active job, and simple recommendations.
 - POST `/api/villages/:id/smithy` `{ playerId, unitTypeId, kind: "ATTACK"|"DEFENSE" }` → starts upgrade if available.
+- GET `/api/tribes/:tribeId/smithy?requesterId=...` → officers can view member upgrade progress; returns per-member UnitTech and per-unit averages.
 
 Formulas
 - Cost: based on unit’s training costs with exponential growth: `cost(level) ≈ baseCost × (8 + level) × 1.25^(level-1)`.
 - Time: base by unit role (inf 1h, cav 1.5h, siege 2.5h) × `1.25^(level-1)`; scaled by world speed and Smithy research speed multiplier (`max(0.5, 1-0.04×(smithyLevel-1))`).
-- Combat: Each level multiplies base stats by ~3% (configurable), applied everywhere account-wide.
+- Combat: Each level multiplies base stats by `globals.smithy.perLevelPct` percent from `config/unit-system.json` (e.g., 1.5%/lvl), applied everywhere account-wide.
 
 UI
 - Page `/village/:id/smithy` renders a grid with current levels, next upgrade metadata, locked reasons, and an active progress bar.
 - Buildings page links directly to Smithy upgrades for quick access.
-
+- Presets: offense/defense/balanced tune recommendations (add `preset=offense|defense|balanced` to the GET request or switch via the UI control).
+- Cost-benefit table: top recommendations list unit, path, +%/level, troops affected, total cost, duration, and score (value per resource unit).

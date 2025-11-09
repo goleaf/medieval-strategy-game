@@ -399,6 +399,35 @@ export class ExpansionService {
     await this.syncExpansionSlotsForVillage(targetVillage.id)
     await handleVillageConquest(targetVillage.id, attackerVillage.playerId)
 
+    // Update achievements and active event scores
+    try {
+      const attacker = await prisma.player.findUnique({
+        where: { id: attackerVillage.playerId },
+        select: { id: true, playerName: true, gameWorldId: true },
+      })
+      if (attacker) {
+        const { AchievementService } = await import("@/lib/game-services/achievement-service")
+        const { EventService } = await import("@/lib/game-services/event-service")
+        const { EventType } = await import("@prisma/client")
+        // Conquest milestones (increment all thresholds)
+        await Promise.all([
+          AchievementService.recordMetric(attacker.id, "mil_conquests_1", 1),
+          AchievementService.recordMetric(attacker.id, "mil_conquests_5", 1),
+          AchievementService.recordMetric(attacker.id, "mil_conquests_10", 1),
+          AchievementService.recordMetric(attacker.id, "mil_conquests_25", 1),
+        ])
+        // Barbarian conquest special
+        const wasBarbarian = await prisma.barbarian.findFirst({ where: { villageId: targetVillage.id } })
+        if (wasBarbarian) {
+          await AchievementService.recordMetric(attacker.id, "spec_conquer_barbarian", 1)
+        }
+        // Event scoring: conquest
+        await EventService.incrementActive(attacker.gameWorldId, EventType.CONQUEST, "PLAYER", attacker.id, attacker.playerName, "conquests", 1)
+      }
+    } catch (err) {
+      console.error("[Conquest hooks] error updating achievements/events:", err)
+    }
+
     return { status: "SUCCESS", previousOwnerId }
   }
 }

@@ -155,6 +155,49 @@ enum AchievementProgressMode {
   MANUAL
 }
 
+// ============================================================================
+// ACHIEVEMENTS
+// ============================================================================
+
+model AchievementDefinition {
+  id                  String                  @id @default(cuid())
+  key                 String                  @unique
+  title               String
+  description         String?
+  category            AchievementCategory
+  progressMode        AchievementProgressMode @default(METRIC)
+  targetValue         Int                     @default(1)
+  rewardPremiumPoints Int                     @default(0)
+  rewardBadgeKey      String?
+  rewardTitle         String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  playerAchievements PlayerAchievement[]
+
+  @@index([category])
+}
+
+model PlayerAchievement {
+  id            String            @id @default(cuid())
+  playerId      String
+  achievementId String
+  status        AchievementStatus @default(LOCKED)
+  progress      Int               @default(0)
+  bestProgress  Int               @default(0)
+  unlockedAt    DateTime?
+  claimedAt     DateTime?
+  favorite      Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  player      Player                @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  achievement AchievementDefinition @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, achievementId])
+  @@index([playerId, status])
+}
+
 enum SocialActivityVisibility {
   PUBLIC
   FRIENDS
@@ -179,6 +222,82 @@ enum TTLTrackedEntityType {
   TILE
   RECON
   CONTACT
+}
+
+// ============================================================================
+// EVENTS & COMPETITIONS
+// ============================================================================
+
+enum EventType {
+  POINT_RACE
+  CONQUEST
+  OD_TOURNAMENT
+  TRIBAL_WARFARE
+  RESOURCE_GATHERING
+  SURVIVAL
+}
+
+enum EventScope {
+  PLAYER
+  TRIBE
+}
+
+enum EventStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model WorldEvent {
+  id          String      @id @default(cuid())
+  gameWorldId String
+  world       GameWorld   @relation(fields: [gameWorldId], references: [id], onDelete: Cascade)
+  type        EventType
+  scope       EventScope  @default(PLAYER)
+  name        String
+  description String?
+  rules       Json        // e.g., constraints, scoring details
+  rewards     Json? // convenience display for rewards summary
+  status      EventStatus @default(SCHEDULED)
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  scores       EventScore[]
+  eventRewards EventReward[]
+
+  @@index([gameWorldId, status])
+  @@index([startsAt])
+  @@index([endsAt])
+}
+
+model EventScore {
+  id              String     @id @default(cuid())
+  worldEventId    String
+  worldEvent      WorldEvent @relation(fields: [worldEventId], references: [id], onDelete: Cascade)
+  participantId   String
+  participantName String
+  score           Int        @default(0)
+  metrics         Json       // breakdown: pointsGained, conquests, od, resources, etc.
+  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime   @default(now())
+
+  @@unique([worldEventId, participantId])
+  @@index([worldEventId, score])
+}
+
+model EventReward {
+  id                  String     @id @default(cuid())
+  worldEventId        String
+  worldEvent          WorldEvent @relation(fields: [worldEventId], references: [id], onDelete: Cascade)
+  placementFrom       Int        @default(1)
+  placementTo         Int        @default(1)
+  rewardPremiumPoints Int        @default(0)
+  rewardTitle         String?
+  rewardBadgeKey      String?
+  rewardItems         Json?
 }
 
 // ============================================================================
@@ -242,8 +361,13 @@ model GameWorld {
   availableTribes GameWorldTribe[]
 
   // World Settings
-  worldType WorldType @default(CLASSIC)
-  settings  Json?     @default("{}")
+  worldType             WorldType   @default(CLASSIC)
+  seasonType            SeasonType?
+  seasonName            String?
+  seasonDescription     String?
+  estimatedDurationDays Int?
+  seasonFeatures        Json?
+  settings              Json?
 
   // Game State
   isActive           Boolean   @default(true)
@@ -253,13 +377,14 @@ model GameWorld {
   updatedAt          DateTime  @updatedAt
 
   // Relations
-  players     Player[]
-  alliances   Alliance[]
-  worldConfig WorldConfig?
-  mapTiles        MapTile[]
-  visionSources   VisionSource[]
-  reconMissions   ReconMission[]
+  players           Player[]
+  alliances         Alliance[]
+  worldConfig       WorldConfig?
+  mapTiles          MapTile[]
+  visionSources     VisionSource[]
+  reconMissions     ReconMission[]
   contactLogEntries ContactLogEntry[]
+  worldEvents       WorldEvent[]
 
   @@index([version])
   @@index([region])
@@ -310,24 +435,28 @@ model GameWorldTribe {
 // ============================================================================
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  username     String   @unique
-  password     String
-  displayName  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  lastActiveAt DateTime @default(now())
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  username            String    @unique
+  password            String
+  displayName         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  lastActiveAt        DateTime  @default(now())
   emailVerifiedAt     DateTime?
-  failedLoginAttempts Int      @default(0)
+  failedLoginAttempts Int       @default(0)
   lockoutExpiresAt    DateTime?
   lastLoginAt         DateTime?
   lastLoginIp         String?
   lastSecurityAlertAt DateTime?
+  // Moderation & risk
+  suspendedUntil      DateTime?
+  ipBanUntil          DateTime?
+  suspicionScore      Float     @default(0)
 
   // Relations
-  players Player[]
-  admin   Admin?
+  players                 Player[]
+  admin                   Admin?
   securityQuestions       SecurityQuestion[]
   emailVerificationTokens EmailVerificationToken[]
   sessions                UserSession[]
@@ -342,6 +471,8 @@ model User {
   @@index([username])
   @@index([lastActiveAt]) // For online user queries
   @@index([createdAt]) // For user registration analytics
+  @@index([suspendedUntil])
+  @@index([ipBanUntil])
 }
 
 model SecurityQuestion {
@@ -352,19 +483,19 @@ model SecurityQuestion {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   recoveryRequests AccountRecoveryRequest[]
 
   @@unique([userId, questionKey])
 }
 
 model EmailVerificationToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -373,13 +504,13 @@ model EmailVerificationToken {
 }
 
 model CaptchaChallenge {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   question   String
   answerHash String
   ipAddress  String?
   expiresAt  DateTime
   usedAt     DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([expiresAt])
 }
@@ -401,16 +532,16 @@ model LoginAttempt {
 }
 
 model UserSession {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
   sessionLabel String?
   userAgent    String?
   ipAddress    String?
-  isTrusted    Boolean  @default(false)
-  lastSeenAt   DateTime @default(now())
+  isTrusted    Boolean   @default(false)
+  lastSeenAt   DateTime  @default(now())
   expiresAt    DateTime
   revokedAt    DateTime?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -436,35 +567,35 @@ model TrustedDevice {
 }
 
 model TwoFactorSettings {
-  id                   String   @id @default(cuid())
-  userId               String   @unique
-  totpSecret           String?
-  totpEnabled          Boolean  @default(false)
-  smsEnabled           Boolean  @default(false)
-  smsPhoneNumber       String?
-  backupCodes          Json?
-  lastBackupCodesAt    DateTime?
-  pendingTotpSecret    String?
-  pendingTotpCreatedAt DateTime?
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  totpSecret            String?
+  totpEnabled           Boolean   @default(false)
+  smsEnabled            Boolean   @default(false)
+  smsPhoneNumber        String?
+  backupCodes           Json?
+  lastBackupCodesAt     DateTime?
+  pendingTotpSecret     String?
+  pendingTotpCreatedAt  DateTime?
   pendingSmsPhoneNumber String?
   pendingSmsCodeHash    String?
   pendingSmsExpiresAt   DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model TwoFactorChallenge {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
   method     String?
-  attempts   Int      @default(0)
+  attempts   Int       @default(0)
   ipAddress  String?
   userAgent  String?
   expiresAt  DateTime
   consumedAt DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
   context    Json?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -474,15 +605,15 @@ model TwoFactorChallenge {
 }
 
 model PasswordResetRequest {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String?
   email     String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
   ipAddress String?
   userAgent String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -533,18 +664,18 @@ model Player {
 
   gameTribe GameTribe?
 
-  playerName   String   @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  lastActiveAt DateTime @default(now())
-  profileHeadline   String?
-  profileBio        String?
-  countryCode       String?
-  preferredLanguage String?
-  profileVisibility ProfileVisibility @default(PUBLIC)
-  allowFriendRequests Boolean @default(true)
-  allowMentorship     Boolean @default(true)
-  socialFeedOptIn     Boolean @default(false)
+  playerName          String            @unique
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  lastActiveAt        DateTime          @default(now())
+  profileHeadline     String?
+  profileBio          String?
+  countryCode         String?
+  preferredLanguage   String?
+  profileVisibility   ProfileVisibility @default(PUBLIC)
+  allowFriendRequests Boolean           @default(true)
+  allowMentorship     Boolean           @default(true)
+  socialFeedOptIn     Boolean           @default(false)
 
   // Player Stats
   totalPoints     Int @default(0)
@@ -560,76 +691,104 @@ model Player {
   villagesAllowed Int @default(1)
   villagesUsed    Int @default(1)
 
+  // Sitters & Duals - Inactivity Allowance System
+  inactivityAllowanceDays Int      @default(14)
+  lastOwnerActivityAt     DateTime @default(now())
+
   // Status
-  isDeleted               Boolean   @default(false)
+  isDeleted               Boolean    @default(false)
   deletedAt               DateTime?
   banReason               String?
   beginnerProtectionUntil DateTime? // When beginner protection expires
-  hasGoldClubMembership   Boolean   @default(false)
+  hasExtendedProtection   Boolean    @default(false)
+  hasGoldClubMembership   Boolean    @default(false)
   goldClubExpiresAt       DateTime?
-  premiumPoints           Int       @default(0)
+  premiumPoints           Int        @default(0)
   tribeRole               TribeRole?
   tribePermissions        Json?
   tribeJoinedAt           DateTime?
   tribeRejoinAvailableAt  DateTime?
+  // Moderation restrictions
+  attackRestrictedUntil   DateTime?
+  tradeRestrictedUntil    DateTime?
+  suspendedUntil          DateTime?
 
   // Relations
-  villages            Village[]            @relation("VillageOwner")
-  previousVillages    Village[]            @relation("VillageConquerHistory")
-  hero                Hero?
-  tribeId             String?
-  tribe               Tribe?               @relation("TribeMembers", fields: [tribeId], references: [id])
-  leadingTribe        Tribe?               @relation("TribeLeader")
-  tribeInvites        TribeInvite[]        @relation("TribeInviteRecipient")
-  tribeInvitesSent    TribeInvite[]        @relation("TribeInviteSender")
-  tribeApplications   TribeApplication[]   @relation("TribeApplicationAuthor")
-  tribeApplicationReviews TribeApplication[] @relation("TribeApplicationReviewer")
-  messages            Message[]
-  receivedMessages    Message[]            @relation("MessageRecipient")
-  marketOrders        MarketOrder[]
-  adminMessages       AdminMessage[]
-  materials           Material[]
-  craftingActions     CraftingAction[]
-  quicklinks          PlayerQuicklink[]
-  culturePointAccount AccountCulturePoint?
-  attackPresets       AttackPreset[]
-  notifications       PlayerNotification[]
-  notificationPreferences NotificationPreference?
-  controllingRegions  Region[]
-  rallyPointMovements RallyPointMovement[]
-  garrisonStacks      GarrisonStack[]
-  unitTechLevels      UnitTech[]
-  alliancesFounded    Alliance[]                @relation("AllianceFounder")
-  allianceMemberships AllianceMember[]          @relation("AllianceMemberPlayer")
-  allianceInvitesReceived AllianceInvite[]      @relation("AllianceInvitePlayer")
-  allianceInvitesSent AllianceInvite[]          @relation("AllianceInviteInviter")
-  allianceApplications AllianceApplication[]    @relation("AllianceApplicationPlayer")
-  allianceApplicationsReviewed AllianceApplication[] @relation("AllianceApplicationReviewer")
-  allianceAuditEntries AllianceAuditLog[]       @relation("AllianceAuditActor")
-  tileVisionStates     TileVisionState[]        @relation("TileVisionStateViewerPlayer")
-  ownedVisionSources   VisionSource[]           @relation("VisionSourceOwnerPlayer")
-  reconMissions        ReconMission[]           @relation("ReconMissionOwnerPlayer")
-  contactLogEntries    ContactLogEntry[]        @relation("ContactLogViewerPlayer")
-  relics               Relic[]
-  relicPlacements      RelicPlacement[]         @relation("RelicPlacementOwner")
-  badges               PlayerBadge[]
-  friendshipsInitiated PlayerFriendship[]       @relation("FriendshipRequester")
-  friendshipsReceived  PlayerFriendship[]       @relation("FriendshipAddressee")
-  contactNotes         PlayerContactNote[]      @relation("ContactNoteOwner")
-  contactNotesAboutMe  PlayerContactNote[]      @relation("ContactNoteTarget")
-  blocksInitiated      PlayerBlock[]            @relation("PlayerBlocks")
-  blockedBy            PlayerBlock[]            @relation("BlockedByPlayers")
-  endorsementsGiven    PlayerEndorsement[]      @relation("EndorsementEndorser")
-  endorsementsReceived PlayerEndorsement[]      @relation("EndorsementTarget")
-  mentorshipsMentored  PlayerMentorship[]       @relation("MentorshipMentor")
-  mentorshipsLearning  PlayerMentorship[]       @relation("MentorshipMentee")
-  socialActivities     PlayerSocialActivity[]   @relation("SocialActivityOwner")
-  socialFeedEvents     PlayerSocialActivity[]   @relation("SocialActivityActor")
-  emailNotificationSetting EmailNotificationSetting?
-  emailNotificationEvents   EmailNotificationEvent[]
-  emailNotificationDeliveries EmailNotificationDelivery[]
-  tradeRoutesCreated   TradeRoute[]
-  resourceReservations ResourceReservation[]
+  villages                     Village[]                   @relation("VillageOwner")
+  previousVillages             Village[]                   @relation("VillageConquerHistory")
+  hero                         Hero?
+  tribeId                      String?
+  tribe                        Tribe?                      @relation("TribeMembers", fields: [tribeId], references: [id])
+  leadingTribe                 Tribe?                      @relation("TribeLeader")
+  tribeInvites                 TribeInvite[]               @relation("TribeInviteRecipient")
+  tribeInvitesSent             TribeInvite[]               @relation("TribeInviteSender")
+  tribeApplications            TribeApplication[]          @relation("TribeApplicationAuthor")
+  tribeApplicationReviews      TribeApplication[]          @relation("TribeApplicationReviewer")
+  messages                     Message[]
+  receivedMessages             Message[]                   @relation("MessageRecipient")
+  marketOrders                 MarketOrder[]
+  adminMessages                AdminMessage[]
+  materials                    Material[]
+  craftingActions              CraftingAction[]
+  quicklinks                   PlayerQuicklink[]
+  culturePointAccount          AccountCulturePoint?
+  attackPresets                AttackPreset[]
+  notifications                PlayerNotification[]
+  notificationPreferences      NotificationPreference?
+  controllingRegions           Region[]
+  rallyPointMovements          RallyPointMovement[]
+  garrisonStacks               GarrisonStack[]
+  unitTechLevels               UnitTech[]
+  alliancesFounded             Alliance[]                  @relation("AllianceFounder")
+  allianceMemberships          AllianceMember[]            @relation("AllianceMemberPlayer")
+  allianceInvitesReceived      AllianceInvite[]            @relation("AllianceInvitePlayer")
+  allianceInvitesSent          AllianceInvite[]            @relation("AllianceInviteInviter")
+  allianceApplications         AllianceApplication[]       @relation("AllianceApplicationPlayer")
+  allianceApplicationsReviewed AllianceApplication[]       @relation("AllianceApplicationReviewer")
+  allianceAuditEntries         AllianceAuditLog[]          @relation("AllianceAuditActor")
+  tileVisionStates             TileVisionState[]           @relation("TileVisionStateViewerPlayer")
+  ownedVisionSources           VisionSource[]              @relation("VisionSourceOwnerPlayer")
+  reconMissions                ReconMission[]              @relation("ReconMissionOwnerPlayer")
+  contactLogEntries            ContactLogEntry[]           @relation("ContactLogViewerPlayer")
+  relics                       Relic[]
+  relicPlacements              RelicPlacement[]            @relation("RelicPlacementOwner")
+  badges                       PlayerBadge[]
+  friendshipsInitiated         PlayerFriendship[]          @relation("FriendshipRequester")
+  friendshipsReceived          PlayerFriendship[]          @relation("FriendshipAddressee")
+  contactNotes                 PlayerContactNote[]         @relation("ContactNoteOwner")
+  contactNotesAboutMe          PlayerContactNote[]         @relation("ContactNoteTarget")
+  blocksInitiated              PlayerBlock[]               @relation("PlayerBlocks")
+  blockedBy                    PlayerBlock[]               @relation("BlockedByPlayers")
+  endorsementsGiven            PlayerEndorsement[]         @relation("EndorsementEndorser")
+  endorsementsReceived         PlayerEndorsement[]         @relation("EndorsementTarget")
+  mentorshipsMentored          PlayerMentorship[]          @relation("MentorshipMentor")
+  mentorshipsLearning          PlayerMentorship[]          @relation("MentorshipMentee")
+  socialActivities             PlayerSocialActivity[]      @relation("SocialActivityOwner")
+  socialFeedEvents             PlayerSocialActivity[]      @relation("SocialActivityActor")
+  emailNotificationSetting     EmailNotificationSetting?
+  emailNotificationEvents      EmailNotificationEvent[]
+  emailNotificationDeliveries  EmailNotificationDelivery[]
+  tradeRoutesCreated           TradeRoute[]
+  resourceReservations         ResourceReservation[]
+
+  // Sitters & Duals Relations
+  sittersAsOwner      Sitter[]            @relation("SitterOwner")
+  sittersAsSitter     Sitter[]            @relation("SitterPlayer")
+  duals               Dual[]
+  playerAchievements  PlayerAchievement[]
+  accountActionLogs   AccountActionLog[]
+  playerTechnologies  PlayerTechnology[]
+  researchJobs        ResearchJob[]
+  smithyUpgradeJobs   SmithyUpgradeJob[]
+  pushDevices         PushDevice[]
+  playerSettings      PlayerSettings?
+  reportMetadata      ReportMetadata[]
+  reportFolders       ReportFolder[]
+  reportFolderEntries ReportFolderEntry[]
+  reportTags          ReportTag[]
+  reportTagEntries    ReportTagEntry[]
+  reportShareTokens   ReportShareToken[]
+  tutorialTaskProgress PlayerTaskProgress[]
 
   @@index([userId])
   @@index([gameWorldId])
@@ -640,6 +799,284 @@ model Player {
   @@index([beginnerProtectionUntil]) // For protection expiration checks
   @@index([isDeleted, lastActiveAt]) // For active player queries
   @@index([tribeId, isDeleted]) // For tribe member queries
+  @@index([attackRestrictedUntil])
+  @@index([tradeRestrictedUntil])
+  @@index([suspendedUntil])
+}
+
+// ============================================================================
+// MODERATION: DETECTION, REPORTING, ENFORCEMENT
+// ============================================================================
+
+enum AccountLinkType {
+  IP
+  DEVICE
+  BEHAVIOR
+  RESOURCE_FLOW
+  SUPPORT
+  LOGIN_PATTERN
+}
+
+model AccountLinkEvidence {
+  id        String          @id @default(cuid())
+  userIdA   String
+  userIdB   String
+  linkType  AccountLinkType
+  score     Float           @default(0)
+  evidence  Json?
+  createdAt DateTime        @default(now())
+
+  @@unique([userIdA, userIdB, linkType])
+  @@index([userIdA])
+  @@index([userIdB])
+  @@index([linkType])
+  @@index([createdAt])
+}
+
+enum ModerationReportType {
+  MULTI_ACCOUNT
+  APPEAL
+  OTHER
+}
+
+enum ModerationReportSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ModerationReportStatus {
+  OPEN
+  UNDER_REVIEW
+  ENFORCED
+  RESOLVED
+  DISMISSED
+}
+
+model ModerationReport {
+  id                String                   @id @default(cuid())
+  type              ModerationReportType
+  severity          ModerationReportSeverity @default(LOW)
+  status            ModerationReportStatus   @default(OPEN)
+  summary           String
+  details           Json?
+  involvedUserIds   Json?
+  involvedPlayerIds Json?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([type, status])
+  @@index([severity, createdAt])
+  @@index([createdAt])
+}
+
+enum EnforcementActionType {
+  WARNING
+  ATTACK_RESTRICT
+  TRADE_RESTRICT
+  POINT_RESET
+  SUSPEND
+  BAN
+  IP_BAN
+}
+
+enum EnforcementTargetType {
+  USER
+  PLAYER
+  IP
+}
+
+model EnforcementAction {
+  id         String                @id @default(cuid())
+  targetType EnforcementTargetType
+  targetId   String
+  action     EnforcementActionType
+  reason     String
+  metadata   Json?
+  startAt    DateTime              @default(now())
+  endAt      DateTime?
+  createdAt  DateTime              @default(now())
+
+  createdByAdminId String?
+  createdByAdmin   Admin?  @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([targetType, targetId])
+  @@index([action, startAt])
+  @@index([endAt])
+}
+
+enum AllowlistType {
+  IP
+  DEVICE
+  PAIR
+  HOUSEHOLD
+}
+
+model MultiAccountAllowlist {
+  id              String        @id @default(cuid())
+  type            AllowlistType
+  ipAddress       String?
+  deviceTokenHash String?
+  userIdA         String?
+  userIdB         String?
+  note            String?
+  expiresAt       DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([type])
+  @@index([ipAddress])
+  @@index([deviceTokenHash])
+  @@index([userIdA])
+  @@index([userIdB])
+  @@index([expiresAt])
+}
+
+model IpBan {
+  id        String    @id @default(cuid())
+  ipAddress String
+  reason    String
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([ipAddress])
+  @@index([expiresAt])
+}
+
+enum AppealStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+model ModerationAppeal {
+  id        String       @id @default(cuid())
+  userId    String
+  playerId  String?
+  message   String
+  status    AppealStatus @default(OPEN)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([playerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// ACCOUNT SITTING & DUAL/CO-PLAY
+// ============================================================================
+
+model Sitter {
+  id String @id @default(cuid())
+
+  // Relationships
+  ownerId String
+  owner   Player @relation("SitterOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  sitterId String
+  sitter   Player @relation("SitterPlayer", fields: [sitterId], references: [id], onDelete: Cascade)
+
+  // Permissions
+  canSendRaids            Boolean @default(false)
+  canUseResources         Boolean @default(false)
+  canBuyAndSpendGold      Boolean @default(false)
+  canDemolishBuildings    Boolean @default(false)
+  canRecallReinforcements Boolean @default(false)
+  canLaunchConquest       Boolean @default(false)
+  canDismissTroops        Boolean @default(false)
+
+  // Status
+  isActive Boolean  @default(true)
+  addedAt  DateTime @default(now())
+
+  // Optional expiration for time-bound sitting
+  expiresAt DateTime?
+
+  sessions SitterSession[]
+
+  @@unique([ownerId, sitterId])
+  @@index([ownerId, isActive])
+  @@index([sitterId, isActive])
+}
+
+model SitterSession {
+  id String @id @default(cuid())
+
+  sitterRelId String
+  sitterRel   Sitter @relation(fields: [sitterRelId], references: [id], onDelete: Cascade)
+
+  ownerId  String
+  sitterId String
+
+  startedAt DateTime  @default(now())
+  expiresAt DateTime
+  endedAt   DateTime?
+  endReason String?
+  isActive  Boolean   @default(true)
+
+  // Snapshot of permissions at session start
+  permissionSnapshot Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([ownerId, isActive])
+  @@index([sitterId, isActive])
+  @@index([expiresAt])
+}
+
+enum AccountActorType {
+  OWNER
+  SITTER
+  DUAL
+}
+
+model AccountActionLog {
+  id String @id @default(cuid())
+
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  actorType     AccountActorType
+  actorUserId   String?
+  actorPlayerId String?
+  actorLabel    String?
+
+  action   String
+  metadata Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([playerId, createdAt])
+  @@index([actorType])
+}
+
+model Dual {
+  id String @id @default(cuid())
+
+  // Avatar being controlled
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  // Lobby account
+  lobbyUserId   String
+  lobbyUsername String
+
+  // Status
+  isActive   Boolean   @default(true)
+  invitedAt  DateTime  @default(now())
+  acceptedAt DateTime?
+
+  @@index([playerId, isActive])
+  @@index([lobbyUserId, isActive])
 }
 
 // ============================================================================
@@ -647,16 +1084,16 @@ model Player {
 // ============================================================================
 
 model PlayerBadge {
-  id        String   @id @default(cuid())
-  playerId  String
-  badgeKey  String
-  title     String
+  id          String   @id @default(cuid())
+  playerId    String
+  badgeKey    String
+  title       String
   description String?
-  icon      String?
-  category  String?
-  tier      Int      @default(1)
-  awardedAt DateTime @default(now())
-  metadata  Json?
+  icon        String?
+  category    String?
+  tier        Int      @default(1)
+  awardedAt   DateTime @default(now())
+  metadata    Json?
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
@@ -666,15 +1103,15 @@ model PlayerBadge {
 }
 
 model PlayerFriendship {
-  id           String           @id @default(cuid())
-  requesterId  String
-  addresseeId  String
-  status       FriendshipStatus @default(PENDING)
-  requestedAt  DateTime         @default(now())
-  respondedAt  DateTime?
+  id                String           @id @default(cuid())
+  requesterId       String
+  addresseeId       String
+  status            FriendshipStatus @default(PENDING)
+  requestedAt       DateTime         @default(now())
+  respondedAt       DateTime?
   lastInteractionAt DateTime?
-  note         String?
-  metadata     Json?
+  note              String?
+  metadata          Json?
 
   requester Player @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
   addressee Player @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
@@ -691,8 +1128,8 @@ model PlayerContactNote {
   stance    ContactStance @default(NEUTRAL)
   note      String
   tags      Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
   owner  Player @relation("ContactNoteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   target Player @relation("ContactNoteTarget", fields: [targetId], references: [id], onDelete: Cascade)
@@ -701,12 +1138,12 @@ model PlayerContactNote {
 }
 
 model PlayerBlock {
-  id               String   @id @default(cuid())
-  playerId         String
-  blockedPlayerId  String
-  reason           String?
-  createdAt        DateTime @default(now())
-  expiresAt        DateTime?
+  id              String    @id @default(cuid())
+  playerId        String
+  blockedPlayerId String
+  reason          String?
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime?
 
   player  Player @relation("PlayerBlocks", fields: [playerId], references: [id], onDelete: Cascade)
   blocked Player @relation("BlockedByPlayers", fields: [blockedPlayerId], references: [id], onDelete: Cascade)
@@ -716,14 +1153,14 @@ model PlayerBlock {
 }
 
 model PlayerEndorsement {
-  id         String             @id @default(cuid())
+  id         String            @id @default(cuid())
   endorserId String
   targetId   String
-  status     EndorsementStatus  @default(PENDING)
+  status     EndorsementStatus @default(PENDING)
   message    String?
-  strength   Int                @default(1)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  strength   Int               @default(1)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
 
   endorser Player @relation("EndorsementEndorser", fields: [endorserId], references: [id], onDelete: Cascade)
   target   Player @relation("EndorsementTarget", fields: [targetId], references: [id], onDelete: Cascade)
@@ -733,15 +1170,15 @@ model PlayerEndorsement {
 }
 
 model PlayerMentorship {
-  id          String           @id @default(cuid())
-  mentorId    String
-  menteeId    String
-  status      MentorshipStatus @default(PENDING)
-  startedAt   DateTime?
-  completedAt DateTime?
-  mentorBonusGranted Int @default(0)
-  menteeBonusGranted Int @default(0)
-  notes       Json?
+  id                 String           @id @default(cuid())
+  mentorId           String
+  menteeId           String
+  status             MentorshipStatus @default(PENDING)
+  startedAt          DateTime?
+  completedAt        DateTime?
+  mentorBonusGranted Int              @default(0)
+  menteeBonusGranted Int              @default(0)
+  notes              Json?
 
   mentor Player @relation("MentorshipMentor", fields: [mentorId], references: [id], onDelete: Cascade)
   mentee Player @relation("MentorshipMentee", fields: [menteeId], references: [id], onDelete: Cascade)
@@ -752,16 +1189,16 @@ model PlayerMentorship {
 }
 
 model PlayerSocialActivity {
-  id          String                    @id @default(cuid())
-  playerId    String
-  actorId     String?
+  id           String                   @id @default(cuid())
+  playerId     String
+  actorId      String?
   activityType SocialActivityType
-  visibility  SocialActivityVisibility  @default(PUBLIC)
-  summary     String
-  payload     Json?
-  createdAt   DateTime @default(now())
+  visibility   SocialActivityVisibility @default(PUBLIC)
+  summary      String
+  payload      Json?
+  createdAt    DateTime                 @default(now())
 
-  player Player @relation("SocialActivityOwner", fields: [playerId], references: [id], onDelete: Cascade)
+  player Player  @relation("SocialActivityOwner", fields: [playerId], references: [id], onDelete: Cascade)
   actor  Player? @relation("SocialActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([playerId, createdAt])
@@ -797,9 +1234,9 @@ model WorldConfig {
   nightBonusMultiplier      Float   @default(1.2) // Defense bonus during night (20% increase)
   beginnerProtectionHours   Int     @default(72) // Hours of protection for new players
   beginnerProtectionEnabled Boolean @default(true) // Enable/disable beginner protection
-  scoutingConfig            Json?   @default("{}")
-  nightPolicyConfig         Json?   @default("{}")
-  siegeRulesConfig          Json?   @default("{}")
+  scoutingConfig            Json?
+  nightPolicyConfig         Json?
+  siegeRulesConfig          Json?
 
   endgameConfig EndgameConfig?
 
@@ -859,20 +1296,20 @@ enum RelicType {
 model EndgameConfig {
   id String @id @default(cuid())
 
-  worldConfigId String  @unique
+  worldConfigId String      @unique
   worldConfig   WorldConfig @relation(fields: [worldConfigId], references: [id], onDelete: Cascade)
 
-  type EndgameType        @default(DOMINATION)
-  dominanceThreshold      Float   @default(0.7)
-  dominanceHoldHours      Int     @default(0)
-  dominanceBaseline       EndgameBaseline @default(PLAYER_OWNED)
-  dominanceWarningDistance Float  @default(0.05)
-  earliestStart           DateTime?
+  type                     EndgameType     @default(DOMINATION)
+  dominanceThreshold       Float           @default(0.7)
+  dominanceHoldHours       Int             @default(0)
+  dominanceBaseline        EndgameBaseline @default(PLAYER_OWNED)
+  dominanceWarningDistance Float           @default(0.05)
+  earliestStart            DateTime?
 
-  runeRequirement   Int     @default(0)
-  runeHoldHours     Int     @default(0)
-  runeTimerBehavior RuneTimerBehavior @default(RESET_ON_LOSS)
-  runeWarningDistance Float @default(0.1)
+  runeRequirement     Int               @default(0)
+  runeHoldHours       Int               @default(0)
+  runeTimerBehavior   RuneTimerBehavior @default(RESET_ON_LOSS)
+  runeWarningDistance Float             @default(0.1)
 
   relicsEnabled       Boolean @default(false)
   relicPlacementLimit Int     @default(10)
@@ -895,12 +1332,12 @@ model EndgameState {
   endgameConfigId String
   endgameConfig   EndgameConfig @relation(fields: [endgameConfigId], references: [id], onDelete: Cascade)
 
-  status         EndgameStatus @default(IDLE)
-  leadingTribeId String?
-  leadingTribe   Tribe? @relation(fields: [leadingTribeId], references: [id], onDelete: SetNull)
-  leadingPercent Float   @default(0)
-  countedVillages Int    @default(0)
-  runeControlCount Int   @default(0)
+  status           EndgameStatus @default(IDLE)
+  leadingTribeId   String?
+  leadingTribe     Tribe?        @relation(fields: [leadingTribeId], references: [id], onDelete: SetNull)
+  leadingPercent   Float         @default(0)
+  countedVillages  Int           @default(0)
+  runeControlCount Int           @default(0)
 
   warningEmittedAt DateTime?
   holdStartedAt    DateTime?
@@ -922,18 +1359,18 @@ model EndgameRuneVillage {
   endgameConfigId String
   endgameConfig   EndgameConfig @relation(fields: [endgameConfigId], references: [id], onDelete: Cascade)
 
-  villageId String @unique
+  villageId String  @unique
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
 
-  runeType           RuneType @default(WAR)
-  defenseMultiplier  Float    @default(0.5)
-  required           Boolean  @default(true)
-  holdRequirementHours Int    @default(0)
+  runeType             RuneType @default(WAR)
+  defenseMultiplier    Float    @default(0.5)
+  required             Boolean  @default(true)
+  holdRequirementHours Int      @default(0)
 
   holdStartedAt      DateTime?
   holdEndsAt         DateTime?
   controllingTribeId String?
-  controllingTribe   Tribe? @relation(fields: [controllingTribeId], references: [id], onDelete: SetNull)
+  controllingTribe   Tribe?    @relation(fields: [controllingTribeId], references: [id], onDelete: SetNull)
   lastContestedAt    DateTime?
 
   createdAt DateTime @default(now())
@@ -950,12 +1387,12 @@ model Relic {
   ownerId String
   owner   Player @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  relicType  RelicType  @default(OFFENSE)
-  relicClass RelicClass @default(SHODDY)
-  mainValue  Float      @default(0)
-  subValue   Float?
-  name       String?
-  discoveredAt DateTime @default(now())
+  relicType    RelicType  @default(OFFENSE)
+  relicClass   RelicClass @default(SHODDY)
+  mainValue    Float      @default(0)
+  subValue     Float?
+  name         String?
+  discoveredAt DateTime   @default(now())
   lastMergedAt DateTime?
   metadata     Json?
 
@@ -973,7 +1410,7 @@ model RelicPlacement {
   id String @id @default(cuid())
 
   relicId String
-  relic   Relic @relation(fields: [relicId], references: [id], onDelete: Cascade)
+  relic   Relic  @relation(fields: [relicId], references: [id], onDelete: Cascade)
 
   villageId String
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
@@ -1089,21 +1526,21 @@ model MapTile {
 }
 
 model TileVisionState {
-  id                String              @id @default(cuid())
-  tileId            String
-  tile              MapTile             @relation(fields: [tileId], references: [id], onDelete: Cascade)
-  viewerPlayerId    String?
-  viewerPlayer      Player?             @relation("TileVisionStateViewerPlayer", fields: [viewerPlayerId], references: [id])
-  viewerAllianceId  String?
-  viewerAlliance    Alliance?           @relation("TileVisionStateViewerAlliance", fields: [viewerAllianceId], references: [id])
-  state             TileVisionStateType
-  lastSeenAt        DateTime?
-  freshUntil        DateTime?
-  memoryExpiresAt   DateTime?
+  id                 String              @id @default(cuid())
+  tileId             String
+  tile               MapTile             @relation(fields: [tileId], references: [id], onDelete: Cascade)
+  viewerPlayerId     String?
+  viewerPlayer       Player?             @relation("TileVisionStateViewerPlayer", fields: [viewerPlayerId], references: [id])
+  viewerAllianceId   String?
+  viewerAlliance     Alliance?           @relation("TileVisionStateViewerAlliance", fields: [viewerAllianceId], references: [id])
+  state              TileVisionStateType
+  lastSeenAt         DateTime?
+  freshUntil         DateTime?
+  memoryExpiresAt    DateTime?
   attributeFreshness Json?
-  sharingScope      VisionSharingScope  @default(PERSONAL)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  sharingScope       VisionSharingScope  @default(PERSONAL)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@index([viewerPlayerId, tileId])
   @@index([viewerAllianceId, tileId])
@@ -1111,22 +1548,22 @@ model TileVisionState {
 }
 
 model VisionSource {
-  id               String             @id @default(cuid())
-  gameWorldId      String
-  world            GameWorld          @relation(fields: [gameWorldId], references: [id], onDelete: Cascade)
-  ownerPlayerId    String?
-  ownerPlayer      Player?            @relation("VisionSourceOwnerPlayer", fields: [ownerPlayerId], references: [id])
-  ownerAllianceId  String?
-  ownerAlliance    Alliance?          @relation("VisionSourceOwnerAlliance", fields: [ownerAllianceId], references: [id])
-  sourceType       VisionSourceType
-  centerX          Int
-  centerY          Int
-  radius           Int
-  freshUntil       DateTime?
-  sharingScope     VisionSharingScope @default(PERSONAL)
-  metadata         Json?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id              String             @id @default(cuid())
+  gameWorldId     String
+  world           GameWorld          @relation(fields: [gameWorldId], references: [id], onDelete: Cascade)
+  ownerPlayerId   String?
+  ownerPlayer     Player?            @relation("VisionSourceOwnerPlayer", fields: [ownerPlayerId], references: [id])
+  ownerAllianceId String?
+  ownerAlliance   Alliance?          @relation("VisionSourceOwnerAlliance", fields: [ownerAllianceId], references: [id])
+  sourceType      VisionSourceType
+  centerX         Int
+  centerY         Int
+  radius          Int
+  freshUntil      DateTime?
+  sharingScope    VisionSharingScope @default(PERSONAL)
+  metadata        Json?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   @@index([gameWorldId, sourceType])
   @@index([ownerPlayerId])
@@ -1135,29 +1572,29 @@ model VisionSource {
 }
 
 model ReconMission {
-  id               String             @id @default(cuid())
-  gameWorldId      String
-  world            GameWorld          @relation(fields: [gameWorldId], references: [id], onDelete: Cascade)
-  ownerPlayerId    String?
-  ownerPlayer      Player?            @relation("ReconMissionOwnerPlayer", fields: [ownerPlayerId], references: [id])
-  ownerAllianceId  String?
-  ownerAlliance    Alliance?          @relation("ReconMissionOwnerAlliance", fields: [ownerAllianceId], references: [id])
-  missionType      ReconMissionType
-  originX          Int
-  originY          Int
-  destinationX     Int
-  destinationY     Int
-  path             Json
-  launchAt         DateTime
-  arrivalAt        DateTime
-  burstRadius      Int
-  trailTTLSeconds  Int
-  burstTTLSeconds  Int
-  sharingScope     VisionSharingScope @default(PERSONAL)
-  cooldownEndsAt   DateTime?
-  metadata         Json?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id              String             @id @default(cuid())
+  gameWorldId     String
+  world           GameWorld          @relation(fields: [gameWorldId], references: [id], onDelete: Cascade)
+  ownerPlayerId   String?
+  ownerPlayer     Player?            @relation("ReconMissionOwnerPlayer", fields: [ownerPlayerId], references: [id])
+  ownerAllianceId String?
+  ownerAlliance   Alliance?          @relation("ReconMissionOwnerAlliance", fields: [ownerAllianceId], references: [id])
+  missionType     ReconMissionType
+  originX         Int
+  originY         Int
+  destinationX    Int
+  destinationY    Int
+  path            Json
+  launchAt        DateTime
+  arrivalAt       DateTime
+  burstRadius     Int
+  trailTTLSeconds Int
+  burstTTLSeconds Int
+  sharingScope    VisionSharingScope @default(PERSONAL)
+  cooldownEndsAt  DateTime?
+  metadata        Json?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   @@index([gameWorldId, missionType])
   @@index([launchAt])
@@ -1183,7 +1620,7 @@ model ContactLogEntry {
   expiresAt        DateTime
   signatureRoll    Float
   metadata         Json?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime           @default(now())
 
   @@index([viewerPlayerId])
   @@index([viewerAllianceId])
@@ -1191,12 +1628,12 @@ model ContactLogEntry {
 }
 
 model VisionTTLTracker {
-  id         String             @id @default(cuid())
-  entityType TTLTrackedEntityType
-  entityId   String
-  expiresAt  DateTime
+  id          String               @id @default(cuid())
+  entityType  TTLTrackedEntityType
+  entityId    String
+  expiresAt   DateTime
   decayAction Json
-  createdAt  DateTime @default(now())
+  createdAt   DateTime             @default(now())
 
   @@index([entityType, expiresAt])
 }
@@ -1222,12 +1659,12 @@ model Village {
   isCapital Boolean @default(false)
 
   // Resources
-  wood       Int @default(1000)
-  stone      Int @default(1000)
-  iron       Int @default(500)
-  gold       Int @default(200)
-  food       Int @default(2000)
-  population Int @default(100)
+  wood            Int   @default(1000)
+  stone           Int   @default(1000)
+  iron            Int   @default(500)
+  gold            Int   @default(200)
+  food            Int   @default(2000)
+  population      Int   @default(100)
   woodFractional  Float @default(0)
   stoneFractional Float @default(0)
   ironFractional  Float @default(0)
@@ -1243,10 +1680,10 @@ model Village {
   culturePointsPerHour Float @default(0)
 
   // Loyalty & Control
-  loyalty             Int       @default(100) // 0-100, affects production
-  maxLoyalty          Int       @default(100)
-  loyaltyUpdatedAt    DateTime  @default(now())
-  lastLoyaltyAttackAt DateTime?
+  loyalty                 Int       @default(100) // 0-100, affects production
+  maxLoyalty              Int       @default(100)
+  loyaltyUpdatedAt        DateTime  @default(now())
+  lastLoyaltyAttackAt     DateTime?
   warehouseFullNotifiedAt DateTime?
   granaryFullNotifiedAt   DateTime?
 
@@ -1264,52 +1701,54 @@ model Village {
   lastTickAt DateTime @default(now())
 
   // Relations
-  buildings           Building[]
-  troops              Troop[]
-  attacksFrom         Attack[]                     @relation("AttackFrom")
-  attacksTo           Attack[]                     @relation("AttackTo")
-  reinforcementsFrom  Reinforcement[]              @relation("ReinforcementFrom")
-  reinforcementsTo    Reinforcement[]              @relation("ReinforcementTo")
-  defenses            Defense[]
-  barbarians          Barbarian[]
-  marketOrders        MarketOrder[]
-  messages            Message[]
-  quicklinks          VillageQuicklink[]
-  attackPresetsOwned  AttackPreset[]               @relation("AttackPresetVillage")
-  attackPresetTargets AttackPreset[]               @relation("AttackPresetTargetVillage")
-  resourceFields      VillageResourceField[]
-  resourceLedgers     VillageResourceLedger[]
-  resourceModifiers   ResourceProductionModifier[]
-  rallyPoint          RallyPoint?
-  rallyPointMovementsFrom RallyPointMovement[] @relation("RallyPointMovementFrom")
-  rallyPointMovementsTo   RallyPointMovement[] @relation("RallyPointMovementTo")
-  rallyPointWaveGroups    RallyPointWaveGroup[]
-  rallyPointPresets      RallyPointPreset[]
-  rallyPointBookmarks    RallyPointBookmark[]
-  rallyPointBookmarkTargets RallyPointBookmark[] @relation("BookmarkTargetVillage")
-  waveMemberTargets      RallyPointWaveMember[] @relation("WaveMemberTargetVillage")
-  garrisonStacks     GarrisonStack[]
-  trapCaptives       TrapperPrisoner[]          @relation("TrapDefenderVillage")
-  trappedAbroad      TrapperPrisoner[]          @relation("TrapAttackerVillage")
-  shipmentsOut        Shipment[]                   @relation("ShipmentSource")
-  shipmentsIn         Shipment[]                   @relation("ShipmentTarget")
-  tradeRoutesFrom     TradeRoute[]                 @relation("TradeRouteSource")
-  tradeRoutesTo       TradeRoute[]                 @relation("TradeRouteTarget")
-  merchantState       MerchantState?
-  movementsFrom       Movement[]                   @relation("MovementFromVillage")
-  movementsTo         Movement[]                   @relation("MovementToVillage")
-  expansionOrigins    ExpansionLink[]              @relation("ExpansionSource")
-  expansionTargets    ExpansionLink[]              @relation("ExpansionTarget")
-  storageLedger       VillageStorageLedger[]
-  distanceCacheA      VillageDistanceCache[]       @relation("DistanceCacheA")
-  distanceCacheB      VillageDistanceCache[]       @relation("DistanceCacheB")
-  buildQueueTasks     BuildQueueTask[]
-  unitStacks          UnitStack[]
-  trainingQueueItems  TrainingQueueItem[]
-  queueLimit          VillageQueueLimit?
-  runeVillage         EndgameRuneVillage?
-  relicPlacements     RelicPlacement[]
-  resourceReservations ResourceReservation[]
+  buildings                 Building[]
+  troops                    Troop[]
+  attacksFrom               Attack[]                     @relation("AttackFrom")
+  attacksTo                 Attack[]                     @relation("AttackTo")
+  reinforcementsFrom        Reinforcement[]              @relation("ReinforcementFrom")
+  reinforcementsTo          Reinforcement[]              @relation("ReinforcementTo")
+  defenses                  Defense[]
+  barbarians                Barbarian[]
+  marketOrders              MarketOrder[]
+  messages                  Message[]
+  quicklinks                VillageQuicklink[]
+  attackPresetsOwned        AttackPreset[]               @relation("AttackPresetVillage")
+  attackPresetTargets       AttackPreset[]               @relation("AttackPresetTargetVillage")
+  resourceFields            VillageResourceField[]
+  resourceLedgers           VillageResourceLedger[]
+  resourceModifiers         ResourceProductionModifier[]
+  rallyPoint                RallyPoint?
+  rallyPointMovementsFrom   RallyPointMovement[]         @relation("RallyPointMovementFrom")
+  rallyPointMovementsTo     RallyPointMovement[]         @relation("RallyPointMovementTo")
+  rallyPointWaveGroups      RallyPointWaveGroup[]
+  rallyPointPresets         RallyPointPreset[]
+  rallyPointBookmarks       RallyPointBookmark[]
+  rallyPointBookmarkTargets RallyPointBookmark[]         @relation("BookmarkTargetVillage")
+  waveMemberTargets         RallyPointWaveMember[]       @relation("WaveMemberTargetVillage")
+  garrisonStacks            GarrisonStack[]
+  trapCaptives              TrapperPrisoner[]            @relation("TrapDefenderVillage")
+  trappedAbroad             TrapperPrisoner[]            @relation("TrapAttackerVillage")
+  shipmentsOut              Shipment[]                   @relation("ShipmentSource")
+  shipmentsIn               Shipment[]                   @relation("ShipmentTarget")
+  tradeRoutesFrom           TradeRoute[]                 @relation("TradeRouteSource")
+  tradeRoutesTo             TradeRoute[]                 @relation("TradeRouteTarget")
+  merchantState             MerchantState?
+  movementsFrom             Movement[]                   @relation("MovementFromVillage")
+  movementsTo               Movement[]                   @relation("MovementToVillage")
+  expansionOrigins          ExpansionLink[]              @relation("ExpansionSource")
+  expansionTargets          ExpansionLink[]              @relation("ExpansionTarget")
+  storageLedger             VillageStorageLedger[]
+  distanceCacheA            VillageDistanceCache[]       @relation("DistanceCacheA")
+  distanceCacheB            VillageDistanceCache[]       @relation("DistanceCacheB")
+  buildQueueTasks           BuildQueueTask[]
+  unitStacks                UnitStack[]
+  trainingQueueItems        TrainingQueueItem[]
+  queueLimit                VillageQueueLimit?
+  runeVillage               EndgameRuneVillage?
+  relicPlacements           RelicPlacement[]
+  resourceReservations      ResourceReservation[]
+  researchJobs              ResearchJob[]
+  smithyUpgradeJobs         SmithyUpgradeJob[]
 
   @@unique([x, y])
   @@index([playerId])
@@ -1348,9 +1787,11 @@ model Building {
   updatedAt DateTime @updatedAt
 
   // Relations
-  troopProduction TroopProduction[]
-  research        Research?
-  queueTasks      BuildQueueTask[]
+  troopProduction   TroopProduction[]
+  research          Research?
+  queueTasks        BuildQueueTask[]
+  researchJobs      ResearchJob[]
+  smithyUpgradeJobs SmithyUpgradeJob[]
 
   @@unique([villageId, type])
   @@index([villageId, slot])
@@ -1472,20 +1913,20 @@ enum EventQueueStatus {
 }
 
 model EventQueueItem {
-  id         String           @id @default(cuid())
-  type       EventQueueType
-  status     EventQueueStatus @default(PENDING)
+  id          String           @id @default(cuid())
+  type        EventQueueType
+  status      EventQueueStatus @default(PENDING)
   scheduledAt DateTime
-  priority   Int              @default(0)
-  dedupeKey  String?          @unique
-  payload    Json?
-  attempts   Int              @default(0)
-  lastError  String?
+  priority    Int              @default(0)
+  dedupeKey   String?          @unique
+  payload     Json?
+  attempts    Int              @default(0)
+  lastError   String?
   processedAt DateTime?
-  lockedAt   DateTime?
-  lockedBy   String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  lockedAt    DateTime?
+  lockedBy    String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   @@index([status, scheduledAt])
   @@index([type, status, scheduledAt])
@@ -1783,12 +2224,12 @@ model TroopProduction {
 }
 
 model UnitType {
-  id                String    @id
+  id                String   @id
   role              UnitRole
   attack            Int
   defInf            Int
   defCav            Int
-  defArch           Int       @default(0)
+  defArch           Int      @default(0)
   speedTilesPerHour Float
   carry             Int
   upkeepCropPerHour Float
@@ -1800,26 +2241,27 @@ model UnitType {
   costCrop          Int
   buildingReqJson   Json
   researchReqJson   Json
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  unitStacks   UnitStack[]
-  techLevels   UnitTech[]
-  trainingJobs TrainingQueueItem[]
+  unitStacks        UnitStack[]
+  techLevels        UnitTech[]
+  trainingJobs      TrainingQueueItem[]
+  smithyUpgradeJobs SmithyUpgradeJob[]
 
   @@index([role])
 }
 
 model UnitTech {
-  id          String   @id @default(cuid())
-  playerId    String
-  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  unitTypeId  String
-  unitType    UnitType @relation(fields: [unitTypeId], references: [id], onDelete: Cascade)
-  attackLevel Int      @default(0)
-  defenseLevel Int     @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  unitTypeId   String
+  unitType     UnitType @relation(fields: [unitTypeId], references: [id], onDelete: Cascade)
+  attackLevel  Int      @default(0)
+  defenseLevel Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([playerId, unitTypeId])
   @@index([unitTypeId])
@@ -1840,30 +2282,30 @@ model UnitStack {
 }
 
 model TrainingQueueItem {
-  id         String           @id @default(cuid())
-  villageId  String
-  village    Village          @relation(fields: [villageId], references: [id], onDelete: Cascade)
-  unitTypeId String
-  unitType   UnitType         @relation(fields: [unitTypeId], references: [id], onDelete: Cascade)
-  building   TrainingBuilding
-  count      Int
-  queuedAt   DateTime         @default(now())
-  startAt    DateTime
-  finishAt   DateTime
-  unitDurationSeconds   Float   @default(0)
-  totalDurationSeconds  Float   @default(0)
-  buildingLevel         Int     @default(1)
-  costWood              Int     @default(0)
-  costClay              Int     @default(0)
-  costIron              Int     @default(0)
-  costCrop              Int     @default(0)
-  costGold              Int     @default(0)
-  populationCost        Int     @default(0)
-  worldSpeedApplied     Float   @default(1)
-  cancelledAt DateTime?
-  status     TrainingStatus   @default(WAITING)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  id                   String           @id @default(cuid())
+  villageId            String
+  village              Village          @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  unitTypeId           String
+  unitType             UnitType         @relation(fields: [unitTypeId], references: [id], onDelete: Cascade)
+  building             TrainingBuilding
+  count                Int
+  queuedAt             DateTime         @default(now())
+  startAt              DateTime
+  finishAt             DateTime
+  unitDurationSeconds  Float            @default(0)
+  totalDurationSeconds Float            @default(0)
+  buildingLevel        Int              @default(1)
+  costWood             Int              @default(0)
+  costClay             Int              @default(0)
+  costIron             Int              @default(0)
+  costCrop             Int              @default(0)
+  costGold             Int              @default(0)
+  populationCost       Int              @default(0)
+  worldSpeedApplied    Float            @default(1)
+  cancelledAt          DateTime?
+  status               TrainingStatus   @default(WAITING)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
   @@index([villageId, status, finishAt])
   @@index([villageId, building, status])
@@ -1933,6 +2375,14 @@ enum WorldType {
   CASUAL
 }
 
+enum SeasonType {
+  SPEED
+  CUSTOM
+  TOURNAMENT
+  BEGINNER
+  THEMED
+}
+
 model ExpansionLink {
   id String @id @default(cuid())
 
@@ -1991,12 +2441,12 @@ enum RallyPointWaveMemberStatus {
 }
 
 model RallyPoint {
-  villageId String @id
+  villageId String  @id
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
 
-  level        Int   @default(1)
-  waveWindowMs Int   @default(150)
-  optionsJson  Json  @default("{}")
+  level        Int      @default(1)
+  waveWindowMs Int      @default(150)
+  optionsJson  Json
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -2034,12 +2484,12 @@ model RallyPointWaveGroup {
   villageId String
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
 
-  tag      String
-  arriveAt DateTime
-  jitterMs Int     @default(0)
+  tag       String
+  arriveAt  DateTime
+  jitterMs  Int      @default(0)
   createdAt DateTime @default(now())
 
-  members  RallyPointWaveMember[]
+  members   RallyPointWaveMember[]
   movements RallyPointMovement[]
 
   @@index([villageId])
@@ -2047,22 +2497,22 @@ model RallyPointWaveGroup {
 }
 
 model RallyPointWaveMember {
-  id           String  @id @default(cuid())
-  waveGroupId  String
-  waveGroup    RallyPointWaveGroup @relation(fields: [waveGroupId], references: [id], onDelete: Cascade)
+  id          String              @id @default(cuid())
+  waveGroupId String
+  waveGroup   RallyPointWaveGroup @relation(fields: [waveGroupId], references: [id], onDelete: Cascade)
 
-  mission            RallyPointMission
-  targetVillageId    String?
-  targetVillage      Village? @relation("WaveMemberTargetVillage", fields: [targetVillageId], references: [id], onDelete: SetNull)
-  targetX            Int
-  targetY            Int
-  unitsJson          Json
+  mission             RallyPointMission
+  targetVillageId     String?
+  targetVillage       Village?                   @relation("WaveMemberTargetVillage", fields: [targetVillageId], references: [id], onDelete: SetNull)
+  targetX             Int
+  targetY             Int
+  unitsJson           Json
   catapultTargetsJson Json?
-  idempotencyKey     String
-  status             RallyPointWaveMemberStatus @default(SCHEDULED)
-  arriveAt           DateTime
-  departAt           DateTime
-  createdAt          DateTime @default(now())
+  idempotencyKey      String
+  status              RallyPointWaveMemberStatus @default(SCHEDULED)
+  arriveAt            DateTime
+  departAt            DateTime
+  createdAt           DateTime                   @default(now())
 
   movements RallyPointMovement[]
 
@@ -2072,28 +2522,28 @@ model RallyPointWaveMember {
 }
 
 model RallyPointMovement {
-  id              String  @id @default(cuid())
-  mission         RallyPointMission
-  ownerAccountId  String
-  owner           Player  @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
-  fromVillageId   String
-  fromVillage     Village @relation("RallyPointMovementFrom", fields: [fromVillageId], references: [id], onDelete: Cascade)
-  toVillageId     String?
-  toVillage       Village? @relation("RallyPointMovementTo", fields: [toVillageId], references: [id], onDelete: SetNull)
-  toTileX         Int
-  toTileY         Int
-  departAt        DateTime
-  arriveAt        DateTime
-  payload         Json
-  status          RallyPointMovementStatus  @default(EN_ROUTE)
-  createdBy       RallyPointMovementCreatedBy @default(PLAYER)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  idempotencyKey  String?
-  waveGroupId     String?
-  waveGroup       RallyPointWaveGroup? @relation(fields: [waveGroupId], references: [id], onDelete: SetNull)
-  waveMemberId    String?
-  waveMember      RallyPointWaveMember? @relation(fields: [waveMemberId], references: [id], onDelete: SetNull)
+  id             String                      @id @default(cuid())
+  mission        RallyPointMission
+  ownerAccountId String
+  owner          Player                      @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+  fromVillageId  String
+  fromVillage    Village                     @relation("RallyPointMovementFrom", fields: [fromVillageId], references: [id], onDelete: Cascade)
+  toVillageId    String?
+  toVillage      Village?                    @relation("RallyPointMovementTo", fields: [toVillageId], references: [id], onDelete: SetNull)
+  toTileX        Int
+  toTileY        Int
+  departAt       DateTime
+  arriveAt       DateTime
+  payload        Json
+  status         RallyPointMovementStatus    @default(EN_ROUTE)
+  createdBy      RallyPointMovementCreatedBy @default(PLAYER)
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  idempotencyKey String?
+  waveGroupId    String?
+  waveGroup      RallyPointWaveGroup?        @relation(fields: [waveGroupId], references: [id], onDelete: SetNull)
+  waveMemberId   String?
+  waveMember     RallyPointWaveMember?       @relation(fields: [waveMemberId], references: [id], onDelete: SetNull)
 
   reports RallyPointMovementReport[]
 
@@ -2105,21 +2555,21 @@ model RallyPointMovement {
 }
 
 model RallyPointMovementReport {
-  id          String  @id @default(cuid())
-  movementId  String
-  movement    RallyPointMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
-  mission     RallyPointMission
-  summary     Json
-  createdAt   DateTime @default(now())
+  id         String             @id @default(cuid())
+  movementId String
+  movement   RallyPointMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  mission    RallyPointMission
+  summary    Json
+  createdAt  DateTime           @default(now())
 
   @@index([movementId])
 }
 
 model GarrisonStack {
-  villageId       String
-  ownerAccountId  String
-  unitTypeId      String
-  count           Int        @default(0)
+  villageId      String
+  ownerAccountId String
+  unitTypeId     String
+  count          Int    @default(0)
 
   village Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
   owner   Player  @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
@@ -2129,12 +2579,12 @@ model GarrisonStack {
 }
 
 model TrapperPrisoner {
-  id                String  @id @default(cuid())
+  id                String   @id @default(cuid())
   defenderVillageId String
   attackerVillageId String
   attackerAccountId String
   unitTypeId        String
-  count             Int     @default(0)
+  count             Int      @default(0)
   capturedAt        DateTime @default(now())
   sourceMovementId  String?
   metadata          Json?
@@ -2297,24 +2747,24 @@ model Research {
 // ============================================================================
 
 model Technology {
-  id          String   @id
-  key         String   @unique
+  id          String             @id
+  key         String             @unique
   displayName String
   description String?
   category    TechnologyCategory
 
   // Base research cost and time (scaled by world speed)
-  costWood  Int @default(0)
-  costStone Int @default(0)
-  costIron  Int @default(0)
-  costGold  Int @default(0)
-  costFood  Int @default(0)
+  costWood        Int @default(0)
+  costStone       Int @default(0)
+  costIron        Int @default(0)
+  costGold        Int @default(0)
+  costFood        Int @default(0)
   baseTimeSeconds Int @default(3600)
 
   // Requirements
-  academyLevelRequired Int @default(1)
-  prerequisites Json   // { tech: string[], buildings: [{ type: string, level: number }] }
-  effects       Json   // e.g., { unlocks: { units: ["SCOUT"], systems: ["PALADIN"] } }
+  academyLevelRequired Int  @default(1)
+  prerequisites        Json // { tech: string[], buildings: [{ type: string, level: number }] }
+  effects              Json // e.g., { unlocks: { units: ["SCOUT"], systems: ["PALADIN"] } }
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2331,15 +2781,15 @@ enum TechnologyCategory {
 }
 
 model PlayerTechnology {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   playerId     String
-  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player       Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
   technologyId String
   technology   Technology @relation(fields: [technologyId], references: [id], onDelete: Cascade)
 
   completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([playerId, technologyId])
   @@index([playerId])
@@ -2347,17 +2797,17 @@ model PlayerTechnology {
 }
 
 model ResearchJob {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   playerId     String
-  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player       Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
   villageId    String
-  village      Village  @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  village      Village    @relation(fields: [villageId], references: [id], onDelete: Cascade)
   buildingId   String
-  building     Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  building     Building   @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   technologyId String
   technology   Technology @relation(fields: [technologyId], references: [id], onDelete: Cascade)
 
-  startedAt    DateTime @default(now())
+  startedAt    DateTime  @default(now())
   completionAt DateTime
   // jobs cannot be canceled; upon completion, we mark completedAt and keep as history
   completedAt  DateTime?
@@ -2381,19 +2831,19 @@ enum SmithyUpgradeKind {
 }
 
 model SmithyUpgradeJob {
-  id         String            @id @default(cuid())
-  playerId   String
-  player     Player            @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  villageId  String
-  village    Village           @relation(fields: [villageId], references: [id], onDelete: Cascade)
-  buildingId String
-  building   Building          @relation(fields: [buildingId], references: [id], onDelete: Cascade)
-  unitTypeId String
-  unitType   UnitType          @relation(fields: [unitTypeId], references: [id], onDelete: Cascade)
-  kind       SmithyUpgradeKind
+  id          String            @id @default(cuid())
+  playerId    String
+  player      Player            @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  villageId   String
+  village     Village           @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  buildingId  String
+  building    Building          @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unitTypeId  String
+  unitType    UnitType          @relation(fields: [unitTypeId], references: [id], onDelete: Cascade)
+  kind        SmithyUpgradeKind
   targetLevel Int
 
-  startedAt    DateTime @default(now())
+  startedAt    DateTime  @default(now())
   completionAt DateTime
   completedAt  DateTime?
 
@@ -2435,24 +2885,24 @@ model Tribe {
   memberCount Int @default(1)
 
   // Settings
-  joinPolicy JoinPolicy @default(INVITE_ONLY)
-  memberDefaultPermissions Json @default("[]")
-  diplomacySettings        Json? @default("{}")
-  forumSettings            Json? @default("{}")
-  settings                 Json? @default("{}")
+  joinPolicy               JoinPolicy @default(INVITE_ONLY)
+  memberDefaultPermissions Json
+  diplomacySettings        Json?
+  forumSettings            Json?
+  settings                 Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  members            Player[]      @relation("TribeMembers")
-  invites            TribeInvite[]
-  applications       TribeApplication[]
-  treatiesAsPrimary  TribeTreaty[] @relation("PrimaryTribeTreaty")
-  treatiesAsSecondary TribeTreaty[] @relation("SecondaryTribeTreaty")
-  attacks            War[]         @relation("AttackerTribe")
-  defenses           War[]         @relation("DefenderTribe")
-  leadingEndgameStates EndgameState[]
+  members                 Player[]             @relation("TribeMembers")
+  invites                 TribeInvite[]
+  applications            TribeApplication[]
+  treatiesAsPrimary       TribeTreaty[]        @relation("PrimaryTribeTreaty")
+  treatiesAsSecondary     TribeTreaty[]        @relation("SecondaryTribeTreaty")
+  attacks                 War[]                @relation("AttackerTribe")
+  defenses                War[]                @relation("DefenderTribe")
+  leadingEndgameStates    EndgameState[]
   controllingRuneVillages EndgameRuneVillage[]
 
   @@index([name])
@@ -2494,12 +2944,12 @@ model TribeInvite {
   tribeId String
   tribe   Tribe  @relation(fields: [tribeId], references: [id], onDelete: Cascade)
 
-  playerId String
-  player   Player @relation("TribeInviteRecipient", fields: [playerId], references: [id], onDelete: Cascade)
+  playerId    String
+  player      Player  @relation("TribeInviteRecipient", fields: [playerId], references: [id], onDelete: Cascade)
   invitedById String?
   invitedBy   Player? @relation("TribeInviteSender", fields: [invitedById], references: [id], onDelete: SetNull)
 
-  status InviteStatus @default(PENDING)
+  status  InviteStatus @default(PENDING)
   message String?
 
   createdAt DateTime @default(now())
@@ -2530,21 +2980,21 @@ model TribeApplication {
   playerId String
   player   Player @relation("TribeApplicationAuthor", fields: [playerId], references: [id], onDelete: Cascade)
 
-  message String?
-  status  TribeApplicationStatus @default(PENDING)
-  reviewedById String?
-  reviewedBy   Player? @relation("TribeApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt   DateTime?
+  message        String?
+  status         TribeApplicationStatus @default(PENDING)
+  reviewedById   String?
+  reviewedBy     Player?                @relation("TribeApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?
   reviewResponse String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tribeId, playerId])
   @@index([tribeId])
   @@index([playerId])
   @@index([status])
   @@index([reviewedById])
-  @@unique([tribeId, playerId])
 }
 
 enum InviteStatus {
@@ -2736,59 +3186,59 @@ model Alliance {
 
   name           String
   normalizedName String
-  tag            String @unique
-  slug           String @unique
-  language       String @default("en")
+  tag            String  @unique
+  slug           String  @unique
+  language       String  @default("en")
   description    String?
   motto          String?
   motd           String?
-  seedPreset     String @default("DEFAULT_GLOBAL")
+  seedPreset     String  @default("DEFAULT_GLOBAL")
 
-  recruitmentStatus AllianceRecruitmentStatus @default(CLOSED)
-  state             AllianceLifecycleState     @default(FORMING)
-  allowMultiMembership Boolean @default(false)
-  allowAutoJoin        Boolean @default(false)
-  creationCostPaid     Boolean @default(false)
-  softCapWarningThreshold Int @default(54)
-  hardCap                Int @default(60)
-  maxPendingInvites      Int @default(90)
-  maxPendingApplications Int @default(100)
+  recruitmentStatus       AllianceRecruitmentStatus @default(CLOSED)
+  state                   AllianceLifecycleState    @default(FORMING)
+  allowMultiMembership    Boolean                   @default(false)
+  allowAutoJoin           Boolean                   @default(false)
+  creationCostPaid        Boolean                   @default(false)
+  softCapWarningThreshold Int                       @default(54)
+  hardCap                 Int                       @default(60)
+  maxPendingInvites       Int                       @default(90)
+  maxPendingApplications  Int                       @default(100)
 
   quietHoursStart Int?
   quietHoursEnd   Int?
 
   questionnaireTemplateId String?
-  activeQuestionnaire AllianceQuestionnaireTemplate? @relation("ActiveQuestionnaireTemplate", fields: [questionnaireTemplateId], references: [id], onDelete: SetNull)
+  activeQuestionnaire     AllianceQuestionnaireTemplate? @relation("ActiveQuestionnaireTemplate", fields: [questionnaireTemplateId], references: [id], onDelete: SetNull)
 
   disbandedAt DateTime?
   deletedAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  members                 AllianceMember[]
-  ranks                   AllianceRank[]
-  permissions             AlliancePermission[]
-  permissionVersions      AlliancePermissionVersion[]
-  squads                  AllianceSquad[]
-  forums                  AllianceForum[]
-  boards                  AllianceBoard[]
-  threads                 AllianceThread[]
-  posts                   AlliancePost[]
-  threadReadStates        AllianceThreadReadState[]
-  announcements           AllianceAnnouncement[]
-  auditLogs               AllianceAuditLog[]
-  invites                 AllianceInvite[]
-  applications            AllianceApplication[]
-  questionnaireTemplates  AllianceQuestionnaireTemplate[] @relation("AllianceSavedTemplates")
-  memberNotes             AllianceMemberNote[]
-  governanceSnapshots     AllianceGovernanceSnapshot[]
-  diplomacySnapshots      AllianceDiplomacySnapshot[] @relation("AllianceDiplomacyOwner")
-  diplomacyMentions       AllianceDiplomacySnapshot[] @relation("DiplomacyTarget")
-  announcementTargetLogs  AllianceAnnouncementTargetLog[]
-  tileVisionStates        TileVisionState[]        @relation("TileVisionStateViewerAlliance")
-  ownedVisionSources      VisionSource[]           @relation("VisionSourceOwnerAlliance")
-  reconMissions           ReconMission[]           @relation("ReconMissionOwnerAlliance")
-  contactLogEntries       ContactLogEntry[]        @relation("ContactLogViewerAlliance")
+  members                AllianceMember[]
+  ranks                  AllianceRank[]
+  permissions            AlliancePermission[]
+  permissionVersions     AlliancePermissionVersion[]
+  squads                 AllianceSquad[]
+  forums                 AllianceForum[]
+  boards                 AllianceBoard[]
+  threads                AllianceThread[]
+  posts                  AlliancePost[]
+  threadReadStates       AllianceThreadReadState[]
+  announcements          AllianceAnnouncement[]
+  auditLogs              AllianceAuditLog[]
+  invites                AllianceInvite[]
+  applications           AllianceApplication[]
+  questionnaireTemplates AllianceQuestionnaireTemplate[] @relation("AllianceSavedTemplates")
+  memberNotes            AllianceMemberNote[]
+  governanceSnapshots    AllianceGovernanceSnapshot[]
+  diplomacySnapshots     AllianceDiplomacySnapshot[]     @relation("AllianceDiplomacyOwner")
+  diplomacyMentions      AllianceDiplomacySnapshot[]     @relation("DiplomacyTarget")
+  announcementTargetLogs AllianceAnnouncementTargetLog[]
+  tileVisionStates       TileVisionState[]               @relation("TileVisionStateViewerAlliance")
+  ownedVisionSources     VisionSource[]                  @relation("VisionSourceOwnerAlliance")
+  reconMissions          ReconMission[]                  @relation("ReconMissionOwnerAlliance")
+  contactLogEntries      ContactLogEntry[]               @relation("ContactLogViewerAlliance")
 
   @@index([worldId])
   @@index([language])
@@ -2803,12 +3253,12 @@ model AllianceQuestionnaireTemplate {
   allianceId String?
   alliance   Alliance? @relation("AllianceSavedTemplates", fields: [allianceId], references: [id], onDelete: Cascade)
 
-  name        String
-  questions   Json
-  isSystem    Boolean @default(false)
-  version     Int     @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  name      String
+  questions Json
+  isSystem  Boolean  @default(false)
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   activeFor Alliance[] @relation("ActiveQuestionnaireTemplate")
 
@@ -2830,28 +3280,28 @@ model AllianceMember {
   squadId String?
   squad   AllianceSquad? @relation(fields: [squadId], references: [id], onDelete: SetNull)
 
-  state           AllianceMemberState @default(PROSPECT)
-  joinedAt        DateTime?
-  probationEndsAt DateTime?
-  lastPromotionAt DateTime?
-  contributionScore Int @default(0)
-  isBarredFromLeadership Boolean @default(false)
-  mutedUntil DateTime?
-  noteCount  Int      @default(0)
-  deletedAt  DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  state                  AllianceMemberState @default(PROSPECT)
+  joinedAt               DateTime?
+  probationEndsAt        DateTime?
+  lastPromotionAt        DateTime?
+  contributionScore      Int                 @default(0)
+  isBarredFromLeadership Boolean             @default(false)
+  mutedUntil             DateTime?
+  noteCount              Int                 @default(0)
+  deletedAt              DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
 
-  notes             AllianceMemberNote[] @relation("AllianceMemberNoteSubject")
-  authoredNotes     AllianceMemberNote[] @relation("AllianceMemberNoteAuthor")
-  permissionOverrides AllianceMemberPermissionOverride[] @relation("AlliancePermissionOverrideMember")
-  announcementReceipts AllianceAnnouncementReceipt[] @relation("AllianceAnnouncementReceiptMember")
-  announcementTargetLogs AllianceAnnouncementTargetLog[] @relation("AllianceAnnouncementTargetMember")
-  threadReadStates  AllianceThreadReadState[] @relation("AllianceThreadReadMember")
-  threadsAuthored   AllianceThread[] @relation("AllianceThreadAuthor")
-  postsAuthored     AlliancePost[] @relation("AlliancePostAuthor")
-  announcementsAuthored AllianceAnnouncement[] @relation("AllianceAnnouncementAuthor")
-  diplomacySnapshotsCreated AllianceDiplomacySnapshot[] @relation("AllianceDiplomacyCreator")
+  notes                     AllianceMemberNote[]               @relation("AllianceMemberNoteSubject")
+  authoredNotes             AllianceMemberNote[]               @relation("AllianceMemberNoteAuthor")
+  permissionOverrides       AllianceMemberPermissionOverride[] @relation("AlliancePermissionOverrideMember")
+  announcementReceipts      AllianceAnnouncementReceipt[]      @relation("AllianceAnnouncementReceiptMember")
+  announcementTargetLogs    AllianceAnnouncementTargetLog[]    @relation("AllianceAnnouncementTargetMember")
+  threadReadStates          AllianceThreadReadState[]          @relation("AllianceThreadReadMember")
+  threadsAuthored           AllianceThread[]                   @relation("AllianceThreadAuthor")
+  postsAuthored             AlliancePost[]                     @relation("AlliancePostAuthor")
+  announcementsAuthored     AllianceAnnouncement[]             @relation("AllianceAnnouncementAuthor")
+  diplomacySnapshotsCreated AllianceDiplomacySnapshot[]        @relation("AllianceDiplomacyCreator")
 
   @@unique([allianceId, playerId])
   @@index([playerId])
@@ -2873,16 +3323,16 @@ model AllianceRank {
   isDefault Boolean @default(false)
 
   inheritsFromId String?
-  inheritsFrom   AllianceRank? @relation("AllianceRankInheritance", fields: [inheritsFromId], references: [id], onDelete: SetNull)
+  inheritsFrom   AllianceRank?  @relation("AllianceRankInheritance", fields: [inheritsFromId], references: [id], onDelete: SetNull)
   children       AllianceRank[] @relation("AllianceRankInheritance")
 
-  version         Int   @default(1)
+  version         Int      @default(1)
   permissionsJson Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  members          AllianceMember[]
-  rankPermissions  AllianceRankPermission[]
+  members         AllianceMember[]
+  rankPermissions AllianceRankPermission[]
 
   @@unique([allianceId, name])
   @@index([allianceId, weight])
@@ -2894,15 +3344,15 @@ model AlliancePermission {
   allianceId String
   alliance   Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
 
-  key       String
-  category  AlliancePermissionCategory
-  label     String
+  key         String
+  category    AlliancePermissionCategory
+  label       String
   description String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
 
-  rankPermissions    AllianceRankPermission[]
-  memberOverrides    AllianceMemberPermissionOverride[]
+  rankPermissions AllianceRankPermission[]
+  memberOverrides AllianceMemberPermissionOverride[]
 
   @@unique([allianceId, key])
   @@index([category])
@@ -2912,11 +3362,11 @@ model AllianceRankPermission {
   id String @id @default(cuid())
 
   rankId       String
-  rank         AllianceRank @relation(fields: [rankId], references: [id], onDelete: Cascade)
+  rank         AllianceRank       @relation(fields: [rankId], references: [id], onDelete: Cascade)
   permissionId String
   permission   AlliancePermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  allow     Boolean @default(true)
+  allow     Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2927,11 +3377,11 @@ model AllianceMemberPermissionOverride {
   id String @id @default(cuid())
 
   memberId     String
-  member       AllianceMember @relation("AlliancePermissionOverrideMember", fields: [memberId], references: [id], onDelete: Cascade)
+  member       AllianceMember     @relation("AlliancePermissionOverrideMember", fields: [memberId], references: [id], onDelete: Cascade)
   permissionId String
   permission   AlliancePermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  allow     Boolean @default(true)
+  allow     Boolean  @default(true)
   reason    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2945,8 +3395,8 @@ model AlliancePermissionVersion {
   allianceId String
   alliance   Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
 
-  version  Int
-  snapshot Json
+  version   Int
+  snapshot  Json
   createdAt DateTime @default(now())
 
   @@unique([allianceId, version])
@@ -2975,14 +3425,14 @@ model AllianceSquad {
 model AllianceForum {
   id String @id @default(cuid())
 
-  allianceId String @unique
+  allianceId String   @unique
   alliance   Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
 
-  postingRules Json?
-  pinLimit    Int    @default(5)
+  postingRules     Json?
+  pinLimit         Int      @default(5)
   archiveAfterDays Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   boards AllianceBoard[]
 }
@@ -2990,22 +3440,22 @@ model AllianceForum {
 model AllianceBoard {
   id String @id @default(cuid())
 
-  forumId  String
-  forum    AllianceForum @relation(fields: [forumId], references: [id], onDelete: Cascade)
+  forumId    String
+  forum      AllianceForum @relation(fields: [forumId], references: [id], onDelete: Cascade)
   allianceId String
-  alliance   Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
+  alliance   Alliance      @relation(fields: [allianceId], references: [id], onDelete: Cascade)
 
-  name        String
-  description String?
-  visibilityScope AllianceForumVisibilityScope @default(ALL)
+  name             String
+  description      String?
+  visibilityScope  AllianceForumVisibilityScope @default(ALL)
   visibilityConfig Json?
-  postingRules    Json?
-  pinLimit        Int    @default(3)
+  postingRules     Json?
+  pinLimit         Int                          @default(3)
   archiveAfterDays Int?
   quotaPerDay      Int?
-  orderIndex       Int    @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  orderIndex       Int                          @default(0)
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
   deletedAt        DateTime?
 
   threads AllianceThread[]
@@ -3028,14 +3478,14 @@ model AllianceThread {
   title      String
   tags       Json?
   status     AllianceThreadStatus @default(OPEN)
-  isPinned   Boolean @default(false)
-  lastPostAt DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  isPinned   Boolean              @default(false)
+  lastPostAt DateTime             @default(now())
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
   deletedAt  DateTime?
 
-  posts       AlliancePost[]
-  readStates  AllianceThreadReadState[]
+  posts      AlliancePost[]
+  readStates AllianceThreadReadState[]
 
   @@index([boardId, status])
   @@index([allianceId, lastPostAt])
@@ -3053,13 +3503,13 @@ model AlliancePost {
   authorMemberId String
   author         AllianceMember @relation("AlliancePostAuthor", fields: [authorMemberId], references: [id], onDelete: Restrict)
 
-  content     String
-  attachments Json?
-  revision    Int     @default(1)
+  content       String
+  attachments   Json?
+  revision      Int       @default(1)
   moderationLog Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
   @@index([threadId, createdAt])
   @@index([authorMemberId])
@@ -3079,9 +3529,9 @@ model AllianceThreadReadState {
 
   lastReadPostId String?
   lastReadAt     DateTime?
-  shard          Int @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  shard          Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([threadId, memberId])
   @@index([allianceId, memberId])
@@ -3097,21 +3547,21 @@ model AllianceAnnouncement {
   authorMemberId String
   author         AllianceMember @relation("AllianceAnnouncementAuthor", fields: [authorMemberId], references: [id], onDelete: Restrict)
 
-  type              AllianceAnnouncementType    @default(INFO)
-  status            AllianceAnnouncementStatus  @default(DRAFT)
-  targetingScope    AllianceAnnouncementTargetScope @default(ALL)
-  targetingFilters  Json?
-  localizedPayload  Json
-  requireAcknowledgement Boolean @default(false)
-  quietHoursBypassed Boolean @default(false)
-  scheduledFor DateTime?
-  sentAt      DateTime?
-  cancelledAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  type                   AllianceAnnouncementType        @default(INFO)
+  status                 AllianceAnnouncementStatus      @default(DRAFT)
+  targetingScope         AllianceAnnouncementTargetScope @default(ALL)
+  targetingFilters       Json?
+  localizedPayload       Json
+  requireAcknowledgement Boolean                         @default(false)
+  quietHoursBypassed     Boolean                         @default(false)
+  scheduledFor           DateTime?
+  sentAt                 DateTime?
+  cancelledAt            DateTime?
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
 
-  receipts    AllianceAnnouncementReceipt[]
-  targetLogs  AllianceAnnouncementTargetLog[]
+  receipts   AllianceAnnouncementReceipt[]
+  targetLogs AllianceAnnouncementTargetLog[]
 
   @@index([allianceId, status])
   @@index([scheduledFor])
@@ -3126,13 +3576,13 @@ model AllianceAnnouncementReceipt {
   memberId String
   member   AllianceMember @relation("AllianceAnnouncementReceiptMember", fields: [memberId], references: [id], onDelete: Cascade)
 
-  acknowledged   Boolean  @default(false)
+  acknowledged   Boolean   @default(false)
   acknowledgedAt DateTime?
-  reminderCount  Int      @default(0)
+  reminderCount  Int       @default(0)
   lastReminderAt DateTime?
   escalatedAt    DateTime?
   expiresAt      DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   @@unique([announcementId, memberId])
   @@index([memberId, acknowledged])
@@ -3175,7 +3625,7 @@ model AllianceAuditLog {
   ipAddress         String?
   deviceInfo        Json?
   metadata          Json?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime              @default(now())
 
   @@index([allianceId, category])
   @@index([createdAt])
@@ -3193,11 +3643,11 @@ model AllianceInvite {
   inviterId String
   inviter   Player @relation("AllianceInviteInviter", fields: [inviterId], references: [id], onDelete: Cascade)
 
-  status   AllianceInvitationStatus @default(SENT)
-  message  String?
+  status    AllianceInvitationStatus @default(SENT)
+  message   String?
   expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
 
   @@unique([allianceId, playerId])
   @@index([playerId])
@@ -3221,8 +3671,8 @@ model AllianceApplication {
   answers    Json?
   expiresAt  DateTime?
   reviewedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @updatedAt
 
   @@index([allianceId, playerId])
   @@index([status])
@@ -3244,8 +3694,8 @@ model AllianceMemberNote {
   content    String
   tags       Json?
   visibility AllianceMemberNoteVisibility @default(STANDARD)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime                     @default(now())
+  updatedAt  DateTime                     @updatedAt
   deletedAt  DateTime?
 
   @@index([memberId, visibility])
@@ -3257,9 +3707,9 @@ model AllianceGovernanceSnapshot {
   allianceId String
   alliance   Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
 
-  loneLeader       Boolean @default(false)
-  pendingTransfers Int     @default(0)
-  probationCount   Int     @default(0)
+  loneLeader       Boolean  @default(false)
+  pendingTransfers Int      @default(0)
+  probationCount   Int      @default(0)
   auditHotspots    Json?
   capturedAt       DateTime @default(now())
 
@@ -3442,14 +3892,14 @@ model ResourceReservation {
   village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
 
   label String
-  wood  Int @default(0)
-  stone Int @default(0)
-  iron  Int @default(0)
-  gold  Int @default(0)
-  food  Int @default(0)
+  wood  Int    @default(0)
+  stone Int    @default(0)
+  iron  Int    @default(0)
+  gold  Int    @default(0)
+  food  Int    @default(0)
 
-  reservedAt DateTime @default(now())
-  expiresAt  DateTime?
+  reservedAt  DateTime  @default(now())
+  expiresAt   DateTime?
   fulfilledAt DateTime?
 
   createdAt DateTime @default(now())
@@ -3569,7 +4019,7 @@ model Message {
 
   isRead Boolean @default(false)
 
-  createdAt DateTime @default(now())
+  createdAt               DateTime                 @default(now())
   emailNotificationEvents EmailNotificationEvent[]
 
   @@index([villageId])
@@ -3640,21 +4090,21 @@ model PlayerNotification {
   type     PlayerNotificationType
   priority NotificationPriority
 
-  title   String
-  message String
+  title     String
+  message   String
   actionUrl String?
-  metadata Json?
-  channels Json?
-  sourceId String?
-  muted   Boolean @default(false)
+  metadata  Json?
+  channels  Json?
+  sourceId  String?
+  muted     Boolean @default(false)
 
-  requiresAcknowledgement Boolean @default(false)
+  requiresAcknowledgement Boolean   @default(false)
   acknowledgedAt          DateTime?
 
-  isRead Boolean   @default(false)
-  readAt DateTime?
+  isRead      Boolean   @default(false)
+  readAt      DateTime?
   dismissedAt DateTime?
-  expiresAt  DateTime?
+  expiresAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3671,21 +4121,106 @@ model NotificationPreference {
   playerId String @unique
   player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
+  // Global switches
+  globalEnabled       Boolean @default(true)
+  doNotDisturbEnabled Boolean @default(false)
+
   importanceThreshold NotificationPriority       @default(MEDIUM)
   desktopEnabled      Boolean                    @default(false)
   mobilePushEnabled   Boolean                    @default(true)
   emailFrequency      NotificationEmailFrequency @default(disabled)
 
-  quietHoursEnabled Boolean @default(false)
-  quietHoursStart   Int?
-  quietHoursEnd     Int?
+  quietHoursEnabled                   Boolean @default(false)
+  quietHoursStart                     Int?
+  quietHoursEnd                       Int?
   suppressNonCriticalDuringQuietHours Boolean @default(true)
 
-  typeSettings       Json @default("{}")
-  soundProfiles      Json @default("{}")
+  // Grouping and retention
+  groupSimilar           Boolean @default(true)
+  groupingWindowMinutes  Int     @default(60)
+  retentionDays          Int     @default(90)
+
+  typeSettings       Json
+  soundProfiles      Json
   channelPreferences Json?
 
   lastDigestAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================================
+// MOBILE PUSH DEVICES
+// ============================================================================
+
+enum MobilePlatform {
+  IOS
+  ANDROID
+}
+
+model PushDevice {
+  id          String         @id @default(cuid())
+  playerId    String
+  platform    MobilePlatform
+  token       String         @unique
+  appVersion  String?
+  deviceLabel String?
+  lastSeenAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([platform])
+}
+
+// ============================================================================
+// PLAYER SETTINGS (DISPLAY/GAMEPLAY/PRIVACY/PERFORMANCE)
+// ============================================================================
+
+enum NumberFormatStyle {
+  COMMA_DECIMAL // 1,000.00
+  DOT_DECIMAL // 1.000,00
+  SPACE_DECIMAL // 1 000,00
+}
+
+enum MapRenderingQuality {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model PlayerSettings {
+  id String @id @default(cuid())
+
+  playerId String @unique
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  // Display
+  language       String? // BCP-47 code
+  timeZone       String? // IANA TZ
+  dateTimeFormat String? // e.g., 'DD/MM/YYYY HH:mm'
+  numberFormat   NumberFormatStyle @default(COMMA_DECIMAL)
+  theme          String? // 'light' | 'dark' | 'system'
+
+  // Gameplay
+  defaultAttackType      String? // 'raid' | 'normal' | etc.
+  unitFormationTemplates Json
+  enableAutoComplete     Boolean @default(true)
+  confirmDialogs         Json    // { attack: true, cancelTrain: true, demolish: true }
+
+  // Privacy (some overlaps exist on Player; these are per-account toggles)
+  onlineStatusVisible Boolean @default(true)
+  contactPreferences  Json    // e.g., { friendRequests: true, mentorship: true }
+  dataSharingOptIn    Boolean @default(false)
+
+  // Performance
+  mapQuality         MapRenderingQuality @default(MEDIUM)
+  animationsEnabled  Boolean             @default(true)
+  autoRefreshSeconds Int                 @default(60)
+  bandwidthSaver     Boolean             @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3706,10 +4241,11 @@ model Admin {
   createdAt DateTime @default(now())
 
   // Relations
-  auditLogs     AuditLog[]
-  notifications AdminNotification[]
-  maintenance   Maintenance[]
-  sentMessages  AdminMessage[]      @relation("FromAdmin")
+  auditLogs          AuditLog[]
+  notifications      AdminNotification[]
+  maintenance        Maintenance[]
+  sentMessages       AdminMessage[]      @relation("FromAdmin")
+  enforcementActions EnforcementAction[]
 
   @@index([userId])
   @@index([role]) // For role-based admin queries
@@ -3811,17 +4347,17 @@ model EmailNotificationSetting {
 
   deliverySchedule EmailDeliverySchedule @default(IMMEDIATE)
   language         EmailLanguage         @default(EN)
-  preferences      Json                  @default("{}")
+  preferences      Json
   dailyDigestHour  Int                   @default(8)
   lastDigestSentAt DateTime?
 
   rateLimitWindowStart DateTime?
-  rateLimitCount       Int @default(0)
+  rateLimitCount       Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  events    EmailNotificationEvent[]
+  events     EmailNotificationEvent[]
   deliveries EmailNotificationDelivery[]
 
   @@index([playerId])
@@ -3835,7 +4371,7 @@ model EmailNotificationEvent {
   player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   messageId String?
-  message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  message   Message?                  @relation(fields: [messageId], references: [id], onDelete: SetNull)
   settingId String?
   setting   EmailNotificationSetting? @relation(fields: [settingId], references: [id], onDelete: Cascade)
 
@@ -3852,8 +4388,8 @@ model EmailNotificationEvent {
   digestHash String?
   forceSend  Boolean                 @default(false)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime                    @default(now())
+  updatedAt  DateTime                    @updatedAt
   deliveries EmailNotificationDelivery[]
 
   @@index([playerId, status, readyAt])
@@ -3868,8 +4404,8 @@ model EmailNotificationDelivery {
   notificationId String?
   notification   EmailNotificationEvent? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
 
-  playerId String
-  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player                    @relation(fields: [playerId], references: [id], onDelete: Cascade)
   settingId String?
   setting   EmailNotificationSetting? @relation(fields: [settingId], references: [id], onDelete: Cascade)
 
@@ -3967,6 +4503,126 @@ model AdminMessage {
   @@index([toPlayerId])
   @@index([isRead])
   @@index([createdAt])
+}
+
+// ============================================================================
+// PLAYER-DRIVEN MODERATION REPORTS
+// ============================================================================
+
+enum PlayerReportType {
+  MULTI_ACCOUNT
+  BUG_ABUSE
+  HARASSMENT
+  INAPPROPRIATE_NAME
+  OTHER
+}
+
+enum PlayerReportStatus {
+  OPEN
+  UNDER_REVIEW
+  ACTION_TAKEN
+  DISMISSED
+  SPAM
+}
+
+enum PlayerReportSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model PlayerReport {
+  id        String @id @default(cuid())
+  reference String @unique
+
+  reporterUserId   String
+  reporterPlayerId String?
+  isAnonymous      Boolean @default(false)
+
+  targetUserId    String?
+  targetPlayerId  String?
+  targetVillageId String?
+  targetMessageId String?
+
+  type     PlayerReportType
+  status   PlayerReportStatus   @default(OPEN)
+  severity PlayerReportSeverity @default(MEDIUM)
+
+  description String
+  evidence    Json?
+  occurredAt  DateTime?
+
+  adminNotes Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, status])
+  @@index([severity, status])
+  @@index([reporterUserId, createdAt])
+}
+
+// ============================================================================
+// TUTORIAL / QUEST SYSTEM
+// ============================================================================
+
+enum TutorialProgressStatus {
+  PENDING
+  COMPLETED
+  REWARDED
+}
+
+model TutorialQuest {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  title       String
+  description String?
+  order       Int     @default(0)
+  isActive    Boolean @default(true)
+
+  tasks TutorialTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+model TutorialTask {
+  id          String  @id @default(cuid())
+  questId     String
+  quest       TutorialQuest @relation(fields: [questId], references: [id], onDelete: Cascade)
+  key         String  @unique
+  title       String
+  description String?
+  order       Int     @default(0)
+  reward      Json?
+  isActive    Boolean @default(true)
+
+  progresses PlayerTaskProgress[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([questId, order])
+  @@index([isActive])
+}
+
+model PlayerTaskProgress {
+  id        String  @id @default(cuid())
+  playerId  String
+  taskId    String
+  status    TutorialProgressStatus @default(PENDING)
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  task   TutorialTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, taskId])
+  @@index([playerId, status])
 }
 
 // ============================================================================
@@ -4426,7 +5082,7 @@ model AttackPreset {
 
   name             String
   type             AttackType
-  requiresGoldClub Boolean    @default(false)
+  requiresGoldClub Boolean             @default(false)
   mission          AttackPresetMission @default(ATTACK)
 
   targetVillageId String?
@@ -4517,4 +5173,108 @@ model ReinforcementUnit {
 
   @@index([reinforcementId])
   @@index([troopId])
+}
+
+// ============================================================================
+// REPORT MANAGEMENT & SHARING
+// ============================================================================
+
+enum ReportKind {
+  MOVEMENT
+  SCOUT
+}
+
+model ReportMetadata {
+  id             String     @id @default(cuid())
+  ownerAccountId String
+  kind           ReportKind
+  refId          String
+  starred        Boolean    @default(false)
+  archived       Boolean    @default(false)
+  readAt         DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  owner Player @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerAccountId, kind, refId])
+  @@index([ownerAccountId, starred])
+  @@index([ownerAccountId, archived])
+}
+
+model ReportFolder {
+  id             String   @id @default(cuid())
+  ownerAccountId String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner   Player              @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+  entries ReportFolderEntry[]
+
+  @@unique([ownerAccountId, name])
+  @@index([ownerAccountId])
+}
+
+model ReportFolderEntry {
+  folderId       String
+  ownerAccountId String
+  kind           ReportKind
+  refId          String
+  createdAt      DateTime   @default(now())
+
+  folder ReportFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  owner  Player       @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+
+  @@id([folderId, ownerAccountId, kind, refId])
+  @@index([ownerAccountId])
+}
+
+model ReportTag {
+  id             String   @id @default(cuid())
+  ownerAccountId String
+  label          String
+  color          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner   Player           @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+  entries ReportTagEntry[]
+
+  @@unique([ownerAccountId, label])
+  @@index([ownerAccountId])
+}
+
+model ReportTagEntry {
+  tagId          String
+  ownerAccountId String
+  kind           ReportKind
+  refId          String
+  createdAt      DateTime   @default(now())
+
+  tag   ReportTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  owner Player    @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+
+  @@id([tagId, ownerAccountId, kind, refId])
+  @@index([ownerAccountId])
+}
+
+enum ReportShareVisibility {
+  PUBLIC
+}
+
+model ReportShareToken {
+  token          String                @id @default(cuid())
+  ownerAccountId String
+  kind           ReportKind
+  refId          String
+  visibility     ReportShareVisibility @default(PUBLIC)
+  expiresAt      DateTime
+  createdAt      DateTime              @default(now())
+
+  owner Player @relation(fields: [ownerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([ownerAccountId])
+  @@index([kind, refId])
+  @@index([expiresAt])
 }

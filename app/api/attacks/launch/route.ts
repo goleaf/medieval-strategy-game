@@ -20,6 +20,10 @@ import { WorldRulesService } from "@/lib/game-rules/world-rules"
 import { getTroopSystemConfig } from "@/lib/troop-system/config"
 import { getRallyPointEngine } from "@/lib/rally-point/server"
 import { randomUUID } from "node:crypto"
+import { authenticateRequest } from "@/app/api/auth/middleware"
+import { SitterPermissions } from "@/lib/utils/sitter-permissions"
+import { SitterDualService } from "@/lib/game-services/sitter-dual-service"
+import type { AccountActorType } from "@prisma/client"
 
 function looksLikeUnitTypeId(id: string): boolean {
   const config = getTroopSystemConfig()
@@ -41,6 +45,8 @@ const attackTypeToRallyMission = (attackType: AttackType): "attack" | "raid" => 
 }
 export async function POST(req: NextRequest) {
   try {
+    const auth = await authenticateRequest(req)
+    if (!auth?.playerId) return errorResponse("Unauthorized", 401)
     const body = await req.json()
     
     // Validate basic structure first
@@ -54,13 +60,15 @@ export async function POST(req: NextRequest) {
         troopId,
         quantity: quantity as number,
       })),
+      catapultTargets: body.catapultTargets,
+      arriveAt: body.arriveAt,
     })
 
     if (!validated.success) {
       return errorResponse(validated.error, 400)
     }
 
-    const { fromVillageId, toX, toY, type, units } = validated.data
+    const { fromVillageId, toX, toY, type, units, arriveAt } = validated.data
     const catapultTargets: string[] | undefined = Array.isArray(body.catapultTargets)
       ? (body.catapultTargets as string[])
       : undefined
@@ -75,6 +83,15 @@ export async function POST(req: NextRequest) {
       return notFoundResponse()
     }
 
+    // Enforcement: check attacking restriction
+    {
+      const { checkPermission } = await import("@/lib/moderation/enforcement")
+      const permission = await checkPermission(fromVillage.playerId, "ATTACK")
+      if (!permission.allowed) {
+        return errorResponse(permission.reason || "Attacking restricted", 403)
+      }
+    }
+
     // Find target village
     const targetVillage = await prisma.village.findUnique({
       where: { x_y: { x: toX, y: toY } },
@@ -84,16 +101,6 @@ export async function POST(req: NextRequest) {
     // Check if attacker has beginner protection
     const attackerIsProtected = await ProtectionService.isPlayerProtected(fromVillage.playerId)
 
-    if (attackerIsProtected) {
-      // Protected players can only attack Natars and unoccupied oases
-      const isValidTarget = !targetVillage || // Unoccupied oasis
-        (targetVillage.player && targetVillage.player.playerName.toLowerCase().includes('natar'))
-
-      if (!isValidTarget) {
-        return errorResponse("Players under beginner protection can only attack Natars and unoccupied oases", 403)
-      }
-    }
-
     if (targetVillage) {
       // Check if target village is protected (except for scouting and when attacking Natars)
       if (type !== "SCOUT") {
@@ -102,6 +109,33 @@ export async function POST(req: NextRequest) {
 
         if (isTargetProtected && !isNatar) {
           return errorResponse("Target village is protected by beginner protection", 403)
+        }
+
+        // If attacker is protected and target is not protected (and not Natar), allow but drop protection early.
+        if (attackerIsProtected && !isTargetProtected && !isNatar) {
+          const confirm = Boolean(body.confirmProtectionDrop)
+          if (!confirm) {
+            return errorResponse(
+              "Attacking this player will end your beginner protection immediately. Resubmit with confirmProtectionDrop=true to proceed.",
+              409,
+            )
+          }
+          await prisma.player.update({
+            where: { id: fromVillage.playerId },
+            data: { beginnerProtectionUntil: new Date() },
+          })
+          try {
+            const { NotificationService } = await import("@/lib/game-services/notification-service")
+            await NotificationService.emit({
+              playerId: fromVillage.playerId,
+              type: "GAME_UPDATE",
+              priority: "MEDIUM",
+              title: "Beginner protection ended",
+              message: "Your attack on a non-protected player ended your protection early.",
+              actionUrl: "/rules",
+              metadata: { reason: "attack_non_protected" },
+            })
+          } catch {}
         }
       }
 
@@ -157,8 +191,39 @@ export async function POST(req: NextRequest) {
         target,
         units: unitsByType,
         catapultTargets,
+        arriveAt: arriveAt ? new Date(arriveAt) : undefined,
         idempotencyKey: randomUUID(),
       })
+
+      // Log sitter/dual action
+      {
+        const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || undefined
+        const ua = req.headers.get("user-agent") || undefined
+        if (sitterContext.isSitter) {
+          await SitterDualService.logAction({
+            playerId: auth.playerId!,
+            actorType: "SITTER" as AccountActorType,
+            actorUserId: auth.userId,
+            actorPlayerId: sitterContext.sitterId,
+            actorLabel: "Sitter",
+            action: "ATTACK_LAUNCH",
+            metadata: { mission, target, units: unitsByType, catapultTargets, arriveAt },
+            ipAddress: ip,
+            userAgent: ua,
+          })
+        } else if (auth.isDual && auth.dualFor) {
+          await SitterDualService.logAction({
+            playerId: auth.playerId!,
+            actorType: "DUAL" as AccountActorType,
+            actorUserId: auth.userId,
+            actorLabel: "Dual",
+            action: "ATTACK_LAUNCH",
+            metadata: { mission, target, units: unitsByType, catapultTargets, arriveAt },
+            ipAddress: ip,
+            userAgent: ua,
+          })
+        }
+      }
 
       return successResponse(
         {
@@ -312,6 +377,36 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Log sitter/dual action for legacy engine case
+    {
+      const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || undefined
+      const ua = req.headers.get("user-agent") || undefined
+      if (sitterContext.isSitter) {
+        await SitterDualService.logAction({
+          playerId: auth.playerId!,
+          actorType: "SITTER" as AccountActorType,
+          actorUserId: auth.userId,
+          actorPlayerId: sitterContext.sitterId,
+          actorLabel: "Sitter",
+          action: "ATTACK_LAUNCH",
+          metadata: { attackId: attack.id, attackType, fromVillageId, toVillageId: targetVillage?.id },
+          ipAddress: ip,
+          userAgent: ua,
+        })
+      } else if (auth.isDual && auth.dualFor) {
+        await SitterDualService.logAction({
+          playerId: auth.playerId!,
+          actorType: "DUAL" as AccountActorType,
+          actorUserId: auth.userId,
+          actorLabel: "Dual",
+          action: "ATTACK_LAUNCH",
+          metadata: { attackId: attack.id, attackType, fromVillageId, toVillageId: targetVillage?.id },
+          ipAddress: ip,
+          userAgent: ua,
+        })
+      }
+    }
+
     return successResponse(attack, 201)
   } catch (error) {
     const validationError = handleValidationError(error)
@@ -319,3 +414,16 @@ export async function POST(req: NextRequest) {
     return serverErrorResponse(error)
   }
 }
+    // Sitter enforcement: sending raids/attacks requires permission
+    const sitterContext = await SitterPermissions.getSitterContext(auth)
+    if (sitterContext.isSitter) {
+      // Require 'launchConquest' for CONQUEST; otherwise 'sendRaids'
+      const action = attackType === 'CONQUEST' ? 'launchConquest' : 'sendRaids'
+      const permissionCheck = await SitterPermissions.enforcePermission(
+        req,
+        sitterContext.sitterId!,
+        sitterContext.ownerId!,
+        action
+      )
+      if (permissionCheck) return permissionCheck
+    }

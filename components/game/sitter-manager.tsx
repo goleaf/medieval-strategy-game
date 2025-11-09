@@ -19,6 +19,10 @@ interface Sitter {
     canSendRaids: boolean
     canUseResources: boolean
     canBuyAndSpendGold: boolean
+    canDemolishBuildings?: boolean
+    canRecallReinforcements?: boolean
+    canLaunchConquest?: boolean
+    canDismissTroops?: boolean
   }
   addedAt: string
 }
@@ -34,10 +38,15 @@ export function SitterManager({ className }: SitterManagerProps) {
   const [loading, setLoading] = useState(true)
   const [addingSitter, setAddingSitter] = useState(false)
   const [newSitterName, setNewSitterName] = useState('')
+  const [logs, setLogs] = useState<any[]>([])
   const [permissions, setPermissions] = useState({
     canSendRaids: false,
     canUseResources: false,
-    canBuyAndSpendGold: false
+    canBuyAndSpendGold: false,
+    canDemolishBuildings: false,
+    canRecallReinforcements: false,
+    canLaunchConquest: false,
+    canDismissTroops: false,
   })
 
   useEffect(() => {
@@ -54,6 +63,14 @@ export function SitterManager({ className }: SitterManagerProps) {
         setInactivityAllowance(data.data.inactivityAllowance)
         setLastOwnerActivity(data.data.lastOwnerActivity)
       }
+      // Fetch logs in parallel
+      try {
+        const logsRes = await fetch('/api/sitters/logs')
+        const logsData = await logsRes.json()
+        if (logsData.success) {
+          setLogs(logsData.data.logs)
+        }
+      } catch {}
     } catch (error) {
       console.error('Error fetching sitters:', error)
     } finally {
@@ -66,8 +83,8 @@ export function SitterManager({ className }: SitterManagerProps) {
 
     setAddingSitter(true)
     try {
-      // First, find the player by name
-      const searchResponse = await fetch(`/api/admin/search?q=${encodeURIComponent(newSitterName)}&type=players&limit=1`)
+      // First, find the player by name (non-admin lookup)
+      const searchResponse = await fetch(`/api/players/lookup?q=${encodeURIComponent(newSitterName)}&limit=1`)
       const searchData = await searchResponse.json()
 
       if (!searchData.success || searchData.data.players.length === 0) {
@@ -192,6 +209,18 @@ export function SitterManager({ className }: SitterManagerProps) {
                       {sitter.permissions.canBuyAndSpendGold && (
                         <Badge variant="outline" className="text-xs">Spend Gold</Badge>
                       )}
+                      {sitter.permissions.canLaunchConquest && (
+                        <Badge variant="outline" className="text-xs">Conquest</Badge>
+                      )}
+                      {sitter.permissions.canDemolishBuildings && (
+                        <Badge variant="outline" className="text-xs">Demolish</Badge>
+                      )}
+                      {sitter.permissions.canRecallReinforcements && (
+                        <Badge variant="outline" className="text-xs">Recall</Badge>
+                      )}
+                      {sitter.permissions.canDismissTroops && (
+                        <Badge variant="outline" className="text-xs">Dismiss</Badge>
+                      )}
                     </div>
                   </div>
                   <Button
@@ -227,6 +256,56 @@ export function SitterManager({ className }: SitterManagerProps) {
 
               <div>
                 <Label className="text-sm font-medium">Permissions</Label>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setPermissions({
+                        canSendRaids: true,
+                        canUseResources: false,
+                        canBuyAndSpendGold: false,
+                        canDemolishBuildings: false,
+                        canRecallReinforcements: false,
+                        canLaunchConquest: false,
+                        canDismissTroops: false,
+                      })
+                    }
+                  >Combat only</Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setPermissions({
+                        canSendRaids: true,
+                        canUseResources: true,
+                        canBuyAndSpendGold: false,
+                        canDemolishBuildings: false,
+                        canRecallReinforcements: true,
+                        canLaunchConquest: false,
+                        canDismissTroops: false,
+                      })
+                    }
+                  >Standard</Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setPermissions({
+                        canSendRaids: true,
+                        canUseResources: true,
+                        canBuyAndSpendGold: true,
+                        canDemolishBuildings: true,
+                        canRecallReinforcements: true,
+                        canLaunchConquest: true,
+                        canDismissTroops: true,
+                      })
+                    }
+                  >Full</Button>
+                </div>
                 <div className="space-y-2 mt-2">
                   <div className="flex items-center space-x-2">
                     <Checkbox
@@ -266,6 +345,58 @@ export function SitterManager({ className }: SitterManagerProps) {
                       Can buy and spend gold (unlimited)
                     </Label>
                   </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="canLaunchConquest"
+                      checked={permissions.canLaunchConquest}
+                      onCheckedChange={(checked) =>
+                        setPermissions(prev => ({ ...prev, canLaunchConquest: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="canLaunchConquest" className="text-sm">
+                      Can launch conquest (noble) attacks
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="canDemolishBuildings"
+                      checked={permissions.canDemolishBuildings}
+                      onCheckedChange={(checked) =>
+                        setPermissions(prev => ({ ...prev, canDemolishBuildings: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="canDemolishBuildings" className="text-sm">
+                      Can demolish buildings
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="canRecallReinforcements"
+                      checked={permissions.canRecallReinforcements}
+                      onCheckedChange={(checked) =>
+                        setPermissions(prev => ({ ...prev, canRecallReinforcements: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="canRecallReinforcements" className="text-sm">
+                      Can recall reinforcements
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="canDismissTroops"
+                      checked={permissions.canDismissTroops}
+                      onCheckedChange={(checked) =>
+                        setPermissions(prev => ({ ...prev, canDismissTroops: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="canDismissTroops" className="text-sm">
+                      Can dismiss troops
+                    </Label>
+                  </div>
                 </div>
               </div>
 
@@ -280,8 +411,36 @@ export function SitterManager({ className }: SitterManagerProps) {
             </div>
           </div>
         )}
+
+        {/* Sitter Activity Log */}
+        <div className="mt-8">
+          <h3 className="text-lg font-medium mb-3">Sitter Activity Log</h3>
+          {logs.length === 0 ? (
+            <p className="text-sm text-gray-500">No sitter/dual actions recorded.</p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto border rounded">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left p-2">Time</th>
+                    <th className="text-left p-2">Actor</th>
+                    <th className="text-left p-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((l: any) => (
+                    <tr key={l.id} className="border-t">
+                      <td className="p-2 whitespace-nowrap">{new Date(l.createdAt).toLocaleString()}</td>
+                      <td className="p-2">{l.actorType}</td>
+                      <td className="p-2">{l.action}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </Card>
   )
 }
-

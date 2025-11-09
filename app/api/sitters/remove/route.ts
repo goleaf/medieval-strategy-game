@@ -1,29 +1,21 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
+import { NextRequest } from "next/server"
+import { authenticateRequest } from "@/app/api/auth/middleware"
+import { errorResponse, serverErrorResponse, successResponse, unauthorizedResponse } from "@/lib/utils/api-response"
 import { SitterDualService } from "@/lib/game-services/sitter-dual-service"
-import { authOptions } from "@/lib/auth"
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const auth = await authenticateRequest(req)
+    if (!auth?.playerId) return unauthorizedResponse()
 
     const body = await req.json()
-    const { sitterId } = body
+    const { sitterId } = body || {}
+    if (!sitterId) return errorResponse("Missing sitterId", 400)
 
-    if (!sitterId) {
-      return NextResponse.json({ error: "Missing sitterId" }, { status: 400 })
-    }
-
-    await SitterDualService.removeSitter(session.user.id, sitterId)
-
-    return NextResponse.json({ success: true })
+    await SitterDualService.removeSitter(auth.playerId, sitterId)
+    return successResponse({ removed: true })
   } catch (error) {
-    console.error("Error removing sitter:", error)
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : "Internal server error"
-    }, { status: 500 })
+    return serverErrorResponse(error)
   }
 }
+

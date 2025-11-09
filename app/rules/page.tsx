@@ -81,6 +81,58 @@ const sections: RuleSection[] = [
   },
 ]
 
+const prohibited = [
+  {
+    title: "Account sharing (outside sitter/dual)",
+    examples: [
+      "Giving your password to a friend to run attacks overnight",
+      "Maintaining two accounts on the same world to feed resources",
+    ],
+  },
+  {
+    title: "Bug exploitation",
+    examples: [
+      "Duplicating resources via desyncs or reload tricks",
+      "Triggering unintended instant completions",
+    ],
+  },
+  {
+    title: "Scripting / automation",
+    examples: [
+      "Auto-raiding using external scripts or extensions",
+      "Automated message spam or scouting bots",
+    ],
+  },
+  {
+    title: "Real money trading (RMT)",
+    examples: [
+      "Selling resources or villages for cash or gift cards",
+      "Buying ranked accounts or alliance spots",
+    ],
+  },
+  {
+    title: "Harassment / bullying",
+    examples: [
+      "Threatening or targeted hate speech in DMs or tribe chat",
+      "Doxxing or posting personal information",
+    ],
+  },
+  {
+    title: "Cheating tools",
+    examples: [
+      "Modified clients revealing map intel beyond fog of war",
+      "Packet manipulation and map hacks",
+    ],
+  },
+  {
+    title: "Coordinated rule breaking",
+    examples: [
+      "Tribe-wide pushing rings funneling resources to a single account",
+      "Organized bug abuse to manipulate leaderboards",
+    ],
+  },
+]
+
 const enforcementSteps = [
   {
     label: "Reminder",
@@ -145,6 +197,25 @@ export default function RulesPage() {
             </section>
           ))}
         </div>
+
+        <section className="rounded-3xl border border-border bg-card/80 p-8 shadow-lg space-y-6">
+          <div className="space-y-2">
+            <h2 className="text-2xl font-semibold">Prohibited actions</h2>
+            <p className="text-muted-foreground">These are never allowed. Violations may lead to suspensions or permanent bans.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {prohibited.map((item) => (
+              <article key={item.title} className="rounded-2xl border border-border bg-background/60 p-4 space-y-2">
+                <h3 className="text-lg font-semibold">{item.title}</h3>
+                <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+                  {item.examples.map((ex) => (
+                    <li key={ex}>{ex}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
 
         <section className="rounded-3xl border border-border bg-card/80 p-8 shadow-lg space-y-6">
           <div className="space-y-2">

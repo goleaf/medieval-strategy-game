@@ -65,6 +65,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Check if IP is banned (prevent creating new accounts)
+    {
+      const header = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip")
+      const ip = header ? header.split(",")[0].trim() : (undefined as string | undefined)
+      const { isIpBanned } = await import("@/lib/moderation/enforcement")
+      if (await isIpBanned(ip)) {
+        return NextResponse.json({ error: "IP banned" }, { status: 403 })
+      }
+    }
+
     // Check if user exists
     const existing = await prisma.user.findFirst({
       where: {

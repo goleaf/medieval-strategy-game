@@ -64,13 +64,22 @@ model Sitter {
   sitter    Player   @relation("SitterPlayer", fields: [sitterId], references: [id])
 
   // Permissions
-  canSendRaids        Boolean @default(false)
-  canUseResources     Boolean @default(false)
-  canBuyAndSpendGold  Boolean @default(false)
+  canSendRaids            Boolean @default(false)
+  canUseResources         Boolean @default(false)
+  canBuyAndSpendGold      Boolean @default(false)
+  canDemolishBuildings    Boolean @default(false)
+  canRecallReinforcements Boolean @default(false)
+  canLaunchConquest       Boolean @default(false)
+  canDismissTroops        Boolean @default(false)
 
   // Status
   isActive  Boolean   @default(true)
   addedAt   DateTime  @default(now())
+
+  // Optional time-bound expiration (ownership removal does not require session end)
+  expiresAt DateTime?
+
+  sessions SitterSession[]
 }
 ```
 
@@ -92,6 +101,40 @@ model Dual {
   invitedAt DateTime  @default(now())
   acceptedAt DateTime?
 }
+
+### SitterSession Model
+```typescript
+model SitterSession {
+  id            String   @id @default(cuid())
+  sitterRelId   String
+  sitterRel     Sitter   @relation(fields: [sitterRelId], references: [id])
+  ownerId       String
+  sitterId      String
+  startedAt     DateTime @default(now())
+  expiresAt     DateTime
+  endedAt       DateTime?
+  endReason     String?
+  isActive      Boolean  @default(true)
+  permissionSnapshot Json?
+}
+```
+
+### AccountActionLog Model
+```typescript
+enum AccountActorType { OWNER, SITTER, DUAL }
+
+model AccountActionLog {
+  id          String   @id @default(cuid())
+  playerId    String
+  actorType   AccountActorType
+  actorUserId String?
+  actorPlayerId String?
+  actorLabel  String?
+  action      String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+```
 ```
 
 ## API Endpoints
@@ -188,7 +231,7 @@ Removes a dual relationship.
 ### Authentication
 
 #### POST `/api/auth/sitter-login`
-Creates a sitter session for accessing another player's account.
+Creates a sitter session (default 24h) for accessing another player's account. Sitter sessions are recorded and tribe members are notified.
 
 #### POST `/api/auth/dual-login`
 Creates a dual session for full account access.
@@ -214,6 +257,18 @@ Returns available accounts that the user can dual control.
 3. **Buy and Spend Gold** (`canBuyAndSpendGold`)
    - Allows purchasing gold and spending it
    - Unlimited spending permission (high trust required)
+
+4. **Launch Conquest** (`canLaunchConquest`)
+   - Allows sending noble/chief conquest attacks
+
+5. **Demolish Buildings** (`canDemolishBuildings`)
+   - Allows starting/cancelling building demolition
+
+6. **Recall Reinforcements** (`canRecallReinforcements`)
+   - Allows withdrawing stationed support
+
+7. **Dismiss Troops** (`canDismissTroops`)
+   - Allows disbanding own troops at home (endpoint to be enforced when added)
 
 ### Permission Enforcement
 
@@ -358,4 +413,3 @@ SELECT * FROM Sitter WHERE isActive = true;
 # View dual relationships
 SELECT * FROM Dual WHERE isActive = true;
 ```
-

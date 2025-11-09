@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TrainingQueuePanel } from "@/components/game/training-queue-panel"
 import { useToast } from "@/components/ui/use-toast"
+import { AdvisorHints } from "@/components/advisor/AdvisorHints"
 import type { TrainingBuilding, TrainingStatus } from "@prisma/client"
 // Types inferred from API responses
 type VillageWithTroops = {
@@ -177,6 +178,7 @@ export default function TroopsPage() {
       }`}
       className="min-h-screen bg-background text-foreground"
     >
+      <AdvisorHints scope="rally" />
       <header className="border-b border-border p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Link href={`/village/${villageId}`}>
@@ -228,6 +230,7 @@ export default function TroopsPage() {
                 <TroopTrainer
                   villageId={villageId}
                   tribe={playerTribe as any}
+                  playerId={playerId}
                   onTrain={async () => {
                     await fetchVillage()
                   }}

@@ -1,50 +1,42 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
+import { NextRequest } from "next/server"
+import { authenticateRequest } from "@/app/api/auth/middleware"
 import { prisma } from "@/lib/db"
-import { authOptions } from "@/lib/auth"
+import { serverErrorResponse, successResponse, unauthorizedResponse } from "@/lib/utils/api-response"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const auth = await authenticateRequest(req)
+    if (!auth?.userId) return unauthorizedResponse()
 
-    // Find all sitters where the current user is the sitter
-    const sitters = await prisma.sitter.findMany({
-      where: {
-        sitterId: session.user.id,
-        isActive: true,
-        owner: {
-          inactivityAllowanceDays: { gt: 0 } // Only show accounts with remaining allowance
-        }
-      },
+    // Find all player avatars for this user
+    const myPlayers = await prisma.player.findMany({
+      where: { userId: auth.userId },
+      select: { id: true }
+    })
+
+    const myPlayerIds = myPlayers.map(p => p.id)
+    if (myPlayerIds.length === 0) return successResponse({ accounts: [] })
+
+    // Find owners for whom I am an active sitter
+    const sitterLinks = await prisma.sitter.findMany({
+      where: { sitterId: { in: myPlayerIds }, isActive: true },
       include: {
-        owner: {
-          select: {
-            id: true,
-            playerName: true,
-            lastActiveAt: true,
-            inactivityAllowanceDays: true
-          }
-        }
+        owner: true,
       }
     })
 
-    const accounts = sitters.map(sitter => ({
-      id: sitter.owner.id,
-      playerName: sitter.owner.playerName,
-      lastActiveAt: sitter.owner.lastActiveAt,
-      inactivityAllowance: sitter.owner.inactivityAllowanceDays
-    }))
+    const accounts = sitterLinks
+      .filter(link => (link.owner.inactivityAllowanceDays ?? 0) > 0)
+      .map(link => ({
+        id: link.owner.id,
+        playerName: link.owner.playerName,
+        inactivityAllowance: link.owner.inactivityAllowanceDays,
+        lastActiveAt: link.owner.lastActiveAt,
+      }))
 
-    return NextResponse.json({
-      success: true,
-      data: { accounts }
-    })
+    return successResponse({ accounts })
   } catch (error) {
-    console.error("Error fetching sitter accounts:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return serverErrorResponse(error)
   }
 }
 

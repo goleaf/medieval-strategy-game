@@ -1,72 +1,49 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
+import { NextRequest } from "next/server"
+import { authenticateRequest } from "@/app/api/auth/middleware"
 import { prisma } from "@/lib/db"
+import { errorResponse, notFoundResponse, serverErrorResponse, successResponse, unauthorizedResponse } from "@/lib/utils/api-response"
 import { SitterDualService } from "@/lib/game-services/sitter-dual-service"
-import { authOptions } from "@/lib/auth"
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const auth = await authenticateRequest(req)
+    if (!auth?.playerId) return unauthorizedResponse()
+
+    const duals = await prisma.dual.findMany({
+      where: { playerId: auth.playerId, isActive: true },
+      orderBy: { invitedAt: "desc" }
+    })
+
+    const data = {
+      duals: duals.map(d => ({
+        id: d.id,
+        lobbyUserId: d.lobbyUserId,
+        lobbyUsername: d.lobbyUsername,
+        invitedAt: d.invitedAt,
+        acceptedAt: d.acceptedAt,
+        isAccepted: Boolean(d.acceptedAt),
+      }))
     }
 
-    // Get current player's duals
-    const duals = await prisma.dual.findMany({
-      where: {
-        playerId: session.user.id,
-        isActive: true
-      }
-    })
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        duals: duals.map(d => ({
-          id: d.id,
-          lobbyUserId: d.lobbyUserId,
-          lobbyUsername: d.lobbyUsername,
-          invitedAt: d.invitedAt,
-          acceptedAt: d.acceptedAt,
-          isAccepted: !!d.acceptedAt
-        }))
-      }
-    })
+    return successResponse(data)
   } catch (error) {
-    console.error("Error fetching duals:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return serverErrorResponse(error)
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const auth = await authenticateRequest(req)
+    if (!auth?.playerId) return unauthorizedResponse()
 
     const body = await req.json()
-    const { lobbyUserId, lobbyUsername } = body
+    const { lobbyUserId, lobbyUsername } = body || {}
+    if (!lobbyUserId || !lobbyUsername) return errorResponse("Missing lobbyUserId or lobbyUsername", 400)
 
-    if (!lobbyUserId || !lobbyUsername) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
-    }
-
-    const dual = await SitterDualService.inviteDual(session.user.id, lobbyUserId, lobbyUsername)
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: dual.id,
-        lobbyUserId: dual.lobbyUserId,
-        lobbyUsername: dual.lobbyUsername,
-        invitedAt: dual.invitedAt
-      }
-    })
+    const dual = await SitterDualService.inviteDual(auth.playerId, lobbyUserId, lobbyUsername)
+    return successResponse({ id: dual.id })
   } catch (error) {
-    console.error("Error inviting dual:", error)
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : "Internal server error"
-    }, { status: 500 })
+    return serverErrorResponse(error)
   }
 }
+

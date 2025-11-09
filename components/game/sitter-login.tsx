@@ -31,6 +31,7 @@ export function SitterLogin({ className, onLoginSuccess }: SitterLoginProps) {
     targetPlayerName: string
     permissions: string[]
   } | null>(null)
+  const [durationHours, setDurationHours] = useState<number>(24)
 
   useEffect(() => {
     fetchSitterAccounts()
@@ -76,7 +77,7 @@ export function SitterLogin({ className, onLoginSuccess }: SitterLoginProps) {
       const response = await fetch('/api/auth/sitter-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetPlayerId: playerId })
+        body: JSON.stringify({ targetPlayerId: playerId, durationHours })
       })
 
       const data = await response.json()
@@ -175,6 +176,13 @@ export function SitterLogin({ className, onLoginSuccess }: SitterLoginProps) {
               Select an account to sit for:
             </p>
 
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm text-gray-700">Duration:</span>
+              <button className={`px-2 py-1 border rounded ${durationHours===8?'bg-blue-50':''}`} onClick={() => setDurationHours(8)}>8h</button>
+              <button className={`px-2 py-1 border rounded ${durationHours===24?'bg-blue-50':''}`} onClick={() => setDurationHours(24)}>24h</button>
+              <button className={`px-2 py-1 border rounded ${durationHours===72?'bg-blue-50':''}`} onClick={() => setDurationHours(72)}>3d</button>
+            </div>
+
             {sitterAccounts.map((account) => (
               <div key={account.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex-1">
@@ -212,4 +220,3 @@ export function SitterLogin({ className, onLoginSuccess }: SitterLoginProps) {
     </Card>
   )
 }
-

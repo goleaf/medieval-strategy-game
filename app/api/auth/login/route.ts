@@ -44,6 +44,14 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // IP ban check
+    {
+      const { isIpBanned } = await import("@/lib/moderation/enforcement")
+      if (await isIpBanned(ipAddress)) {
+        return NextResponse.json({ error: "IP banned" }, { status: 403 })
+      }
+    }
+
     if (!user) {
       await LoginAttemptService.recordFailure({ identifier, ipAddress, userAgent, reason: "unknown-user" })
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
@@ -62,6 +70,14 @@ export async function POST(req: NextRequest) {
     if (!user.emailVerifiedAt) {
       return NextResponse.json(
         { error: "Email verification required", emailNotVerified: true },
+        { status: 403 },
+      )
+    }
+
+    // Account suspension check
+    if (user.suspendedUntil && user.suspendedUntil > new Date()) {
+      return NextResponse.json(
+        { error: "Account suspended", suspendedUntil: user.suspendedUntil },
         { status: 403 },
       )
     }

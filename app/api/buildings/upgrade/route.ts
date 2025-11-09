@@ -5,6 +5,8 @@ import { buildingUpgradeSchema } from "@/lib/utils/validation"
 import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
 import { authenticateRequest } from "@/app/api/auth/middleware"
 import { SitterPermissions } from "@/lib/utils/sitter-permissions"
+import { SitterDualService } from "@/lib/game-services/sitter-dual-service"
+import { type AccountActorType } from "@prisma/client"
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,6 +39,34 @@ export async function POST(req: NextRequest) {
 
     if (!building) {
       return notFoundResponse()
+    }
+
+    // Log sitter/dual actions for accountability
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || undefined
+    const ua = req.headers.get("user-agent") || undefined
+    if (sitterContext.isSitter) {
+      await SitterDualService.logAction({
+        playerId: auth.playerId,
+        actorType: "SITTER" as AccountActorType,
+        actorUserId: auth.userId,
+        actorPlayerId: sitterContext.sitterId,
+        actorLabel: "Sitter",
+        action: "BUILDING_UPGRADE",
+        metadata: { buildingId: validated.buildingId },
+        ipAddress: ip,
+        userAgent: ua,
+      })
+    } else if (auth.isDual && auth.dualFor) {
+      await SitterDualService.logAction({
+        playerId: auth.playerId,
+        actorType: "DUAL" as AccountActorType,
+        actorUserId: auth.userId,
+        actorLabel: "Dual",
+        action: "BUILDING_UPGRADE",
+        metadata: { buildingId: validated.buildingId },
+        ipAddress: ip,
+        userAgent: ua,
+      })
     }
 
     return successResponse(building)

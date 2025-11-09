@@ -166,6 +166,12 @@ export default function TribesPage() {
   const [reviewingApplicationId, setReviewingApplicationId] = useState<string | null>(null)
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
 
+  // Tribe Smithy tracking (officers)
+  const [smithyMembers, setSmithyMembers] = useState<Array<{ playerId: string; playerName: string; unitTech: Record<string, { attack: number; defense: number }> }>>([])
+  const [smithyAverages, setSmithyAverages] = useState<Array<{ unitTypeId: string; avgAttack: number; avgDefense: number; samples: number }>>([])
+  const [smithyError, setSmithyError] = useState<string | null>(null)
+  const [smithyLoading, setSmithyLoading] = useState(false)
+
   useEffect(() => {
     setLoading(true)
     fetchTribes().finally(() => setLoading(false))
@@ -217,6 +223,10 @@ export default function TribesPage() {
         setSelectedTribeId(tribeId)
         setSelectedTribe(result.data.tribe)
         setManagerPermissions(result.data.permissions || [])
+        // Opportunistically load smithy tracking (will 403 if not officer)
+        if (playerId) {
+          void loadSmithyTracking(tribeId, playerId)
+        }
       } else {
         alert(result.error || "Failed to load tribe details")
       }
@@ -225,6 +235,26 @@ export default function TribesPage() {
       alert("Failed to load tribe details")
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  async function loadSmithyTracking(tribeId: string, requesterId: string) {
+    setSmithyLoading(true)
+    setSmithyError(null)
+    try {
+      const res = await fetch(`/api/tribes/${tribeId}/smithy?requesterId=${requesterId}`)
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error || `Failed to load smithy data (${res.status})`)
+      }
+      setSmithyMembers(data.data.members || [])
+      setSmithyAverages(data.data.averages || [])
+    } catch (e: any) {
+      setSmithyMembers([])
+      setSmithyAverages([])
+      setSmithyError(e.message)
+    } finally {
+      setSmithyLoading(false)
     }
   }
 
@@ -784,6 +814,106 @@ export default function TribesPage() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Officer Smithy Tracking */}
+                {selectedTribeId && playerId && (() => {
+                  const myRole = selectedTribe?.members.find((m) => m.id === playerId)?.tribeRole || "MEMBER"
+                  const allowed = new Set(["FOUNDER", "CO_FOUNDER", "OFFICER"])
+                  return allowed.has(myRole)
+                })() && (
+                  <section className="mt-6">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-base font-semibold">Smithy Upgrades (Officers)</h3>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => loadSmithyTracking(selectedTribeId, playerId)}
+                        disabled={smithyLoading}
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+                    {smithyError && (
+                      <div className="mb-2 text-sm text-red-300">{smithyError}</div>
+                    )}
+                    {!smithyLoading && smithyMembers.length === 0 && !smithyError && (
+                      <div className="text-sm text-muted-foreground">No data or insufficient permissions.</div>
+                    )}
+                    {smithyMembers.length > 0 && (
+                      <div className="overflow-auto rounded-md border border-border">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-muted/40">
+                            <tr>
+                              <th className="px-2 py-2 text-left">Member</th>
+                              {Array.from(
+                                new Set([
+                                  ...smithyMembers.flatMap((m) => Object.keys(m.unitTech || {})),
+                                  ...smithyAverages.map((a) => a.unitTypeId),
+                                ]),
+                              )
+                                .sort()
+                                .map((u) => (
+                                  <th key={u} className="px-2 py-2 text-left whitespace-nowrap font-normal text-foreground/80">
+                                    {u}
+                                  </th>
+                                ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {smithyMembers.map((m) => (
+                              <tr key={m.playerId} className="border-t border-border/50">
+                                <td className="px-2 py-1 whitespace-nowrap font-medium">{m.playerName}</td>
+                                {Array.from(
+                                  new Set([
+                                    ...smithyMembers.flatMap((x) => Object.keys(x.unitTech || {})),
+                                    ...smithyAverages.map((a) => a.unitTypeId),
+                                  ]),
+                                )
+                                  .sort()
+                                  .map((u) => {
+                                    const t = m.unitTech?.[u]
+                                    const a = t?.attack ?? 0
+                                    const d = t?.defense ?? 0
+                                    const total = a + d
+                                    const intensity = Math.min(1, total / 40)
+                                    const bg = `rgba(34,197,94,${0.1 + intensity * 0.35})`
+                                    return (
+                                      <td key={`${m.playerId}-${u}`} className="px-2 py-1 text-center" style={{ backgroundColor: bg }}>
+                                        <span className="font-mono text-xs">{a}/{d}</span>
+                                      </td>
+                                    )
+                                  })}
+                              </tr>
+                            ))}
+                            <tr className="border-t border-border/60 bg-muted/30">
+                              <td className="px-2 py-1 font-semibold">Avg</td>
+                              {Array.from(
+                                new Set([
+                                  ...smithyMembers.flatMap((x) => Object.keys(x.unitTech || {})),
+                                  ...smithyAverages.map((a) => a.unitTypeId),
+                                ]),
+                              )
+                                .sort()
+                                .map((u) => {
+                                  const avg = smithyAverages.find((x) => x.unitTypeId === u)
+                                  const a = Math.round((avg?.avgAttack ?? 0) * 10) / 10
+                                  const d = Math.round((avg?.avgDefense ?? 0) * 10) / 10
+                                  const total = (avg?.avgAttack ?? 0) + (avg?.avgDefense ?? 0)
+                                  const intensity = Math.min(1, total / 40)
+                                  const bg = `rgba(234,179,8,${0.08 + intensity * 0.25})`
+                                  return (
+                                    <td key={`avg-${u}`} className="px-2 py-1 text-center" style={{ backgroundColor: bg }}>
+                                      <span className="font-mono text-xs">{a}/{d}</span>
+                                    </td>
+                                  )
+                                })}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 {canInvite && (
                   <div className="space-y-4">

@@ -6,6 +6,7 @@ import "./globals.css"
 import { startScheduler } from "@/lib/jobs/scheduler"
 import { AlpineProvider } from "@/components/alpine-provider"
 import { Footer } from "@/components/footer"
+import { SwRegister } from "@/components/pwa/sw-register"
 
 import { Libre_Baskerville as V0_Font_Libre_Baskerville, IBM_Plex_Mono as V0_Font_IBM_Plex_Mono, Lora as V0_Font_Lora } from 'next/font/google'
 
@@ -17,7 +18,8 @@ const _lora = V0_Font_Lora({ subsets: ['latin'], weight: ["400","500","600","700
 export const metadata: Metadata = {
   title: "Medieval Strategy Game",
   description: "A classic strategy game. Build kingdoms, train armies, conquer enemies.",
-    generator: 'v0.app'
+    generator: 'v0.app',
+    manifest: "/manifest.webmanifest"
 }
 
 const shouldStartScheduler =
@@ -46,6 +48,7 @@ export default function RootLayout({
           </div>
           <Footer />
         </AlpineProvider>
+        <SwRegister />
         <Analytics />
       </body>
     </html>

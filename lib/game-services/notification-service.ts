@@ -16,6 +16,7 @@ import {
   type PlayerNotificationType,
   type NotificationTypeConfig,
 } from "@/lib/config/notification-types"
+import { PushService } from "@/lib/push/service"
 
 export type NotificationCreateInput = {
   playerId: string
@@ -325,6 +326,16 @@ export class NotificationService {
     priority: NotificationPriority
     preference: NotificationPreferenceModel
   }) {
+    // Global off suppresses everything
+    if ((preference as any).globalEnabled === false) {
+      return true
+    }
+
+    // Do Not Disturb suppresses all non-critical
+    if ((preference as any).doNotDisturbEnabled && priority !== "CRITICAL") {
+      return true
+    }
+
     const typeSettings = normalizeTypeSettings(preference.typeSettings)
     const typePreference = typeSettings[type]
     if (!typePreference?.enabled) {
@@ -363,7 +374,7 @@ export class NotificationService {
     const requiresAcknowledgement =
       payload.requiresAcknowledgement ?? config.persistUntilAck ?? priority === "CRITICAL" || priority === "HIGH"
 
-    await prisma.playerNotification.create({
+    const created = await prisma.playerNotification.create({
       data: {
         playerId: payload.playerId,
         type,
@@ -379,6 +390,24 @@ export class NotificationService {
         expiresAt: payload.expiresAt ?? null,
       },
     })
+
+    // Mobile push (stub): send for non-muted notifications when push is enabled
+    try {
+      const typeSettings = normalizeTypeSettings(preference.typeSettings)
+      const pushEnabled = preference.mobilePushEnabled && (typeSettings[type]?.channels?.push ?? config.defaultChannels.push)
+      if (!muted && pushEnabled) {
+        await PushService.notify(payload.playerId, {
+          title: created.title,
+          message: created.message,
+          type,
+          priority,
+          actionUrl: created.actionUrl ?? undefined,
+          metadata: (created.metadata ?? undefined) as Record<string, unknown> | undefined,
+        })
+      }
+    } catch (err) {
+      console.warn("[push] notify failed:", err)
+    }
   }
 
   static async markAsRead(notificationId: string, playerId: string) {
@@ -488,7 +517,7 @@ export class NotificationService {
       return Number(b.createdAt) - Number(a.createdAt)
     })
 
-    const normalized: NotificationRecord[] = sorted.map((item) => ({
+    let normalized: NotificationRecord[] = sorted.map((item) => ({
       id: item.id,
       type: item.type as PlayerNotificationType,
       title: item.title,
@@ -503,6 +532,43 @@ export class NotificationService {
       metadata: (item.metadata ?? undefined) as Record<string, unknown> | undefined,
       channels: (item.channels ?? undefined) as Record<string, unknown> | undefined,
     }))
+
+    // Optional grouping: combine similar notifications (same type+title) within a recent window
+    try {
+      const pref = await this.resolvePreferenceRecord(playerId)
+      const groupSimilar = Boolean((pref as any)?.groupSimilar)
+      if (groupSimilar && normalized.length > 1) {
+        const minutes = Number((pref as any)?.groupingWindowMinutes ?? 60)
+        const windowMs = Math.max(1, minutes) * 60 * 1000
+        const grouped: NotificationRecord[] = []
+        let i = 0
+        while (i < normalized.length) {
+          const base = normalized[i]
+          let count = 1
+          let j = i + 1
+          while (j < normalized.length) {
+            const candidate = normalized[j]
+            const sameKey = candidate.type === base.type && candidate.title === base.title
+            const withinWindow = Math.abs(new Date(base.createdAt).getTime() - new Date(candidate.createdAt).getTime()) <= windowMs
+            if (sameKey && withinWindow) {
+              count += 1
+              j += 1
+            } else {
+              break
+            }
+          }
+          if (count > 1) {
+            grouped.push({ ...base, groupCount: count })
+          } else {
+            grouped.push(base)
+          }
+          i = j
+        }
+        normalized = grouped
+      }
+    } catch (e) {
+      // best-effort grouping; ignore errors
+    }
 
     return {
       notifications: normalized,

@@ -63,18 +63,19 @@ cp .env.example .env.local
 # Default SQLite database at prisma/dev.db - no additional config needed!
 \`\`\`
 
-4. Initialize the database
-\`\`\`bash
-npx prisma migrate dev --name init
-npx prisma db seed
-\`\`\`
-
-5. Start the development server
+4. Start the development server (auto-sets up DB + seeds)
 \`\`\`bash
 npm run dev
 \`\`\`
 
 Visit \`http://localhost:3000\` to play!
+
+## Development scripts
+
+- \`npm run dev\` — sets up the database (Prisma generate + migrate) and runs all seeds, then starts Next.js.
+- \`npm run db:setup\` — Prisma generate + migrate, then run all seeds (resources, storage, troops, heroes, tech, demo players, tribes).
+- \`npm run db:refresh\` — drops the local SQLite dev DB and re-runs full setup + seeds.
+- \`npm run dev:refresh\` — refresh DB and start the dev server in one command.
 
 ## Database
 
@@ -190,6 +191,30 @@ Combat uses a power-based algorithm with randomness:
 - \`POST /api/admin/world/config\` - Update world settings
 - \`GET /api/admin/speed-templates\` - Speed templates
 - \`POST /api/admin/speed-templates\` - Apply speed configurations
+
+#### Moderation (Multi‑Accounting)
+- \`GET /api/admin/moderation/multi-account/reports\` — Generate/persist detection report
+- \`POST /api/admin/moderation/enforce\` — Apply enforcement (warning, restrictions, suspensions, bans, IP bans)
+- \`POST /api/admin/moderation/allowlist\` — Add allowlist entries (IP/DEVICE/PAIR)
+- \`GET /api/admin/moderation/allowlist\` — List allowlist entries
+- \`GET /api/moderation/bans\` — Optional public ban list
+- \`POST /api/moderation/appeals\` — Players submit an appeal
+
+#### Moderation (Player Reports)
+- \`POST /api/reports/moderation\` — Submit a violation report (types: multi-accounting, bug abuse, harassment, inappropriate names, other)
+- \`GET /api/reports/moderation?mine=1\` — View your report history with reference numbers
+- \`GET /api/admin/moderation/reports?status=OPEN\` — Admin queue (prioritized)
+- \`GET /api/admin/moderation/reports/[id]\` — Admin report detail
+- \`PATCH /api/admin/moderation/reports/[id]\` — Update status and notes
+
+### Tutorial & Mentorship
+- \`GET /api/tutorial/quests?playerId=...\` — List beginner quests with progress
+- \`POST /api/tutorial/tasks/[id]/complete\` — Mark a quest task complete and grant rewards
+- \`GET /api/mentorship/mentors\` — List available volunteer mentors
+- \`POST /api/mentorship/request\` — Request mentor (optional preferred mentor)
+- \`POST /api/mentorship/opt-in\` — Toggle mentor volunteer status
+- \`POST /api/mentorship/requests/[id]/accept\` — Mentor accepts
+- \`POST /api/mentorship/requests/[id]/decline\` — Mentor declines
 
 ### Leaderboard
 - \`GET /api/leaderboard\` - Get global rankings

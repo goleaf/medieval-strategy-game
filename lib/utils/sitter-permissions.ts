@@ -2,7 +2,14 @@ import { SitterDualService } from "@/lib/game-services/sitter-dual-service"
 import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
 
-export type SitterAction = 'sendRaids' | 'useResources' | 'buyAndSpendGold'
+export type SitterAction =
+  | 'sendRaids'
+  | 'useResources'
+  | 'buyAndSpendGold'
+  | 'demolishBuildings'
+  | 'recallReinforcements'
+  | 'launchConquest'
+  | 'dismissTroops'
 
 /**
  * Middleware to check sitter permissions for specific actions
@@ -75,4 +82,3 @@ export class SitterPermissions {
     return null
   }
 }
-

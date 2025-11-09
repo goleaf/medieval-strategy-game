@@ -13,14 +13,32 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { targetPlayerId } = body
+    const { targetPlayerId, durationHours: requestedDuration } = body
 
     if (!targetPlayerId) {
       return NextResponse.json({ error: "Target player ID required" }, { status: 400 })
     }
 
-    // Check if the current user can access the target player as a sitter
-    const canAccess = await SitterDualService.canAccessAsSitter(session.user.id, targetPlayerId)
+    // Resolve current user's player in the same world as the target
+    const target = await prisma.player.findUnique({
+      where: { id: targetPlayerId },
+      select: { id: true, playerName: true, gameWorldId: true }
+    })
+
+    if (!target) {
+      return NextResponse.json({ error: "Target player not found" }, { status: 404 })
+    }
+
+    const myPlayer = await prisma.player.findFirst({
+      where: { userId: session.user.id, gameWorldId: target.gameWorldId }
+    })
+
+    if (!myPlayer) {
+      return NextResponse.json({ error: "You do not have a player in this world" }, { status: 403 })
+    }
+
+    // Check if the current user's player can access the target as a sitter
+    const canAccess = await SitterDualService.canAccessAsSitter(myPlayer.id, targetPlayerId)
 
     if (!canAccess) {
       return NextResponse.json({
@@ -28,18 +46,17 @@ export async function POST(req: NextRequest) {
       }, { status: 403 })
     }
 
-    // Get the target player information
-    const targetPlayer = await prisma.player.findUnique({
-      where: { id: targetPlayerId },
-      include: {
-        user: true,
-        villages: true
-      }
+    // Create a sitter session record (default 24h)
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || null
+    const ua = req.headers.get("user-agent") || null
+    const durationHours = Math.max(1, Math.min(72, Number(requestedDuration) || 24))
+    await SitterDualService.beginSitterSession({
+      ownerId: targetPlayerId,
+      sitterId: myPlayer.id,
+      durationHours,
+      ipAddress: ip,
+      userAgent: ua,
     })
-
-    if (!targetPlayer) {
-      return NextResponse.json({ error: "Target player not found" }, { status: 404 })
-    }
 
     // Create a sitter session token
     const sitterToken = sign(
@@ -50,7 +67,7 @@ export async function POST(req: NextRequest) {
         isSitter: true
       },
       process.env.JWT_SECRET || "secret",
-      { expiresIn: "24h" }
+      { expiresIn: `${durationHours}h` }
     )
 
     return NextResponse.json({
@@ -58,9 +75,8 @@ export async function POST(req: NextRequest) {
       data: {
         token: sitterToken,
         targetPlayer: {
-          id: targetPlayer.id,
-          playerName: targetPlayer.playerName,
-          villages: targetPlayer.villages.length
+          id: target.id,
+          playerName: target.playerName,
         }
       }
     })
@@ -71,4 +87,3 @@ export async function POST(req: NextRequest) {
     }, { status: 500 })
   }
 }
-

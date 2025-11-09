@@ -130,9 +130,22 @@ await prisma.$transaction(async (tx) => {
 - Specify required parameters and validation rules
 
 ### Changelog
-- Maintain `/docs/CHANGELOG.md`
-- Update with every significant change
-- Follow semantic versioning
+- Maintain root `CHANGELOG.md` (not in `docs/`).
+- Update with every significant change using the format below.
+- Prefer semantic, conventional entries (feat, fix, chore, docs, refactor, perf, test).
+
+#### Changelog Entry Template
+```
+## Unreleased
+- type(scope): short summary — PR/Context if relevant
+  - files: path/one.ts, path/two.ts
+  - details: optional multi-line description
+```
+
+#### Automation
+- When the agent (Cursor/Codex) adds/modifies files, append an entry to root `CHANGELOG.md`.
+- You may run `npm run changelog:update -- --type <type> --scope <scope> --summary "..." --description "..."`.
+- If arguments are omitted, the script will infer changed files via `git status` and only require `--type` and `--summary`.
 
 ## Testing & Quality
 
@@ -171,6 +184,26 @@ await prisma.$transaction(async (tx) => {
 - Use feature branches for new work
 - Merge to main only after review
 - Keep branches focused and short-lived
+
+## Project Rules (from AGENTS.md)
+
+- Keep controllers in `app/` thin; move combat, economy, and auth logic into `lib/`.
+- Components live under `components/` split into `ui`, `game`, `admin` and re-export via `index.ts`.
+- Shared hooks in `hooks/`. Reusable tooling in `scripts/`. Building blueprints in `lib/config` and `lib/game-services`.
+- Prisma schema/migrations/seeds live in `prisma/`. Mirror gameplay expectations in `docs/` when schema/building rules change.
+- TypeScript, 2-space indentation, trailing commas, prefer named exports.
+- Components: PascalCase. Utilities: camelCase. Constants: UPPER_SNAKE_CASE. Files: kebab-case.
+- Default to server components. Only browser hooks go in `hooks/`. Never import Prisma models client-side.
+- Use Tailwind + shadcn/ui primitives; preserve inline comments for endgame/combat logic.
+
+## Commands
+
+- `npm run dev` — start Next.js at http://localhost:3000
+- `npm run build` / `npm start` — production bundle
+- `npm run lint` — ESLint + Next rules
+- `npm run prisma:seed` or `npx tsx scripts/seed-fake-tribes.ts` — reseed worlds
+- `node test-combat-system.js` (or any `test-*.js`) — smoke tests after seeding
+- `npm run changelog:update -- --type <type> --scope <scope> --summary "..."` — append to root `CHANGELOG.md`
 
 ## File Structure Standards
 

@@ -93,25 +93,51 @@ export default function AttacksPage() {
   }, [])
 
   const handleLaunchAttack = useCallback(
-    async (toX: number, toY: number, selection: Record<string, number>, type: string) => {
+    async (
+      toX: number,
+      toY: number,
+      selection: Record<string, number>,
+      type: string,
+      options?: { catapultTargets?: string[]; arriveAt?: string | null },
+    ) => {
       if (!selectedVillageId) throw new Error("Select a village first")
-      const response = await fetch("/api/attacks/launch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromVillageId: selectedVillageId,
-          toX,
-          toY,
-          attackType: type,
-          troopSelection: selection,
-        }),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to launch attack")
+      async function submit(confirmProtectionDrop?: boolean) {
+        const response = await fetch("/api/attacks/launch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fromVillageId: selectedVillageId,
+            toX,
+            toY,
+            attackType: type,
+            troopSelection: selection,
+            catapultTargets: options?.catapultTargets,
+            arriveAt: options?.arriveAt ?? undefined,
+            ...(confirmProtectionDrop ? { confirmProtectionDrop: true } : {}),
+          }),
+        })
+        const data = await response.json()
+        if (!response.ok) {
+          // Handle early-protection drop confirmation
+          if (
+            response.status === 409 &&
+            typeof data.error === "string" &&
+            data.error.toLowerCase().includes("end your beginner protection")
+          ) {
+            const ok = window.confirm(
+              "Attacking this target will end your beginner protection immediately. Proceed?",
+            )
+            if (ok) {
+              return submit(true)
+            }
+            return
+          }
+          throw new Error(data.error || "Failed to launch attack")
+        }
+        await fetchData(playerId ?? "temp-player-id")
+        alert("Attack launched!")
       }
-      await fetchData(playerId ?? "temp-player-id")
-      alert("Attack launched!")
+      await submit()
     },
     [fetchData, playerId, selectedVillageId],
   )

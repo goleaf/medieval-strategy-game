@@ -1,399 +1,366 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
-import { Settings, User, RotateCcw, AlertTriangle, CheckCircle, BellRing, Shield, ShieldCheck, KeyRound, Smartphone, Laptop, LogOut, Copy } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { NotificationSettingsPanel } from "@/components/game/notification-settings"
+import { Switch } from "@/components/ui/switch"
+import { useTheme } from "next-themes"
 
-type PlayerData = {
-  id: string
-  playerName: string
-  gameWorldId: string | null
-  isDeleted: boolean
-  banReason: string | null
-  beginnerProtectionUntil: string | null
-  tribeId: string | null
-  hero: { adventuresCompleted: number } | null
-  Village: Array<{ id: string }>
+type Preferences = {
+  language?: string | null
+  timeZone?: string | null
+  dateTimeFormat?: string | null
+  numberFormat: "COMMA_DECIMAL" | "DOT_DECIMAL" | "SPACE_DECIMAL"
+  theme?: string | null
+  defaultAttackType?: string | null
+  unitFormationTemplates: Record<string, any>
+  enableAutoComplete: boolean
+  confirmDialogs: Record<string, boolean>
+  onlineStatusVisible: boolean
+  contactPreferences: Record<string, boolean>
+  dataSharingOptIn: boolean
+  mapQuality: "LOW" | "MEDIUM" | "HIGH"
+  animationsEnabled: boolean
+  autoRefreshSeconds: number
+  bandwidthSaver: boolean
 }
 
-type GameWorldData = {
-  isRegistrationOpen: boolean
-  isActive: boolean
+type NotifPref = {
+  globalEnabled: boolean
+  doNotDisturbEnabled: boolean
+  importanceThreshold: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
+  desktopEnabled: boolean
+  mobilePushEnabled: boolean
+  emailFrequency: "daily_summary" | "critical_only" | "disabled"
+  quietHoursEnabled: boolean
+  quietHoursStart?: number | null
+  quietHoursEnd?: number | null
+  suppressNonCriticalDuringQuietHours: boolean
+  groupSimilar: boolean
+  retentionDays: number
 }
 
-type RespawnConditions = {
-  canRespawn: boolean
-  reasons: string[]
+const DEFAULT_PREFS: Preferences = {
+  language: "en",
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  dateTimeFormat: "YYYY-MM-DD HH:mm",
+  numberFormat: "COMMA_DECIMAL",
+  theme: "system",
+  defaultAttackType: "raid",
+  unitFormationTemplates: {},
+  enableAutoComplete: true,
+  confirmDialogs: { attack: true, cancelTrain: true, demolish: true },
+  onlineStatusVisible: true,
+  contactPreferences: { friendRequests: true, mentorship: true },
+  dataSharingOptIn: false,
+  mapQuality: "MEDIUM",
+  animationsEnabled: true,
+  autoRefreshSeconds: 60,
+  bandwidthSaver: false,
+}
+
+const DEFAULT_NOTIF: NotifPref = {
+  globalEnabled: true,
+  doNotDisturbEnabled: false,
+  importanceThreshold: "MEDIUM",
+  desktopEnabled: false,
+  mobilePushEnabled: true,
+  emailFrequency: "disabled",
+  quietHoursEnabled: false,
+  quietHoursStart: 22,
+  quietHoursEnd: 7,
+  suppressNonCriticalDuringQuietHours: true,
+  groupSimilar: true,
+  retentionDays: 90,
 }
 
 export default function SettingsPage() {
-  const router = useRouter()
-  const [player, setPlayer] = useState<PlayerData | null>(null)
-  const [gameWorld, setGameWorld] = useState<GameWorldData | null>(null)
+  const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFS)
+  const [np, setNp] = useState<NotifPref>(DEFAULT_NOTIF)
+  const [privacy, setPrivacy] = useState<{ profileVisibility: 'PUBLIC' | 'TRIBE_ONLY' | 'PRIVATE'; allowFriendRequests: boolean; allowMentorship: boolean; socialFeedOptIn: boolean } | null>(null)
+  const [filter, setFilter] = useState("")
   const [loading, setLoading] = useState(true)
-  const [respawnConditions, setRespawnConditions] = useState<RespawnConditions>({ canRespawn: false, reasons: [] })
-
-  // Respawn dialog state
-  const [showRespawnDialog, setShowRespawnDialog] = useState(false)
-  const [respawnConfirmText, setRespawnConfirmText] = useState("")
-  const [selectedMapQuarter, setSelectedMapQuarter] = useState("")
-  const [selectedTribe, setSelectedTribe] = useState("")
-  const [newPlayerName, setNewPlayerName] = useState("")
-  const [respawning, setRespawning] = useState(false)
-
-  const fetchPlayerData = useCallback(async () => {
-    try {
-      const authToken = localStorage.getItem("authToken")
-      const playerId = localStorage.getItem("playerId")
-
-      if (!authToken || !playerId) {
-        router.push("/login")
-        return
-      }
-
-      const res = await fetch(`/api/auth/player-data`, {
-        headers: {
-          "Authorization": `Bearer ${authToken}`,
-        },
-      })
-
-      const data = await res.json()
-      if (data.success) {
-        setPlayer(data.data.player)
-        setGameWorld(data.data.gameWorld)
-        checkRespawnConditions(data.data.player, data.data.gameWorld)
-      }
-    } catch (error) {
-      console.error("Failed to fetch player data:", error)
-    } finally {
-      setLoading(false)
-    }
-  }, [router])
-
-  const checkRespawnConditions = (player: PlayerData, gameWorld: GameWorldData) => {
-    const reasons: string[] = []
-
-    // Check all conditions from Travian documentation
-    if (!gameWorld.isRegistrationOpen) {
-      reasons.push("Game world registration is closed")
-    }
-
-    if (player.isDeleted) {
-      reasons.push("Avatar is scheduled for deletion")
-    }
-
-    if (player.banReason) {
-      reasons.push("Avatar is banned")
-    }
-
-    if (!player.beginnerProtectionUntil || new Date(player.beginnerProtectionUntil) < new Date()) {
-      reasons.push("Beginner protection has expired")
-    }
-
-    // Check if auction house is unlocked (hero completed enough adventures)
-    // Travian has 20 adventures to unlock auction house
-    if (player.hero && player.hero.adventuresCompleted >= 20) {
-      reasons.push("Auction house is fully unlocked")
-    }
-
-    if (player.Village.length !== 1) {
-      reasons.push("Must have exactly one village")
-    }
-
-    setRespawnConditions({
-      canRespawn: reasons.length === 0,
-      reasons
-    })
-  }
-
-  const handleRespawn = async () => {
-    if (respawnConfirmText !== "respawn") {
-      alert("Please type 'respawn' to confirm")
-      return
-    }
-
-    if (!selectedMapQuarter || !selectedTribe || !newPlayerName.trim()) {
-      alert("Please fill in all fields")
-      return
-    }
-
-    setRespawning(true)
-    try {
-      const authToken = localStorage.getItem("authToken")
-
-      const res = await fetch("/api/auth/respawn", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          mapQuarter: selectedMapQuarter,
-          tribe: selectedTribe,
-          playerName: newPlayerName.trim(),
-        }),
-      })
-
-      const data = await res.json()
-
-      if (data.success) {
-        alert("Avatar respawned successfully! You will be redirected to login.")
-        localStorage.removeItem("authToken")
-        localStorage.removeItem("playerId")
-        router.push("/login")
-      } else {
-        alert(data.error || "Failed to respawn avatar")
-      }
-    } catch (error) {
-      console.error("Respawn failed:", error)
-      alert("Failed to respawn avatar")
-    } finally {
-      setRespawning(false)
-      setShowRespawnDialog(false)
-      setRespawnConfirmText("")
-    }
-  }
+  const [saving, setSaving] = useState(false)
+  const { setTheme } = useTheme()
 
   useEffect(() => {
-    fetchPlayerData()
-  }, [fetchPlayerData])
+    const run = async () => {
+      try {
+        const [pRes, nRes, privRes] = await Promise.all([
+          fetch("/api/settings/preferences"),
+          fetch("/api/settings/notifications"),
+          fetch("/api/settings/privacy"),
+        ])
+        const pData = await pRes.json()
+        const nData = await nRes.json()
+        const privData = await privRes.json()
+        if (pData.success && pData.data) setPrefs((prev) => ({ ...prev, ...pData.data }))
+        if (nData.success && nData.data) setNp((prev) => ({ ...prev, ...nData.data }))
+        if (privData.success && privData.data) setPrivacy(privData.data)
+      } catch (e) {
+        console.error("Failed to load settings", e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    run()
+  }, [])
+
+  useEffect(() => {
+    if (prefs.theme) {
+      setTheme(prefs.theme)
+    }
+  }, [prefs.theme, setTheme])
+
+  const resetAll = () => {
+    setPrefs(DEFAULT_PREFS)
+    setNp(DEFAULT_NOTIF)
+  }
+
+  const saveAll = async () => {
+    setSaving(true)
+    try {
+      const [pRes, nRes, privRes] = await Promise.all([
+        fetch("/api/settings/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prefs) }),
+        fetch("/api/settings/notifications", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(np) }),
+        privacy ? fetch("/api/settings/privacy", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(privacy) }) : Promise.resolve({ ok: true } as any),
+      ])
+      const ok = pRes.ok && nRes.ok && (privRes as any).ok
+      if (ok) alert("Settings saved")
+      else alert("Failed to save some settings")
+    } catch (e) {
+      alert("Save failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const matches = (text: string) => text.toLowerCase().includes(filter.toLowerCase())
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-        <div className="text-center">Loading settings...</div>
-      </div>
-    )
-  }
-
-  if (!player) {
-    return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-        <div className="text-center">
-          <p className="mb-4">Unable to load player data</p>
-          <Button onClick={() => router.push("/dashboard")}>Return to Dashboard</Button>
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-5xl mx-auto space-y-6">
+          <div className="h-8 bg-gray-100 rounded" />
+          <div className="h-64 bg-gray-100 rounded" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border p-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            <h1 className="text-xl font-bold">Settings</h1>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Account Settings</h1>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={resetAll}>Reset to defaults</Button>
+            <Button onClick={saveAll} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
           </div>
-          <Button variant="outline" onClick={() => router.push("/dashboard")}>
-            Back to Dashboard
-          </Button>
         </div>
-      </header>
 
-      <main className="max-w-4xl mx-auto p-4">
-        <Tabs defaultValue="avatar" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="avatar" className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Avatar
-            </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex items-center gap-2">
-              <BellRing className="w-4 h-4" />
-              Notifications
-            </TabsTrigger>
-          </TabsList>
+        <div className="flex items-center gap-3">
+          <Input placeholder="Search settings..." value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-sm" />
+        </div>
 
-          <TabsContent value="avatar" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="w-5 h-5" />
-                  Avatar Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Player Name</Label>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {player.playerName}
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Game World</Label>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {gameWorld?.isActive ? "Active" : "Inactive"}
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Villages</Label>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {player.Village.length}
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Beginner Protection</Label>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {player.beginnerProtectionUntil
-                        ? new Date(player.beginnerProtectionUntil) > new Date()
-                          ? "Active"
-                          : "Expired"
-                        : "Not set"
-                      }
-                    </div>
-                  </div>
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Display */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Display</h2>
+            <div className="space-y-4">
+              {matches("language") && (
+                <div>
+                  <Label>Language</Label>
+                  <Input value={prefs.language ?? ""} onChange={(e) => setPrefs({ ...prefs, language: e.target.value })} />
                 </div>
-
-                <div className="border-t pt-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <RotateCcw className="w-4 h-4" />
-                        Respawn Avatar
-                      </h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Abandon your current avatar and start fresh with a new village
-                      </p>
-                    </div>
-                    <Button
-                      variant="destructive"
-                      onClick={() => setShowRespawnDialog(true)}
-                      disabled={!respawnConditions.canRespawn}
-                    >
-                      Respawn Avatar
-                    </Button>
-                  </div>
-
-                  {!respawnConditions.canRespawn && respawnConditions.reasons.length > 0 && (
-                    <Alert className="mt-4">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>
-                        <strong>Cannot respawn because:</strong>
-                        <ul className="list-disc list-inside mt-2 space-y-1">
-                          {respawnConditions.reasons.map((reason, index) => (
-                            <li key={index}>{reason}</li>
-                          ))}
-                        </ul>
-                      </AlertDescription>
-                    </Alert>
-                  )}
+              )}
+              {matches("theme") && (
+                <div>
+                  <Label>Theme</Label>
+                  <Select value={prefs.theme ?? "system"} onValueChange={(v) => setPrefs({ ...prefs, theme: v })}>
+                    <SelectTrigger><SelectValue placeholder="Theme" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="light">Light</SelectItem>
+                      <SelectItem value="dark">Dark</SelectItem>
+                      <SelectItem value="system">System</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="notifications">
-            <NotificationSettingsPanel playerId={player.id} />
-          </TabsContent>
-        </Tabs>
-      </main>
+              )}
+              {matches("time zone") && (
+                <div>
+                  <Label>Time Zone</Label>
+                  <Input value={prefs.timeZone ?? ""} onChange={(e) => setPrefs({ ...prefs, timeZone: e.target.value })} />
+                </div>
+              )}
+              {matches("number format") && (
+                <div>
+                  <Label>Number Format</Label>
+                  <Select value={prefs.numberFormat} onValueChange={(v) => setPrefs({ ...prefs, numberFormat: v as Preferences["numberFormat"] })}>
+                    <SelectTrigger><SelectValue placeholder="Format" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="COMMA_DECIMAL">1,000.00</SelectItem>
+                      <SelectItem value="DOT_DECIMAL">1.000,00</SelectItem>
+                      <SelectItem value="SPACE_DECIMAL">1 000,00</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </Card>
 
-      {/* Respawn Confirmation Dialog */}
-      <Dialog open={showRespawnDialog} onOpenChange={setShowRespawnDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-destructive" />
-              Confirm Avatar Respawn
-            </DialogTitle>
-          </DialogHeader>
+          {/* Gameplay */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Gameplay</h2>
+            <div className="space-y-4">
+              {matches("default attack") && (
+                <div>
+                  <Label>Default Attack Type</Label>
+                  <Select value={prefs.defaultAttackType ?? "raid"} onValueChange={(v) => setPrefs({ ...prefs, defaultAttackType: v })}>
+                    <SelectTrigger><SelectValue placeholder="Attack type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="raid">Raid</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {matches("auto complete") && (
+                <div className="flex items-center justify-between">
+                  <Label>Auto-complete</Label>
+                  <Switch checked={prefs.enableAutoComplete} onCheckedChange={(v) => setPrefs({ ...prefs, enableAutoComplete: v })} />
+                </div>
+              )}
+              {matches("confirm") && (
+                <div className="flex items-center justify-between">
+                  <Label>Confirm on Attack</Label>
+                  <Switch checked={!!prefs.confirmDialogs.attack} onCheckedChange={(v) => setPrefs({ ...prefs, confirmDialogs: { ...prefs.confirmDialogs, attack: v } })} />
+                </div>
+              )}
+            </div>
+          </Card>
 
-          <div className="space-y-4">
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Warning:</strong> This action cannot be undone. Your current avatar and village will be abandoned,
-                and you will start fresh with a new village. Only purchased Gold will be transferred to your new avatar.
-              </AlertDescription>
-            </Alert>
+          {/* Privacy */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Privacy</h2>
+            <div className="space-y-4">
+              {privacy && matches("profile visibility") && (
+                <div>
+                  <Label>Profile Visibility</Label>
+                  <Select value={privacy.profileVisibility} onValueChange={(v) => setPrivacy({ ...(privacy as any), profileVisibility: v as any })}>
+                    <SelectTrigger><SelectValue placeholder="Visibility" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PUBLIC">Public</SelectItem>
+                      <SelectItem value="TRIBE_ONLY">Tribe only</SelectItem>
+                      <SelectItem value="PRIVATE">Private</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {matches("online status") && (
+                <div className="flex items-center justify-between">
+                  <Label>Show Online Status</Label>
+                  <Switch checked={prefs.onlineStatusVisible} onCheckedChange={(v) => setPrefs({ ...prefs, onlineStatusVisible: v })} />
+                </div>
+              )}
+              {privacy && matches("friend requests") && (
+                <div className="flex items-center justify-between">
+                  <Label>Allow Friend Requests</Label>
+                  <Switch checked={privacy.allowFriendRequests} onCheckedChange={(v) => setPrivacy({ ...(privacy as any), allowFriendRequests: v })} />
+                </div>
+              )}
+              {privacy && matches("mentorship") && (
+                <div className="flex items-center justify-between">
+                  <Label>Allow Mentorship</Label>
+                  <Switch checked={privacy.allowMentorship} onCheckedChange={(v) => setPrivacy({ ...(privacy as any), allowMentorship: v })} />
+                </div>
+              )}
+              {matches("data sharing") && (
+                <div className="flex items-center justify-between">
+                  <Label>Data Sharing Opt-in</Label>
+                  <Switch checked={prefs.dataSharingOptIn} onCheckedChange={(v) => setPrefs({ ...prefs, dataSharingOptIn: v })} />
+                </div>
+              )}
+            </div>
+          </Card>
 
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="mapQuarter">Map Quarter</Label>
-                <select
-                  id="mapQuarter"
-                  value={selectedMapQuarter}
-                  onChange={(e) => setSelectedMapQuarter(e.target.value)}
-                  className="w-full p-2 border border-border rounded bg-background mt-1"
-                >
-                  <option value="">Select map quarter...</option>
-                  <option value="NW">North West</option>
-                  <option value="NE">North East</option>
-                  <option value="SW">South West</option>
-                  <option value="SE">South East</option>
-                </select>
+          {/* Performance */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Performance</h2>
+            <div className="space-y-4">
+              {matches("map") && (
+                <div>
+                  <Label>Map Quality</Label>
+                  <Select value={prefs.mapQuality} onValueChange={(v) => setPrefs({ ...prefs, mapQuality: v as Preferences["mapQuality"] })}>
+                    <SelectTrigger><SelectValue placeholder="Quality" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LOW">Low</SelectItem>
+                      <SelectItem value="MEDIUM">Medium</SelectItem>
+                      <SelectItem value="HIGH">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {matches("animations") && (
+                <div className="flex items-center justify-between">
+                  <Label>Animations</Label>
+                  <Switch checked={prefs.animationsEnabled} onCheckedChange={(v) => setPrefs({ ...prefs, animationsEnabled: v })} />
+                </div>
+              )}
+              {matches("refresh") && (
+                <div>
+                  <Label>Auto Refresh (seconds)</Label>
+                  <Input type="number" value={prefs.autoRefreshSeconds} onChange={(e) => setPrefs({ ...prefs, autoRefreshSeconds: parseInt(e.target.value || "0", 10) })} />
+                </div>
+              )}
+              {matches("bandwidth") && (
+                <div className="flex items-center justify-between">
+                  <Label>Bandwidth Optimization</Label>
+                  <Switch checked={prefs.bandwidthSaver} onCheckedChange={(v) => setPrefs({ ...prefs, bandwidthSaver: v })} />
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Notifications */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Notifications</h2>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Enable Notifications</Label>
+                <Switch checked={np.globalEnabled} onCheckedChange={(v) => setNp({ ...np, globalEnabled: v })} />
               </div>
-
-              <div>
-                <Label htmlFor="tribe">Tribe</Label>
-                <select
-                  id="tribe"
-                  value={selectedTribe}
-                  onChange={(e) => setSelectedTribe(e.target.value)}
-                  className="w-full p-2 border border-border rounded bg-background mt-1"
-                >
-                  <option value="">Select tribe...</option>
-                  <option value="ROMANS">Romans</option>
-                  <option value="TEUTONS">Teutons</option>
-                  <option value="GAULS">Gauls</option>
-                  <option value="HUNS">Huns</option>
-                  <option value="EGYPTIANS">Egyptians</option>
-                  <option value="SPARTANS">Spartans</option>
-                  <option value="VIKINGS">Vikings</option>
-                </select>
+              <div className="flex items-center justify-between">
+                <Label>Do Not Disturb (suppress all non-critical)</Label>
+                <Switch checked={np.doNotDisturbEnabled} onCheckedChange={(v) => setNp({ ...np, doNotDisturbEnabled: v })} />
               </div>
-
               <div>
-                <Label htmlFor="playerName">New Player Name</Label>
-                <Input
-                  id="playerName"
-                  value={newPlayerName}
-                  onChange={(e) => setNewPlayerName(e.target.value)}
-                  placeholder="Enter new player name"
-                  className="mt-1"
-                />
+                <Label>Importance Threshold</Label>
+                <Select value={np.importanceThreshold} onValueChange={(v) => setNp({ ...np, importanceThreshold: v as NotifPref["importanceThreshold"] })}>
+                  <SelectTrigger><SelectValue placeholder="Threshold" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CRITICAL">Critical</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="LOW">Low</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-
+              <div className="flex items-center justify-between">
+                <Label>Group Similar Notifications</Label>
+                <Switch checked={np.groupSimilar} onCheckedChange={(v) => setNp({ ...np, groupSimilar: v })} />
+              </div>
               <div>
-                <Label htmlFor="confirmText">
-                  Type "respawn" to confirm
-                </Label>
-                <Input
-                  id="confirmText"
-                  value={respawnConfirmText}
-                  onChange={(e) => setRespawnConfirmText(e.target.value)}
-                  placeholder="respawn"
-                  className="mt-1"
-                />
+                <Label>Retention (days)</Label>
+                <Input type="number" value={np.retentionDays} onChange={(e) => setNp({ ...np, retentionDays: parseInt(e.target.value || "0", 10) })} />
               </div>
             </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRespawnDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRespawn}
-              disabled={respawning || respawnConfirmText !== "respawn" || !selectedMapQuarter || !selectedTribe || !newPlayerName.trim()}
-            >
-              {respawning ? "Respawning..." : "Confirm Respawn"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

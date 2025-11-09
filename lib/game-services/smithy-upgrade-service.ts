@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { EventQueueService } from "@/lib/game-services/event-queue-service"
+import { getTroopSystemConfig } from "@/lib/troop-system/config"
 import type { EventQueueType, SmithyUpgradeKind, UnitType } from "@prisma/client"
 
 type ResourceBundle = { wood: number; stone: number; iron: number; gold: number; food: number }
@@ -29,11 +30,19 @@ export type SmithyGridResponse = {
     startedAt: string
     completionAt: string
   }
-  recommendations?: Array<{ unitTypeId: string; kind: UpgradePath; score: number; reason: string }>
+  recommendations?: Array<{
+    unitTypeId: string
+    kind: UpgradePath
+    score: number
+    reason: string
+    troopCount: number
+    pctPerLevel: number
+    totalCost: number
+    timeSeconds: number
+  }>
 }
 
 const MAX_LEVEL = 20
-const PCT_PER_LEVEL = 0.03 // 3% default; could be made world-configurable
 
 function ceilBundle(b: ResourceBundle): ResourceBundle {
   return {
@@ -89,7 +98,7 @@ function computeUpgradeCost(unit: UnitType, level: number): ResourceBundle {
 }
 
 function computeUpgradeTimeSeconds(unit: UnitType, level: number, smithyLevel: number, worldSpeed: number): number {
-  const baseHours = roleTimeBaseHours((unit as any).role)
+  const baseHours = roleTimeBaseHours((unit.role as any)?.toString().toLowerCase())
   const raw = baseHours * 3600 * growth(level)
   // Smithy research speed multiplier from config approximation
   const smithyMultiplier = Math.max(0.5, 1 - 0.04 * (Math.max(1, smithyLevel) - 1))
@@ -98,7 +107,7 @@ function computeUpgradeTimeSeconds(unit: UnitType, level: number, smithyLevel: n
 }
 
 export class SmithyUpgradeService {
-  static async getGrid(playerId: string, villageId: string): Promise<SmithyGridResponse> {
+  static async getGrid(playerId: string, villageId: string, preset: "offense" | "defense" | "balanced" = "balanced"): Promise<SmithyGridResponse> {
     const [village, unitTypes, techLevels, activeJob] = await Promise.all([
       prisma.village.findUnique({
         where: { id: villageId },
@@ -114,6 +123,11 @@ export class SmithyUpgradeService {
     const smithy = village.buildings.find((b) => b.type === "SMITHY")
     const smithyLevel = smithy?.level ?? 0
     const speed = village.player?.gameWorld?.speed ?? 1
+
+    // Read per-level % from unit system config (percent value; convert to fraction)
+    const cfg = getTroopSystemConfig()
+    const perLevelPct = Number(cfg.globals?.smithy?.perLevelPct ?? 3) // e.g., 1.5 means 1.5%
+    const perLevelFraction = perLevelPct / 100
 
     const techMap = new Map<string, { attack: number; defense: number }>()
     for (const row of techLevels) {
@@ -158,20 +172,49 @@ export class SmithyUpgradeService {
     })
     const counts = new Map<string, number>()
     for (const g of garrisons) counts.set(g.unitTypeId, (counts.get(g.unitTypeId) ?? 0) + g.count)
-    const recs: Array<{ unitTypeId: string; kind: UpgradePath; score: number; reason: string }> = []
+    const recs: Array<{
+      unitTypeId: string
+      kind: UpgradePath
+      score: number
+      reason: string
+      troopCount: number
+      pctPerLevel: number
+      totalCost: number
+      timeSeconds: number
+    }> = []
+    const atkWeight = preset === "offense" ? 1.5 : preset === "balanced" ? 1.0 : 0.8
+    const defWeight = preset === "defense" ? 1.5 : preset === "balanced" ? 1.0 : 0.8
     for (const row of rows) {
       const unit = unitTypes.find((u) => u.id === row.unitTypeId)!
       const troopCount = counts.get(row.unitTypeId) ?? 0
       if (troopCount <= 0) continue
       if (row.nextAttack && !row.nextAttack.lockedReason) {
         const cost = sumBundle(row.nextAttack.cost)
-        const score = (troopCount * PCT_PER_LEVEL) / Math.max(1, cost)
-        recs.push({ unitTypeId: row.unitTypeId, kind: "ATTACK", score, reason: `+${Math.round(PCT_PER_LEVEL*100)}% atk for ${troopCount} ${row.unitTypeId}` })
+        const score = atkWeight * (troopCount * perLevelFraction) / Math.max(1, cost)
+        recs.push({
+          unitTypeId: row.unitTypeId,
+          kind: "ATTACK",
+          score,
+          reason: `+${perLevelPct}% atk × ${troopCount} / cost ${cost}`,
+          troopCount,
+          pctPerLevel: perLevelPct,
+          totalCost: cost,
+          timeSeconds: row.nextAttack.timeSeconds,
+        })
       }
       if (row.nextDefense && !row.nextDefense.lockedReason) {
         const cost = sumBundle(row.nextDefense.cost)
-        const score = (troopCount * PCT_PER_LEVEL) / Math.max(1, cost)
-        recs.push({ unitTypeId: row.unitTypeId, kind: "DEFENSE", score, reason: `+${Math.round(PCT_PER_LEVEL*100)}% def for ${troopCount} ${row.unitTypeId}` })
+        const score = defWeight * (troopCount * perLevelFraction) / Math.max(1, cost)
+        recs.push({
+          unitTypeId: row.unitTypeId,
+          kind: "DEFENSE",
+          score,
+          reason: `+${perLevelPct}% def × ${troopCount} / cost ${cost}`,
+          troopCount,
+          pctPerLevel: perLevelPct,
+          totalCost: cost,
+          timeSeconds: row.nextDefense.timeSeconds,
+        })
       }
     }
     recs.sort((a, b) => b.score - a.score)
@@ -280,4 +323,3 @@ export class SmithyUpgradeService {
     return { jobId: job.id, completionAt }
   }
 }
-

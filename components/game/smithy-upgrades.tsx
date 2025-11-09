@@ -28,20 +28,41 @@ export function SmithyUpgrades({
   onUpgrade?: (unitTypeId: string, kind: "ATTACK" | "DEFENSE") => void | Promise<void>
   busyKey?: string | null
   activeJob?: { unitTypeId: string; kind: "ATTACK" | "DEFENSE"; startedAt: string; completionAt: string } | null
-  recommendations?: Array<{ unitTypeId: string; kind: "ATTACK" | "DEFENSE"; score: number; reason: string }>
+  recommendations?: Array<{ unitTypeId: string; kind: "ATTACK" | "DEFENSE"; score: number; reason: string; troopCount?: number; pctPerLevel?: number; totalCost?: number; timeSeconds?: number }>
 }) {
   return (
     <div className="space-y-4">
       {recommendations && recommendations.length > 0 && (
         <div className="rounded-md border border-amber-700/40 bg-amber-950/40 p-3 text-sm text-amber-100">
           <div className="mb-2 font-semibold">Suggested priorities</div>
-          <ul className="list-disc pl-4">
-            {recommendations.map((r, idx) => (
-              <li key={`${r.unitTypeId}-${r.kind}-${idx}`}>
-                <span className="font-mono">{r.unitTypeId}</span> {r.kind.toLowerCase()} — {r.reason}
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-auto">
+            <table className="min-w-full text-xs">
+              <thead>
+                <tr className="text-amber-200/80">
+                  <th className="px-2 py-1 text-left">Unit</th>
+                  <th className="px-2 py-1 text-left">Path</th>
+                  <th className="px-2 py-1 text-right">+%/lvl</th>
+                  <th className="px-2 py-1 text-right">Troops</th>
+                  <th className="px-2 py-1 text-right">Cost</th>
+                  <th className="px-2 py-1 text-right">Time</th>
+                  <th className="px-2 py-1 text-right">Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recommendations.map((r, idx) => (
+                  <tr key={`${r.unitTypeId}-${r.kind}-${idx}`} className="border-t border-amber-700/30">
+                    <td className="px-2 py-1 font-mono whitespace-nowrap">{r.unitTypeId}</td>
+                    <td className="px-2 py-1">{r.kind.toLowerCase()}</td>
+                    <td className="px-2 py-1 text-right">{r.pctPerLevel ?? 0}%</td>
+                    <td className="px-2 py-1 text-right">{(r.troopCount ?? 0).toLocaleString()}</td>
+                    <td className="px-2 py-1 text-right">{(r.totalCost ?? 0).toLocaleString()}</td>
+                    <td className="px-2 py-1 text-right">{r.timeSeconds != null ? fmtTime(r.timeSeconds) : "-"}</td>
+                    <td className="px-2 py-1 text-right">{r.score.toFixed(6)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -175,4 +196,3 @@ function UpgradeButton({
     </Button>
   )
 }
-
