@@ -2,11 +2,12 @@ import { NextRequest } from "next/server"
 
 import { fetchCombatReportList } from "@/lib/reports/queries"
 import { errorResponse, successResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 
 const DIRECTIONS = new Set(["sent", "received"])
 const MISSIONS = new Set(["attack", "raid", "reinforce", "siege", "return"])
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/reports", async (req: NextRequest) => {
   const { searchParams } = new URL(req.url)
   const playerId = searchParams.get("playerId")
   if (!playerId) {
@@ -48,4 +49,4 @@ export async function GET(req: NextRequest) {
   }
 
   return successResponse(items)
-}
+})

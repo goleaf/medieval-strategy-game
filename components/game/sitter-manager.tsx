@@ -55,7 +55,9 @@ export function SitterManager({ className }: SitterManagerProps) {
 
   const fetchSitters = async () => {
     try {
-      const response = await fetch('/api/sitters')
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const baseHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {}
+      const response = await fetch('/api/sitters', { headers: { ...baseHeaders } })
       const data = await response.json()
 
       if (data.success) {
@@ -65,7 +67,7 @@ export function SitterManager({ className }: SitterManagerProps) {
       }
       // Fetch logs in parallel
       try {
-        const logsRes = await fetch('/api/sitters/logs')
+        const logsRes = await fetch('/api/sitters/logs', { headers: { ...baseHeaders } })
         const logsData = await logsRes.json()
         if (logsData.success) {
           setLogs(logsData.data.logs)
@@ -84,7 +86,9 @@ export function SitterManager({ className }: SitterManagerProps) {
     setAddingSitter(true)
     try {
       // First, find the player by name (non-admin lookup)
-      const searchResponse = await fetch(`/api/players/lookup?q=${encodeURIComponent(newSitterName)}&limit=1`)
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const baseHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {}
+      const searchResponse = await fetch(`/api/players/lookup?q=${encodeURIComponent(newSitterName)}&limit=1`, { headers: { ...baseHeaders } })
       const searchData = await searchResponse.json()
 
       if (!searchData.success || searchData.data.players.length === 0) {
@@ -96,7 +100,7 @@ export function SitterManager({ className }: SitterManagerProps) {
 
       const response = await fetch('/api/sitters', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...baseHeaders },
         body: JSON.stringify({
           sitterId: player.id,
           permissions
@@ -107,7 +111,7 @@ export function SitterManager({ className }: SitterManagerProps) {
 
       if (data.success) {
         setNewSitterName('')
-        setPermissions({ canSendRaids: false, canUseResources: false, canBuyAndSpendGold: false })
+        setPermissions({ canSendRaids: false, canUseResources: false, canBuyAndSpendGold: false, canDemolishBuildings: false, canRecallReinforcements: false, canLaunchConquest: false, canDismissTroops: false })
         fetchSitters()
       } else {
         alert(data.error || 'Failed to add sitter')
@@ -124,9 +128,11 @@ export function SitterManager({ className }: SitterManagerProps) {
     if (!confirm('Are you sure you want to remove this sitter?')) return
 
     try {
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const baseHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {}
       const response = await fetch('/api/sitters/remove', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...baseHeaders },
         body: JSON.stringify({ sitterId })
       })
 

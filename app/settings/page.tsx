@@ -89,10 +89,12 @@ export default function SettingsPage() {
   useEffect(() => {
     const run = async () => {
       try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+        const headers = token ? { Authorization: `Bearer ${token}` } : {}
         const [pRes, nRes, privRes] = await Promise.all([
-          fetch("/api/settings/preferences"),
-          fetch("/api/settings/notifications"),
-          fetch("/api/settings/privacy"),
+          fetch("/api/settings/preferences", { headers }),
+          fetch("/api/settings/notifications", { headers }),
+          fetch("/api/settings/privacy", { headers }),
         ])
         const pData = await pRes.json()
         const nData = await nRes.json()
@@ -123,10 +125,12 @@ export default function SettingsPage() {
   const saveAll = async () => {
     setSaving(true)
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
       const [pRes, nRes, privRes] = await Promise.all([
-        fetch("/api/settings/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prefs) }),
-        fetch("/api/settings/notifications", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(np) }),
-        privacy ? fetch("/api/settings/privacy", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(privacy) }) : Promise.resolve({ ok: true } as any),
+        fetch("/api/settings/preferences", { method: "PUT", headers, body: JSON.stringify(prefs) }),
+        fetch("/api/settings/notifications", { method: "PUT", headers, body: JSON.stringify(np) }),
+        privacy ? fetch("/api/settings/privacy", { method: "PUT", headers, body: JSON.stringify(privacy) }) : Promise.resolve({ ok: true } as any),
       ])
       const ok = pRes.ok && nRes.ok && (privRes as any).ok
       if (ok) alert("Settings saved")

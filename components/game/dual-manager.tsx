@@ -34,7 +34,9 @@ export function DualManager({ className }: DualManagerProps) {
 
   const fetchDuals = async () => {
     try {
-      const response = await fetch('/api/duals')
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const baseHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {}
+      const response = await fetch('/api/duals', { headers: { ...baseHeaders } })
       const data = await response.json()
 
       if (data.success) {
@@ -52,9 +54,11 @@ export function DualManager({ className }: DualManagerProps) {
 
     setInvitingDual(true)
     try {
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const baseHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {}
       const response = await fetch('/api/duals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...baseHeaders },
         body: JSON.stringify({
           lobbyUserId: newLobbyUserId,
           lobbyUsername: newLobbyUsername
@@ -80,9 +84,11 @@ export function DualManager({ className }: DualManagerProps) {
 
   const acceptDual = async (lobbyUserId: string) => {
     try {
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const baseHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {}
       const response = await fetch('/api/duals/accept', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...baseHeaders },
         body: JSON.stringify({ lobbyUserId })
       })
 
@@ -103,9 +109,11 @@ export function DualManager({ className }: DualManagerProps) {
     if (!confirm('Are you sure you want to remove this dual?')) return
 
     try {
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const baseHeaders = authToken ? { Authorization: `Bearer ${authToken}` } : {}
       const response = await fetch('/api/duals/remove', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...baseHeaders },
         body: JSON.stringify({ lobbyUserId })
       })
 
@@ -268,4 +276,3 @@ export function DualManager({ className }: DualManagerProps) {
     </Card>
   )
 }
-

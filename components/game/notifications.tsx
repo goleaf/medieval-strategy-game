@@ -27,7 +27,9 @@ export function NotificationCenter({ controller }: NotificationCenterProps) {
 
   useEffect(() => {
     // Load current grouping preference
-    fetch('/api/settings/notifications').then(res => res.json()).then(json => {
+    const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+    const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {}
+    fetch('/api/settings/notifications', { headers }).then(res => res.json()).then(json => {
       if (json?.success && json.data) {
         setGroupSimilar(Boolean(json.data.groupSimilar))
       }
@@ -37,9 +39,11 @@ export function NotificationCenter({ controller }: NotificationCenterProps) {
   const toggleGrouping = useCallback(async (value: boolean) => {
     setGroupSimilar(value)
     try {
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+      const headers = { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) }
       await fetch('/api/settings/notifications', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ groupSimilar: value })
       })
       await refresh()

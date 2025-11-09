@@ -5,8 +5,9 @@ import { TrainingStatus } from "@prisma/client"
 import { type NextRequest } from "next/server"
 import { villageSchema } from "@/lib/utils/validation"
 import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/villages", async (req: NextRequest) => {
   try {
     const playerId = req.nextUrl.searchParams.get("playerId")
 
@@ -91,9 +92,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})
 
-export async function POST(req: NextRequest) {
+export const POST = withMetrics("POST /api/villages", async (req: NextRequest) => {
   try {
     const body = await req.json()
     const validated = villageSchema.parse(body)
@@ -123,4 +124,4 @@ export async function POST(req: NextRequest) {
     if (validationError) return validationError
     return serverErrorResponse(error)
   }
-}
+})
