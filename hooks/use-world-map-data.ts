@@ -25,6 +25,7 @@ export type MapBlockCacheEntry = {
   range: CoordinateRange
   villageCount: number
   fetchedAt: number
+  lastUsedAt: number
   requested: boolean
   villages: MapVillageSummary[]
 }
@@ -51,6 +52,8 @@ export interface UseWorldMapDataOptions {
 const DEFAULT_EXTENT: CoordinateRange = { minX: 0, maxX: 999, minY: 0, maxY: 999 }
 const DEFAULT_BLOCK_SIZE = 100
 const DEFAULT_TTL = 2 * 60 * 1000
+const MAX_BLOCK_CACHE_ENTRIES = 48
+const INACTIVE_BLOCK_TTL_MS = 45 * 1000
 
 export function useWorldMapData(options: UseWorldMapDataOptions = {}) {
   const { token, chunkTtlMs = DEFAULT_TTL } = options
@@ -112,6 +115,7 @@ export function useWorldMapData(options: UseWorldMapDataOptions = {}) {
             villageCount: block.villageCount,
             requested: block.requested,
             fetchedAt: Date.now(),
+            lastUsedAt: Date.now(),
             villages: villagesByBlock.get(block.id) ?? [],
           })
         })
@@ -124,6 +128,7 @@ export function useWorldMapData(options: UseWorldMapDataOptions = {}) {
             villageCount: villages.length,
             requested: false,
             fetchedAt: Date.now(),
+            lastUsedAt: Date.now(),
             villages,
           })
         })
@@ -206,6 +211,47 @@ export function useWorldMapData(options: UseWorldMapDataOptions = {}) {
     [blockCache, fetchBlocks],
   )
 
+  const markRangeAccessed = useCallback((range: CoordinateRange) => {
+    setBlockCache((prev) => {
+      let mutated = false
+      const now = Date.now()
+      const next = new Map(prev)
+      prev.forEach((entry, blockId) => {
+        if (rangesIntersect(entry.range, range)) {
+          const current = next.get(blockId)!
+          if (current.lastUsedAt !== now) {
+            next.set(blockId, { ...current, lastUsedAt: now })
+            mutated = true
+          }
+        }
+      })
+      return mutated ? next : prev
+    })
+  }, [])
+
+  const pruneBlocks = useCallback(
+    (range: CoordinateRange) => {
+      setBlockCache((prev) => {
+        if (prev.size === 0) return prev
+        let mutated = false
+        const now = Date.now()
+        const padded = expandRange(range, blockSize * 2, extent)
+        const next = new Map(prev)
+        prev.forEach((entry, blockId) => {
+          const intersects = rangesIntersect(entry.range, padded)
+          const isStale = now - entry.lastUsedAt > INACTIVE_BLOCK_TTL_MS
+          const overBudget = next.size > MAX_BLOCK_CACHE_ENTRIES
+          if (!intersects && (isStale || overBudget)) {
+            next.delete(blockId)
+            mutated = true
+          }
+        })
+        return mutated ? next : prev
+      })
+    },
+    [blockSize, extent],
+  )
+
   const blocks = useMemo(() => Array.from(blockCache.values()), [blockCache])
   const villages = useMemo(() => blocks.flatMap((block) => block.villages), [blocks])
 
@@ -243,5 +289,20 @@ export function useWorldMapData(options: UseWorldMapDataOptions = {}) {
     ensureRange,
     refreshBlocks,
     getVillagesWithinRange,
+    markRangeAccessed,
+    pruneBlocks,
+  }
+}
+
+function rangesIntersect(a: CoordinateRange, b: CoordinateRange) {
+  return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY
+}
+
+function expandRange(range: CoordinateRange, padding: number, extent: CoordinateRange): CoordinateRange {
+  return {
+    minX: Math.max(extent.minX, range.minX - padding),
+    maxX: Math.min(extent.maxX, range.maxX + padding),
+    minY: Math.max(extent.minY, range.minY - padding),
+    maxY: Math.min(extent.maxY, range.maxY + padding),
   }
 }

@@ -46,11 +46,18 @@ Internally this is handled by `MapCoordinateService` (`lib/map-vision/coordinate
   - `GET /api/map/vision?gameWorldId=...&center=NNN|NNN&scale=REGION|PROVINCE|WORLD`
 
 Both endpoints rely on `MapCoordinateService` for:
-  - Formatting coordinates, deriving K‑block IDs, computing ranges, and block enumeration.
+  - Formatting coordinates, deriving K-block IDs, computing ranges, and block enumeration.
+
+## Rendering & Spatial Systems
+
+- **Viewport streaming**: `hooks/use-world-map-data.ts` only loads blocks intersecting the current viewport plus a 30-tile buffer, tracks `lastUsedAt`, and prunes idle blocks after ~45 seconds (or sooner when >48 cached blocks) so the browser can comfortably handle 1,000,000-village worlds.
+- **Tile aggregation**: `lib/map-vision/tile-aggregator.ts` groups villages into deterministic 50×50 tiles (`Tcol-row`). The World zoom renders these aggregates instead of individual markers, exposing dominant tribe share, total villages, and centroid jumps for instant continent-level intel.
+- **Canvas + cache**: `components/game/world-map/world-map-view.tsx` keeps the grid/heatmap on a single canvas layer while overlaying either tile cards (World) or adaptive markers (Province/Region/Tactical). Markers scale with population, fade by point weight, and only mount when inside the viewport’s padded bounds.
+- **Color accessibility**: Every tribe color is derived from a stable HSL hash. Own villages get amber rings, barbarians stay gray, and bookmarked villages surface a star badge. Selecting the High Contrast palette adds hashed stripe patterns (via CSS gradients) to aid color-blind commanders.
+- **Distance math**: `lib/map-vision/distance-cache.ts` caches both Manhattan approximations and exact Euclidean distances. Filters and the distance tool first use the Manhattan sum to reject faraway villages quickly, then fall back to cached square-root math when within tolerance. Travel-time panels reuse the cached value so repeated queries stay constant time.
 
 ## Usage Tips
 
-- Mini‑map: click anywhere to jump; the rectangle shows current viewport.
+- Mini-map: click anywhere to jump; the rectangle shows current viewport.
 - Distance: input `NNN|NNN` pairs or select a village and use “Use as From/To”.
 - Continents: in the advanced view, you can filter and highlight `K00–K99`.
-

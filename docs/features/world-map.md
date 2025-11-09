@@ -21,3 +21,11 @@
 - `GET /api/map/vision` – region/province query fed by `MapCoordinateService`. Accepts `gameWorldId`, `center`, `scale`, optional `radius`, and viewer IDs for passive vision.
 - `GET /api/map/world` – lightweight snapshot of every village in a world (id, coords, player, tribe, barbarian flag) for the world overview and mini-map.
 - Both endpoints clamp to the 1000×1000 extent, ensuring UI + docs stay aligned with continent math.
+
+## Spatial Performance & Visualization
+
+- **Viewport-based loading**: `use-world-map-data` ensures only the current viewport ±30 tiles worth of data is fetched. Block cache entries record `lastUsedAt` and are pruned after 45 s or when the cache exceeds 48 entries, keeping memory pressure low even with 1M villages.
+- **Tile layer (World zoom)**: Villages are aggregated into 50×50 tiles via `lib/map-vision/tile-aggregator.ts`. Each tile exposes dominant tribe percentage, barbarian counts, and total villages; clicking a tile jumps the camera to its centroid. These aggregates are cached client-side so panning the world view only re-renders changed tiles.
+- **Markers (Province/Region/Tactical)**: Individual markers scale with population (larger dots for higher points) and adjust opacity to hint at strength. Own villages gain amber rings, barbarians stay slate gray, and bookmarked coordinates render a ⭐ badge sourced from local storage.
+- **Color accessibility**: Tribe hues are HSL hashes seeded by tribe ID/tag to guarantee contrast. The “High Contrast” palette applies striped CSS gradients per tribe to support color-blind commanders. Neutral villages always use the scheme’s `neutralMarker`.
+- **Distance caching**: `lib/map-vision/distance-cache.ts` stores Manhattan and Euclidean results. Filters use the fast Manhattan sum to skip distant candidates, then confirm with the cached Euclidean distance only when the approximation is within a tolerance band. The distance tool surfaces both numbers plus precomputed travel times per unit.

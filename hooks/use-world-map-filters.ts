@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { MapVillageSummary } from "./use-world-map-data"
+import { DistanceCache } from "@/lib/map-vision/distance-cache"
 
 export type MapViewMode = "STANDARD" | "TRIBE" | "CONTINENT" | "PLAYER" | "BARBARIAN"
 
@@ -92,6 +93,7 @@ export function useWorldMapFilters(options: UseWorldMapFiltersOptions = {}): Use
   const [distanceFilter, setDistanceFilter] = useState<DistanceFilterConfig | null>(null)
   const [customFilter, setCustomFilter] = useState<CustomFilterConfig | null>(null)
   const [savedPresets, setSavedPresets] = useState<MapFilterPreset[]>([])
+  const distanceCache = useMemo(() => new DistanceCache(), [])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -199,10 +201,7 @@ export function useWorldMapFilters(options: UseWorldMapFiltersOptions = {}): Use
           return false
         }
         if (distanceFilter?.origin && distanceFilter.radius > 0) {
-          const dx = village.x - distanceFilter.origin.x
-          const dy = village.y - distanceFilter.origin.y
-          const distance = Math.hypot(dx, dy)
-          if (distance > distanceFilter.radius) {
+          if (!isWithinDistance(distanceCache, village, distanceFilter.origin, distanceFilter.radius)) {
             return false
           }
         }
@@ -224,10 +223,7 @@ export function useWorldMapFilters(options: UseWorldMapFiltersOptions = {}): Use
             }
           }
           if (customFilter.maxDistance && customFilter.origin) {
-            const dx = village.x - customFilter.origin.x
-            const dy = village.y - customFilter.origin.y
-            const distance = Math.hypot(dx, dy)
-            if (distance > customFilter.maxDistance) {
+            if (!isWithinDistance(distanceCache, village, customFilter.origin, customFilter.maxDistance)) {
               return false
             }
           }
@@ -296,4 +292,18 @@ export function useWorldMapFilters(options: UseWorldMapFiltersOptions = {}): Use
     activeFilters,
     applyFilters,
   }
+}
+
+function isWithinDistance(
+  cache: DistanceCache,
+  village: MapVillageSummary,
+  origin: { x: number; y: number },
+  maxDistance: number,
+) {
+  const approx = cache.manhattanDistance(village, origin)
+  if (approx > maxDistance + 3) {
+    return false
+  }
+  const exact = cache.euclideanDistance(village, origin)
+  return exact <= maxDistance
 }

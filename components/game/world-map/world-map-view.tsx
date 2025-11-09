@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react"
+import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from "react"
 import Link from "next/link"
 import {
   Badge,
@@ -30,6 +30,8 @@ import { Filter, Map as MapIcon, MousePointerClick, Save, X, Zap, ZoomIn, ZoomOu
 import type { Coordinate, CoordinateRange } from "@/lib/map-vision/types"
 import { buildUnitCatalog } from "@/lib/rally-point/unit-catalog"
 import { IntelPanel } from "@/components/game/world-map/intel-panel"
+import { aggregateVillagesIntoTiles, DEFAULT_TILE_SIZE, type MapTileAggregate } from "@/lib/map-vision/tile-aggregator"
+import { DistanceCache } from "@/lib/map-vision/distance-cache"
 
 export interface PlayerVillageMeta {
   id: string
@@ -37,6 +39,15 @@ export interface PlayerVillageMeta {
   x: number
   y: number
   population?: number
+}
+
+type BookmarkEntry = {
+  id: string
+  name: string
+  x: number
+  y: number
+  blockId: string
+  savedAt: number
 }
 
 export interface WorldMapViewProps {
@@ -50,6 +61,15 @@ type RenderVillage = MapVillageSummary & {
   screenY: number
 }
 
+type MarkerVillage = RenderVillage & {
+  color: string
+  size: number
+  opacity: number
+  isOwn: boolean
+  isBookmarked: boolean
+  patternStyle?: CSSProperties
+}
+
 type HeatmapCell = {
   x: number
   y: number
@@ -57,6 +77,17 @@ type HeatmapCell = {
   height: number
   intensity: number
   color: string
+}
+
+type DistanceToolState = {
+  from: string
+  to: string
+  result: {
+    distance: number
+    approximate: number
+    usedApproximation: boolean
+    times: Array<{ unit: string; minutes: number }>
+  } | null
 }
 
 type ColorScheme = {
@@ -136,11 +167,12 @@ const MAP_ZOOM_LEVELS: ZoomLevel[] = [
 ]
 
 const HEATMAP_CELL_SIZE = 20
+const BOOKMARK_STORAGE_KEY = "world-map-bookmarks"
 
 export function WorldMapView({ authToken, playerVillages, playerContext }: WorldMapViewProps) {
   const [presetName, setPresetName] = useState("")
   const [selectedVillage, setSelectedVillage] = useState<MapVillageSummary | null>(null)
-  const [hoverVillage, setHoverVillage] = useState<RenderVillage | null>(null)
+  const [hoverVillage, setHoverVillage] = useState<MarkerVillage | null>(null)
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [cursorCoordinate, setCursorCoordinate] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [distanceDraft, setDistanceDraft] = useState<{ villageId: string; radius: number }>({ villageId: "", radius: 20 })
@@ -151,8 +183,56 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
     origin: "",
   })
   const [coordSearch, setCoordSearch] = useState("")
-  const [distanceTool, setDistanceTool] = useState<{ from: string; to: string; result?: { distance: number; times: Array<{ unit: string; minutes: number }> } | null }>({ from: "", to: "", result: null })
+  const [distanceTool, setDistanceTool] = useState<DistanceToolState>({ from: "", to: "", result: null })
+  const [bookmarks, setBookmarks] = useState<Record<string, BookmarkEntry>>({})
   const unitCatalog = useMemo(() => buildUnitCatalog(), [])
+  const playerVillageIds = useMemo(() => new Set(playerVillages.map((village) => village.id)), [playerVillages])
+  const bookmarkedVillageIds = useMemo(() => new Set(Object.keys(bookmarks)), [bookmarks])
+  const persistBookmarks = useCallback((next: Record<string, BookmarkEntry>) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(Object.values(next)))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(BOOKMARK_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as BookmarkEntry[]
+      const snapshot = parsed.reduce<Record<string, BookmarkEntry>>((acc, entry) => {
+        acc[entry.id] = entry
+        return acc
+      }, {})
+      setBookmarks(snapshot)
+    } catch (error) {
+      console.warn("Failed to load world map bookmarks", error)
+    }
+  }, [])
+
+  const upsertBookmark = useCallback(
+    (village: MapVillageSummary) => {
+      const entry: BookmarkEntry = {
+        id: village.id,
+        name: village.name,
+        x: village.x,
+        y: village.y,
+        blockId: village.blockId,
+        savedAt: Date.now(),
+      }
+      setBookmarks((prev) => {
+        const ordered = [entry, ...Object.values(prev).filter((item) => item.id !== entry.id)].slice(0, 50)
+        const next = ordered.reduce<Record<string, BookmarkEntry>>((acc, item) => {
+          acc[item.id] = item
+          return acc
+        }, {})
+        persistBookmarks(next)
+        return next
+      })
+    },
+    [persistBookmarks],
+  )
+  const distanceCacheRef = useRef(new DistanceCache())
 
   const computeTravelTimes = useCallback((distance: number) => {
     const entries: Array<{ unit: string; minutes: number }> = []
@@ -176,6 +256,8 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
     isLoading,
     loadingBlocks,
     refreshBlocks,
+    markRangeAccessed,
+    pruneBlocks,
   } = useWorldMapData({ token: authToken })
 
   const filters = useWorldMapFilters()
@@ -186,11 +268,11 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
   })
 
   const colorScheme = COLOR_SCHEMES[filters.colorScheme] ?? COLOR_SCHEMES.CLASSIC
-  const continentSignature = filters.selectedContinents.join("|")
-
   useEffect(() => {
     ensureRange(viewport.paddedRange)
-  }, [ensureRange, viewport.paddedRange])
+    markRangeAccessed(viewport.visibleRange)
+    pruneBlocks(viewport.visibleRange)
+  }, [ensureRange, markRangeAccessed, pruneBlocks, viewport.paddedRange, viewport.visibleRange])
 
   useEffect(() => {
     if (!mapRef.current) return
@@ -211,25 +293,66 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
     [getVillagesWithinRange, viewport.paddedRange],
   )
 
+  const tileAggregates = useMemo(
+    () => aggregateVillagesIntoTiles(visibleVillages, { tileSize: DEFAULT_TILE_SIZE, extent }),
+    [extent, visibleVillages],
+  )
+
   const filteredVillages = useMemo(
     () => filters.applyFilters(visibleVillages, playerContext),
     [filters, playerContext, visibleVillages],
   )
 
-  const renderVillages = useMemo<RenderVillage[]>(() => {
+  const usingTileLayer = viewport.zoomLevel.id === "WORLD"
+
+  const renderVillages = useMemo<MarkerVillage[]>(() => {
+    if (usingTileLayer) return []
     return filteredVillages
       .map((village) => {
         const screen = viewport.coordinateToScreen({ x: village.x, y: village.y })
-        return { ...village, screenX: screen.x, screenY: screen.y }
+        const color = getVillageColor(
+          village,
+          filters.viewMode,
+          filters.playerQuery,
+          filters.tribeHighlight,
+          filters.selectedContinents,
+          colorScheme,
+        )
+        const size = getMarkerSize(village.population, viewport.zoomLevel.id)
+        const opacity = getMarkerOpacity(village.population)
+        const patternStyle =
+          filters.colorScheme === "HIGH_CONTRAST" ? buildPatternStyle(village.tribeId ?? village.playerId) : undefined
+        return {
+          ...village,
+          screenX: screen.x,
+          screenY: screen.y,
+          color,
+          size,
+          opacity,
+          isOwn: playerVillageIds.has(village.id),
+          isBookmarked: bookmarkedVillageIds.has(village.id),
+          patternStyle,
+        }
       })
       .filter(
         (village) =>
-          village.screenX >= -24 &&
-          village.screenX <= viewport.viewportSize.width + 24 &&
-          village.screenY >= -24 &&
-          village.screenY <= viewport.viewportSize.height + 24,
+          village.screenX >= -48 &&
+          village.screenX <= viewport.viewportSize.width + 48 &&
+          village.screenY >= -48 &&
+          village.screenY <= viewport.viewportSize.height + 48,
       )
-  }, [filteredVillages, viewport])
+  }, [
+    bookmarkedVillageIds,
+    colorScheme,
+    filteredVillages,
+    filters.playerQuery,
+    filters.selectedContinents,
+    filters.tribeHighlight,
+    filters.viewMode,
+    playerVillageIds,
+    usingTileLayer,
+    viewport,
+  ])
 
   const heatmapCells = useMemo<HeatmapCell[]>(() => {
     if (!viewport.zoomLevel.heatmap) return []
@@ -299,20 +422,6 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
     setSelectedVillage(village)
   }
 
-  const villageColors = useMemo(() => {
-    return renderVillages.reduce<Record<string, string>>((acc, village) => {
-      acc[village.id] = getVillageColor(
-        village,
-        filters.viewMode,
-        filters.playerQuery,
-        filters.tribeHighlight,
-        filters.selectedContinents,
-        colorScheme,
-      )
-      return acc
-    }, {})
-  }, [colorScheme, continentSignature, filters.playerQuery, filters.tribeHighlight, filters.viewMode, renderVillages])
-
   const handleMiniMapJump = (coord: Coordinate) => {
     viewport.setCenter(coord)
   }
@@ -331,11 +440,17 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
       setDistanceTool((prev) => ({ ...prev, result: null }))
       return
     }
-    const dx = to.x - from.x
-    const dy = to.y - from.y
-    const distance = Math.ceil(Math.hypot(dx, dy))
-    const times = computeTravelTimes(distance)
-    setDistanceTool((prev) => ({ ...prev, result: { distance, times } }))
+    const result = distanceCacheRef.current.distance(from, to)
+    const times = computeTravelTimes(result.exact)
+    setDistanceTool((prev) => ({
+      ...prev,
+      result: {
+        distance: result.exact,
+        approximate: result.approximate,
+        usedApproximation: result.usedApproximation,
+        times,
+      },
+    }))
   }
 
   const handleSavePreset = () => {
@@ -506,24 +621,73 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
               </div>
 
               <div className="absolute inset-0">
-                {renderVillages.map((village) => {
-                  const color = villageColors[village.id]
-                  return (
-                    <button
-                      key={village.id}
-                      type="button"
-                      className={cn(
-                        "absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition-transform",
-                        selectedVillage?.id === village.id ? "h-4 w-4 border-white" : "h-3 w-3 border-black/60",
-                      )}
-                      style={{ left: village.screenX, top: village.screenY, backgroundColor: color }}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleMarkerClick(village)
-                      }}
-                    />
-                  )
-                })}
+                {usingTileLayer
+                  ? tileAggregates.map((tile) => {
+                      const topLeft = viewport.coordinateToScreen({ x: tile.range.minX, y: tile.range.minY })
+                      const bottomRight = viewport.coordinateToScreen({ x: tile.range.maxX + 1, y: tile.range.maxY + 1 })
+                      const width = bottomRight.x - topLeft.x
+                      const height = bottomRight.y - topLeft.y
+                      const tileColor = getTileDominantColor(tile, colorScheme)
+                      return (
+                        <button
+                          key={tile.id}
+                          type="button"
+                          className="absolute rounded-sm border border-white/20 bg-opacity-80 p-1 text-left text-[10px] font-semibold uppercase tracking-wide text-white shadow-md transition hover:border-white/60"
+                          style={{
+                            left: topLeft.x,
+                            top: topLeft.y,
+                            width,
+                            height,
+                            backgroundColor: tileColor,
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            viewport.setCenter(tile.centroid)
+                          }}
+                        >
+                          <div className="flex flex-col gap-1">
+                            <span>{tile.dominant?.tribeTag ?? "Neutral"}</span>
+                            <span className="text-xs font-bold">{tile.dominant?.percentage ?? 0}%</span>
+                            <span className="text-[10px] font-medium normal-case">
+                              {tile.totalVillages.toLocaleString()} villages
+                            </span>
+                          </div>
+                        </button>
+                      )
+                    })
+                  : renderVillages.map((village) => (
+                      <div
+                        key={village.id}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                        style={{ left: village.screenX, top: village.screenY }}
+                      >
+                        <button
+                          type="button"
+                          className={cn(
+                            "pointer-events-auto rounded-full border-2 transition-all",
+                            selectedVillage?.id === village.id ? "ring-2 ring-white" : "",
+                            village.isOwn ? "border-yellow-200 shadow-lg" : "border-black/60",
+                          )}
+                          style={{
+                            width: village.size,
+                            height: village.size,
+                            backgroundColor: village.color,
+                            opacity: village.opacity,
+                            backgroundImage: village.patternStyle?.backgroundImage,
+                            backgroundSize: village.patternStyle?.backgroundSize,
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleMarkerClick(village)
+                          }}
+                        />
+                        {village.isBookmarked && (
+                          <span className="pointer-events-none absolute -top-2 right-0 text-[10px] text-yellow-300 drop-shadow">
+                            ★
+                          </span>
+                        )}
+                      </div>
+                    ))}
               </div>
 
               {hoverVillage && (
@@ -780,6 +944,11 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
               <div className="space-y-2 text-sm">
                 <div>
                   Distance: <span className="font-semibold">{distanceTool.result.distance} tiles</span>
+                  {distanceTool.result.approximate !== distanceTool.result.distance && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      (~{distanceTool.result.approximate} tiles Manhattan)
+                    </span>
+                  )}
                 </div>
                 <div className="max-h-40 overflow-auto rounded border p-2">
                   {distanceTool.result.times.map((entry) => (
@@ -873,9 +1042,10 @@ export function WorldMapView({ authToken, playerVillages, playerContext }: World
                 </Link>
                 <VillageActions
                   selected={selectedVillage}
-                  origin={filters.distanceFilter?.origin ?? null}
+                  origin={filters.distanceFilter?.origin ?? filters.customFilter?.origin ?? null}
                   playerId={playerContext.playerId}
-                  onBookmark={() => bookmarkVillage(selectedVillage)}
+                  onBookmark={() => upsertBookmark(selectedVillage)}
+                  distanceCache={distanceCacheRef.current}
                 />
               </CardContent>
             </Card>
@@ -1061,11 +1231,12 @@ function coordinateToScreen(
   }
 }
 
-function findVillageAtPointer(point: { x: number; y: number }, villages: RenderVillage[], tileSize: number) {
-  const threshold = Math.max(8, tileSize * 0.4)
+function findVillageAtPointer(point: { x: number; y: number }, villages: MarkerVillage[], tileSize: number) {
+  const minThreshold = Math.max(8, tileSize * 0.35)
   return villages.find((village) => {
     const dx = village.screenX - point.x
     const dy = village.screenY - point.y
+    const threshold = Math.max(minThreshold, village.size)
     return Math.hypot(dx, dy) <= threshold
   })
 }
@@ -1103,13 +1274,48 @@ function getVillageColor(
   return colorFromString(village.playerId, 60)
 }
 
-function colorFromString(seed: string, lightness: number) {
+function getMarkerSize(population: number, zoomLevel: ZoomLevel["id"]) {
+  const base =
+    zoomLevel === "TACTICAL" ? 12 :
+    zoomLevel === "REGION" ? 9 :
+    zoomLevel === "PROVINCE" ? 8 :
+    6
+  const growth = Math.min(6, Math.floor(population / 1500))
+  return base + growth
+}
+
+function getMarkerOpacity(population: number) {
+  return Math.min(1, 0.45 + population / 20000)
+}
+
+function buildPatternStyle(seed?: string): CSSProperties | undefined {
+  if (!seed) return undefined
+  const hash = hashString(seed)
+  const angle = hash % 2 === 0 ? 45 : 135
+  return {
+    backgroundImage: `repeating-linear-gradient(${angle}deg, rgba(255,255,255,0.35) 0, rgba(255,255,255,0.35) 2px, transparent 2px, transparent 4px)`,
+    backgroundSize: "6px 6px",
+  }
+}
+
+function getTileDominantColor(tile: MapTileAggregate, scheme: ColorScheme) {
+  if (!tile.dominant || !tile.dominant.tribeId) {
+    return tile.barbarianCount > tile.totalVillages / 2 ? scheme.neutralMarker : scheme.tile
+  }
+  return colorFromString(tile.dominant.tribeId, 50)
+}
+
+function hashString(seed: string) {
   let hash = 0
   for (let i = 0; i < seed.length; i++) {
     hash = (hash << 5) - hash + seed.charCodeAt(i)
     hash |= 0
   }
-  const hue = Math.abs(hash) % 360
+  return Math.abs(hash)
+}
+
+function colorFromString(seed: string, lightness: number) {
+  const hue = hashString(seed) % 360
   return `hsl(${hue}, 65%, ${lightness}%)`
 }
 
@@ -1159,35 +1365,21 @@ function formatMinutes(total: number): string {
   return `${h}h ${m}m`
 }
 
-function bookmarkVillage(v: MapVillageSummary) {
-  try {
-    const key = "world-map-bookmarks"
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(key) : null
-    const list: Array<{ id: string; name: string; x: number; y: number; blockId: string; savedAt: number }> = raw ? JSON.parse(raw) : []
-    const entry = { id: v.id, name: v.name, x: v.x, y: v.y, blockId: v.blockId, savedAt: Date.now() }
-    const next = [entry, ...list.filter((e) => e.id !== v.id)].slice(0, 50)
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(key, JSON.stringify(next))
-    }
-  } catch (err) {
-    console.warn("Failed to bookmark village", err)
-  }
-}
-
 interface VillageActionsProps {
   selected: MapVillageSummary
   origin: { x: number; y: number; label?: string; villageId?: string } | null
   playerId?: string
   onBookmark?: () => void
+  distanceCache: DistanceCache
 }
 
-function VillageActions({ selected, origin, playerId, onBookmark }: VillageActionsProps) {
+function VillageActions({ selected, origin, playerId, onBookmark, distanceCache }: VillageActionsProps) {
   const isOwn = selected.playerId === playerId
 
   const distanceFromOrigin = useMemo(() => {
     if (!origin) return null
-    return Math.ceil(Math.hypot(selected.x - origin.x, selected.y - origin.y))
-  }, [origin, selected.x, selected.y])
+    return distanceCache.euclideanDistance(selected, origin)
+  }, [distanceCache, origin, selected])
 
   const [supportInfo, setSupportInfo] = useState<{
     totalSupport?: number
