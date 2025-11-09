@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db"
 import { NightPolicyService } from "./night-policy-service"
+import { WorldSettingsService } from "@/lib/game-services/world-settings-service"
+import type { GameWorld } from "@prisma/client"
 
 export class ProtectionService {
   /**
@@ -8,13 +10,21 @@ export class ProtectionService {
   static async isPlayerProtected(playerId: string): Promise<boolean> {
     const player = await prisma.player.findUnique({
       where: { id: playerId },
+      select: {
+        id: true,
+        totalPoints: true,
+        beginnerProtectionUntil: true,
+        gameWorld: {
+          select: { id: true, speed: true, worldType: true, settings: true },
+        },
+      },
     })
 
-    if (!player || !player.beginnerProtectionUntil) {
+    if (!player) {
       return false
     }
 
-    return new Date() < player.beginnerProtectionUntil
+    return this.playerHasProtection(player.beginnerProtectionUntil, player.totalPoints, player.gameWorld)
   }
 
   /**
@@ -23,12 +33,26 @@ export class ProtectionService {
   static async isVillageProtected(villageId: string): Promise<boolean> {
     const village = await prisma.village.findUnique({
       where: { id: villageId },
-      include: { player: true },
+      include: {
+        player: {
+          select: {
+            id: true,
+            totalPoints: true,
+            beginnerProtectionUntil: true,
+            gameWorld: {
+              select: { id: true, speed: true, worldType: true, settings: true },
+            },
+          },
+        },
+      },
     })
 
-    if (!village) return false
-
-    return this.isPlayerProtected(village.playerId)
+    if (!village?.player) return false
+    return this.playerHasProtection(
+      village.player.beginnerProtectionUntil,
+      village.player.totalPoints,
+      village.player.gameWorld,
+    )
   }
 
   /**
@@ -40,34 +64,13 @@ export class ProtectionService {
       include: { gameWorld: true },
     })
 
-    if (!player?.gameWorld?.beginnerProtectionDays) {
+    if (!player?.gameWorld) {
       return
     }
 
-    const worldSpeed = player.gameWorld.speed
-    let protectionDays: number
-
-    // Calculate protection duration based on world speed (from Travian specs)
-    switch (worldSpeed) {
-      case 1:
-        protectionDays = 5
-        break
-      case 2:
-      case 3:
-        protectionDays = 3
-        break
-      case 5:
-        protectionDays = 2
-        break
-      case 10:
-        protectionDays = 1
-        break
-      default:
-        protectionDays = 3 // Default fallback
-    }
-
-    const protectionUntil = new Date()
-    protectionUntil.setDate(protectionUntil.getDate() + protectionDays)
+    const worldSettings = WorldSettingsService.derive(player.gameWorld)
+    const protectionHours = worldSettings.beginnerProtection.hours
+    const protectionUntil = new Date(Date.now() + protectionHours * 60 * 60 * 1000)
 
     await prisma.player.update({
       where: { id: playerId },
@@ -91,30 +94,15 @@ export class ProtectionService {
       return false // Cannot extend if no protection or already extended
     }
 
-    const worldSpeed = player.gameWorld?.speed || 1
-    let extensionDays: number
-
-    // Calculate extension duration based on world speed
-    switch (worldSpeed) {
-      case 1:
-        extensionDays = 3
-        break
-      case 2:
-      case 3:
-        extensionDays = 3
-        break
-      case 5:
-        extensionDays = 2
-        break
-      case 10:
-        extensionDays = 1
-        break
-      default:
-        extensionDays = 3
+    const worldSettings = WorldSettingsService.derive(player.gameWorld)
+    const threshold = worldSettings.beginnerProtection.pointThreshold
+    if (threshold !== undefined && player.totalPoints >= threshold) {
+      return false // Cannot extend if no protection or already extended
     }
 
+    const extensionHours = Math.max(12, Math.round(worldSettings.beginnerProtection.hours / 2))
     const newProtectionUntil = new Date(player.beginnerProtectionUntil)
-    newProtectionUntil.setDate(newProtectionUntil.getDate() + extensionDays)
+    newProtectionUntil.setTime(newProtectionUntil.getTime() + extensionHours * 60 * 60 * 1000)
 
     await prisma.player.update({
       where: { id: playerId },
@@ -155,9 +143,12 @@ export class ProtectionService {
   static async getProtectionTimeRemaining(playerId: string): Promise<number | null> {
     const player = await prisma.player.findUnique({
       where: { id: playerId },
+      select: {
+        beginnerProtectionUntil: true,
+      },
     })
 
-    if (!player || !player.beginnerProtectionUntil) {
+    if (!player?.beginnerProtectionUntil) {
       return null
     }
 
@@ -169,5 +160,21 @@ export class ProtectionService {
     }
 
     return Math.ceil((protectionUntil.getTime() - now.getTime()) / (1000 * 60 * 60)) // Hours remaining
+  }
+
+  private static playerHasProtection(
+    beginnerProtectionUntil: Date | null,
+    totalPoints: number,
+    gameWorld: GameWorld | null,
+  ): boolean {
+    if (!beginnerProtectionUntil) {
+      return false
+    }
+    const worldSettings = WorldSettingsService.derive(gameWorld ?? undefined)
+    const threshold = worldSettings.beginnerProtection.pointThreshold
+    if (threshold !== undefined && totalPoints >= threshold) {
+      return false
+    }
+    return new Date() < beginnerProtectionUntil
   }
 }

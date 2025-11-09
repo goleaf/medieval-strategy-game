@@ -1,4 +1,5 @@
 import type { CombatResolution, MovementMission, UnitRole } from "@/lib/rally-point/types"
+import type { ScoutingReportPayload } from "@/lib/game-services/scouting-service"
 
 export type Direction = "sent" | "received"
 
@@ -89,4 +90,30 @@ export interface CombatReportDetail extends CombatReportListItem {
     catapult?: CombatResolution["catapultDamage"]
     trap?: CombatResolution["trap"]
   }
+}
+
+export type ScoutReliability = "full" | "partial" | "failed"
+
+export interface ScoutIntelReport {
+  id: string
+  attackId: string
+  resolvedAt: string
+  expiresAt: string
+  reliability: ScoutReliability
+  ratio: number
+  attacker: ParticipantSummary
+  defender: ParticipantSummary & { coordsLabel?: string }
+  summary: {
+    troopCount?: number | null
+    resourceTotal?: number | null
+    wallLevel?: number | null
+  }
+  deltas: {
+    troopCount?: number | null
+    resourceTotal?: number | null
+    wallLevel?: number | null
+  }
+  actionSuggestion: string
+  payload?: ScoutingReportPayload | null
+  superseded: boolean
 }

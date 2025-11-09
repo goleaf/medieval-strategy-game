@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { ArrowLeft, Eye, X, Clock } from "lucide-react"
 import { AttackPlanner } from "@/components/game/attack-planner"
 import { ReinforcementPlanner } from "@/components/game/reinforcement-planner"
@@ -35,6 +36,18 @@ export default function AttacksPage() {
   const [selectedVillageId, setSelectedVillageId] = useState<string | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [hasGoldClub, setHasGoldClub] = useState(false)
+  const searchParams = useSearchParams()
+
+  const prefillTarget = useMemo(() => {
+    if (!searchParams) return undefined
+    const x = searchParams.get("targetX")
+    const y = searchParams.get("targetY")
+    if (!x && !y) return undefined
+    return {
+      x: x ? Number(x) : undefined,
+      y: y ? Number(y) : undefined,
+    }
+  }, [searchParams])
 
   const fetchData = useCallback(async (playerRef: string) => {
     try {
@@ -228,6 +241,7 @@ export default function AttacksPage() {
                       playerId={playerId}
                       playerHasGoldClub={hasGoldClub}
                       onLaunchAttack={handleLaunchAttack}
+                      prefillTarget={prefillTarget}
                     />
                   </section>
 

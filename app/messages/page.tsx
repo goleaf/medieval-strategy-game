@@ -12,7 +12,7 @@ interface Message {
   content: string
   isRead: boolean
   createdAt: string
-  sender: { playerName: string }
+  sender?: { id: string; playerName: string }
 }
 
 export default function MessagesPage() {
@@ -191,7 +191,13 @@ export default function MessagesPage() {
               rows={messages.map((msg) => [
                 msg.type,
                 msg.subject,
-                msg.sender?.playerName || "System",
+                msg.sender?.playerName ? (
+                  <Link key={`${msg.id}-sender`} href={`/players/${msg.sender.id}`} className="text-primary hover:underline">
+                    {msg.sender.playerName}
+                  </Link>
+                ) : (
+                  "System"
+                ),
                 new Date(msg.createdAt).toLocaleDateString(),
                 msg.isRead ? "Read" : "Unread",
                 <Button

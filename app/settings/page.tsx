@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Settings, User, RotateCcw, AlertTriangle, CheckCircle } from "lucide-react"
+import { Settings, User, RotateCcw, AlertTriangle, CheckCircle, BellRing, Shield, ShieldCheck, KeyRound, Smartphone, Laptop, LogOut, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,10 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { NotificationSettingsPanel } from "@/components/game/notification-settings"
 
 type PlayerData = {
   id: string
@@ -205,6 +209,10 @@ export default function SettingsPage() {
               <User className="w-4 h-4" />
               Avatar
             </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center gap-2">
+              <BellRing className="w-4 h-4" />
+              Notifications
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="avatar" className="space-y-4">
@@ -284,6 +292,9 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+          <TabsContent value="notifications">
+            <NotificationSettingsPanel playerId={player.id} />
           </TabsContent>
         </Tabs>
       </main>

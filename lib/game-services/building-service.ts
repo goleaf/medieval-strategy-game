@@ -7,6 +7,8 @@ import { BUILDING_BONUSES, LEGACY_BUILDING_COSTS, LEGACY_BUILDING_TIMES } from "
 import { CONSTRUCTION_CONFIG, getLevelData, getMainBuildingMultiplier, getQueuePreset } from "@/lib/config/construction"
 import { getSubsystemEffectsConfig } from "@/lib/config/subsystem-effects"
 import { NotificationService } from "./notification-service"
+import { EmailNotificationService } from "@/lib/notifications/email-notification-service"
+import { EventQueueService } from "@/lib/game-services/event-queue-service"
 import type {
   BuildQueueTask,
   BuildTaskStatus,
@@ -14,7 +16,11 @@ import type {
   BuildingCategory,
   BuildingType,
   DemolitionMode,
+  EmailNotificationTopic,
   GameTribe,
+  TrainingBuilding,
+  TrainingStatus,
+  EventQueueType,
 } from "@prisma/client"
 
 type QueueLimits = {
@@ -53,6 +59,23 @@ const PREREQUISITE_ALIAS: Partial<Record<string, BuildingType>> = {
 }
 
 const EXPENSIVE_BUILDING_THRESHOLD = 50000
+
+const TRAINING_BUILDING_MAP: Partial<Record<BuildingType, TrainingBuilding>> = {
+  BARRACKS: "BARRACKS",
+  STABLES: "STABLE",
+  WORKSHOP: "WORKSHOP",
+  RESIDENCE: "RESIDENCE",
+  PALACE: "PALACE",
+}
+const MAJOR_BUILDINGS = new Set<BuildingType>([
+  "PALACE",
+  "RESIDENCE",
+  "COMMAND_CENTER",
+  "ACADEMY",
+  "WORKSHOP",
+  "TREASURY",
+  "WONDER_OF_THE_WORLD" as BuildingType,
+])
 
 const hasActiveGoldClubMembership = (
   player?: { hasGoldClubMembership: boolean; goldClubExpiresAt: Date | null } | null,
@@ -475,6 +498,13 @@ export class BuildingService {
       },
     })
 
+    await EventQueueService.scheduleEvent(
+      "BUILDING_COMPLETION",
+      finishesAt,
+      { buildingId: building.id, taskId: task.id },
+      { dedupeKey: `building:${task.id}` },
+    )
+
     return true
   }
 
@@ -733,6 +763,8 @@ export class BuildingService {
       },
     })
 
+    await EventQueueService.removeByDedupeKey(`building:${task.id}`)
+
     await this.startNextTasks(building.villageId)
   }
 
@@ -742,7 +774,7 @@ export class BuildingService {
   static async completeBuilding(buildingId: string): Promise<void> {
     const building = await prisma.building.findUnique({
       where: { id: buildingId },
-      include: { village: { include: { buildings: true } } },
+      include: { village: { include: { buildings: true, player: true } } },
     })
 
     if (!building) throw new Error("Building not found")
@@ -825,6 +857,7 @@ export class BuildingService {
         })
       }
     }
+    await this.publishCompletionNotification(building, building.level + 1)
     await CulturePointService.recalculateVillageContribution(building.villageId)
     await this.startNextTasks(building.villageId)
     await updateTaskProgress(building.village.playerId, building.villageId)
@@ -849,6 +882,60 @@ export class BuildingService {
     }
   }
 
+  private static async publishCompletionNotification(
+    building: {
+      type: BuildingType
+      villageId: string
+      village: {
+        id: string
+        name: string
+        x: number
+        y: number
+        playerId: string
+        player: { playerName: string } | null
+      }
+    },
+    newLevel: number,
+  ): Promise<void> {
+    if (!building.village?.playerId) return
+
+    const isMajor = MAJOR_BUILDINGS.has(building.type)
+    const milestoneLevel = newLevel % 5 === 0
+    if (!isMajor && !milestoneLevel) return
+
+    const message = await prisma.message.create({
+      data: {
+        senderId: building.village.playerId,
+        villageId: building.villageId,
+        type: "BUILDING_COMPLETE",
+        subject: `${building.type.replace(/_/g, " ")} level ${newLevel} complete`,
+        content: JSON.stringify({
+          buildingType: building.type,
+          level: newLevel,
+          villageId: building.villageId,
+          villageName: building.village.name,
+        }),
+      },
+    })
+
+    await EmailNotificationService.queueEvent({
+      playerId: building.village.playerId,
+      topic: EmailNotificationTopic.BUILDING_COMPLETE,
+      payload: {
+        buildingType: building.type,
+        level: newLevel,
+        village: {
+          id: building.villageId,
+          name: building.village.name,
+          x: building.village.x,
+          y: building.village.y,
+        },
+      },
+      linkTarget: `/village/${building.villageId}/buildings`,
+      messageId: message.id,
+    })
+  }
+
   static getBuildingCosts(type: BuildingType) {
     return (
       LEGACY_BUILDING_COSTS[type] || { wood: 0, stone: 0, iron: 0, gold: 0, food: 0 }
@@ -865,8 +952,8 @@ export class BuildingService {
    * Demolition time is roughly half the construction time
    */
   static getDemolitionTime(type: BuildingType, level: number): number {
-    const baseTime = LEGACY_BUILDING_TIMES[type] ?? 3600
-    return Math.floor((baseTime * (1 + level * 0.1)) * 0.5) // 50% of construction time
+    const constructionTime = this.getBuildingUpgradeTime(type, level)
+    return Math.max(30, Math.floor(constructionTime * 0.1)) // 10% of construction time, minimum 30s
   }
 
   /**
@@ -891,7 +978,14 @@ export class BuildingService {
   static async startDemolition(buildingId: string): Promise<void> {
     const building = await prisma.building.findUnique({
       where: { id: buildingId },
-      include: { village: true },
+      include: {
+        village: {
+          include: {
+            buildings: true,
+          },
+        },
+        troopProduction: true,
+      },
     })
 
     if (!building) throw new Error("Building not found")
@@ -899,23 +993,57 @@ export class BuildingService {
     if (building.isDemolishing) throw new Error("Building is already being demolished")
     if (building.level <= 1) throw new Error("Cannot demolish the last level of a building")
 
-    // Check if Main Building is at least level 10 (Travian requirement)
-    const mainBuilding = building.village.buildings.find(b => b.type === "HEADQUARTER")
+    const mainBuilding = building.village.buildings.find((b) => b.type === "HEADQUARTER")
     if (!mainBuilding || mainBuilding.level < 10) {
       throw new Error("Main Building must be at least level 10 to demolish buildings")
     }
 
+    const nextLevel = Math.max(1, building.level - 1)
+    if (building.type === "FARM") {
+      const projection = building.village.buildings.map((entry) =>
+        entry.id === building.id ? { ...entry, level: nextLevel } : entry,
+      )
+      const newLimit = this.calculatePopulationLimit(projection)
+      if (building.village.population > newLimit) {
+        throw new Error("Demolishing this Farm would reduce capacity below current population")
+      }
+    }
+
+    await prisma.troopProduction.deleteMany({ where: { buildingId } })
+    const trainingBuilding = TRAINING_BUILDING_MAP[building.type]
+    if (trainingBuilding) {
+      await prisma.trainingQueueItem.updateMany({
+        where: {
+          villageId: building.villageId,
+          building: trainingBuilding,
+          status: { in: [TrainingStatus.WAITING, TrainingStatus.TRAINING] },
+        },
+        data: {
+          status: TrainingStatus.CANCELLED,
+          cancelledAt: new Date(),
+        },
+      })
+    }
+
     const demolitionTime = this.getDemolitionTime(building.type as BuildingType, building.level)
+    const demolitionAt = new Date(Date.now() + demolitionTime * 1000)
 
     await prisma.building.update({
       where: { id: buildingId },
       data: {
         isDemolishing: true,
-        demolitionAt: new Date(Date.now() + demolitionTime * 1000),
+        demolitionAt,
         demolitionMode: "LEVEL_BY_LEVEL",
         demolitionCost: 0,
       },
     })
+
+    await EventQueueService.scheduleEvent(
+      "BUILDING_COMPLETION",
+      demolitionAt,
+      { buildingId, demolition: true },
+      { dedupeKey: `demolition:${buildingId}` },
+    )
   }
 
   /**
@@ -992,6 +1120,7 @@ export class BuildingService {
 
     // Update production rates
     await this.updateVillageProductionRates(building.villageId)
+    await this.ensureVillagePopulationWithinLimit(building.villageId)
   }
 
   /**
@@ -1022,6 +1151,7 @@ export class BuildingService {
 
     // Update production rates
     await this.updateVillageProductionRates(building.villageId)
+    await this.ensureVillagePopulationWithinLimit(building.villageId)
   }
 
   /**
@@ -1036,49 +1166,6 @@ export class BuildingService {
     if (!building) throw new Error("Building not found")
     if (!building.isDemolishing) throw new Error("Building is not being demolished")
 
-    // For instant operations, no refund
-    if (building.demolitionMode !== "LEVEL_BY_LEVEL") {
-      await prisma.building.update({
-        where: { id: buildingId },
-        data: {
-          isDemolishing: false,
-          demolitionAt: null,
-          demolitionMode: null,
-          demolitionCost: 0,
-        },
-      })
-      return
-    }
-
-    // For level-by-level demolition, provide partial refund based on time remaining
-    const now = new Date()
-    const totalTime = building.demolitionAt ? building.demolitionAt.getTime() - building.updatedAt.getTime() : 0
-    const remainingTime = building.demolitionAt ? building.demolitionAt.getTime() - now.getTime() : 0
-
-    let refundPercentage = 0
-    if (totalTime > 0) {
-      refundPercentage = Math.max(0, remainingTime / totalTime)
-    }
-
-    // Refund a portion of the "virtual" resources that would be gained from demolition
-    const baseCosts = LEGACY_BUILDING_COSTS[building.type as BuildingType] || {
-      wood: 0,
-      stone: 0,
-      iron: 0,
-    }
-    const refundWood = Math.floor(baseCosts.wood * refundPercentage * 0.1) // 10% of construction cost
-    const refundStone = Math.floor(baseCosts.stone * refundPercentage * 0.1)
-    const refundIron = Math.floor(baseCosts.iron * refundPercentage * 0.1)
-
-    await prisma.village.update({
-      where: { id: building.villageId },
-      data: {
-        wood: { increment: refundWood },
-        stone: { increment: refundStone },
-        iron: { increment: refundIron },
-      },
-    })
-
     await prisma.building.update({
       where: { id: buildingId },
       data: {
@@ -1088,6 +1175,10 @@ export class BuildingService {
         demolitionCost: 0,
       },
     })
+
+    await EventQueueService.removeByDedupeKey(`demolition:${buildingId}`)
+
+    await this.ensureVillagePopulationWithinLimit(building.villageId)
   }
 
   /**
@@ -1113,5 +1204,22 @@ export class BuildingService {
         foodProduction: 15 + bonuses.food,
       },
     })
+  }
+
+  private static async ensureVillagePopulationWithinLimit(villageId: string): Promise<void> {
+    const village = await prisma.village.findUnique({
+      where: { id: villageId },
+      include: { buildings: true },
+    })
+
+    if (!village) return
+
+    const limit = this.calculatePopulationLimit(village.buildings)
+    if (village.population > limit) {
+      await prisma.village.update({
+        where: { id: villageId },
+        data: { population: limit },
+      })
+    }
   }
 }

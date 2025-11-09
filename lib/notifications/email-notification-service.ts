@@ -53,6 +53,10 @@ const APP_ORIGIN = process.env.APP_ORIGIN ?? process.env.NEXT_PUBLIC_APP_URL ?? 
 const EMAIL_FROM = process.env.EMAIL_FROM ?? "Medieval Strategy HQ <no-reply@medievalstrategy.game>"
 
 export class EmailNotificationService {
+  static async getSettings(playerId: string) {
+    return this.getOrCreateSetting(playerId)
+  }
+
   static async queueEvent(options: QueueOptions): Promise<void> {
     const setting = await this.getOrCreateSetting(options.playerId)
     if (!setting) return

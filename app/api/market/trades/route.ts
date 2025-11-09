@@ -18,6 +18,7 @@ const TRADE_ACTION_SCHEMA = z.object({
 type ShipmentWithVillages = Awaited<ReturnType<typeof fetchShipments>>[number]
 type ShipmentView = ReturnType<typeof serializeShipment>
 const RESOURCE_KEYS = ["wood", "stone", "iron", "gold", "food"] as const
+type ResourceKey = (typeof RESOURCE_KEYS)[number]
 
 export async function GET(req: NextRequest) {
   try {
@@ -297,6 +298,7 @@ function serializeShipment(shipment: ShipmentWithVillages, playerId: string) {
     0,
     Math.round((shipment.arriveAt.getTime() - shipment.departAt.getTime()) / 60000),
   )
+  const internal = shipment.sourceVillage.playerId === shipment.targetVillage.playerId
 
   return {
     id: shipment.id,
@@ -328,6 +330,7 @@ function serializeShipment(shipment: ShipmentWithVillages, playerId: string) {
       playerName: shipment.targetVillage.player?.playerName ?? "Unknown",
     },
     updatedAt: shipment.updatedAt,
+    internal,
   }
 }
 
@@ -341,7 +344,7 @@ function bundleFromShipment(shipment: ShipmentWithVillages) {
   }
 }
 
-function buildQuickTemplates(shipments: ReturnType<typeof serializeShipment>[], playerId: string) {
+function buildQuickTemplates(shipments: ShipmentView[], playerId: string) {
   const grouped = new Map<
     string,
     {
@@ -377,6 +380,152 @@ function buildQuickTemplates(shipments: ReturnType<typeof serializeShipment>[], 
       travelMinutes: shipment.travelMinutes,
       recentCount: count,
     }))
+}
+
+function buildReservedMap(reservations: Awaited<ReturnType<typeof ResourceReservationService.listActiveReservations>>) {
+  const map = new Map<string, ResourceBundle>()
+  for (const reservation of reservations) {
+    const totals = map.get(reservation.villageId) ?? emptyBundle()
+    for (const key of RESOURCE_KEYS) {
+      totals[key] = (totals[key] ?? 0) + (reservation[key] ?? 0)
+    }
+    map.set(reservation.villageId, totals)
+  }
+  return map
+}
+
+function emptyBundle(): ResourceBundle {
+  return { wood: 0, stone: 0, iron: 0, gold: 0, food: 0 }
+}
+
+function buildNetResources(
+  village: { wood: number; stone: number; iron: number; gold: number; food: number },
+  reserved: ResourceBundle,
+) {
+  const net = emptyBundle()
+  for (const key of RESOURCE_KEYS) {
+    net[key] = (village[key] ?? 0) - (reserved[key] ?? 0)
+  }
+  return net
+}
+
+function buildInternalFlows(shipments: ShipmentView[], playerId: string) {
+  const map = new Map<
+    string,
+    {
+      origin: ShipmentView["origin"]
+      destination: ShipmentView["destination"]
+      resources: ResourceBundle
+      shipments: number
+    }
+  >()
+
+  for (const shipment of shipments) {
+    if (shipment.origin.playerId !== playerId || shipment.destination.playerId !== playerId) {
+      continue
+    }
+    const key = `${shipment.origin.id}->${shipment.destination.id}`
+    const entry =
+      map.get(key) ??
+      {
+        origin: shipment.origin,
+        destination: shipment.destination,
+        resources: emptyBundle(),
+        shipments: 0,
+      }
+    entry.shipments += 1
+    for (const resource of RESOURCE_KEYS) {
+      entry.resources[resource] += shipment.resources[resource]
+    }
+    map.set(key, entry)
+  }
+
+  return Array.from(map.values())
+    .map((entry) => ({
+      origin: entry.origin,
+      destination: entry.destination,
+      resources: entry.resources,
+      shipments: entry.shipments,
+      totalResources: RESOURCE_KEYS.reduce((sum, key) => sum + entry.resources[key], 0),
+    }))
+    .sort((a, b) => b.totalResources - a.totalResources)
+}
+
+function computeBalanceSummary(
+  villages: Array<{
+    id: string
+    name: string
+    netResources: ResourceBundle
+    reservedResources: ResourceBundle
+  }>,
+) {
+  type ResourceStatus = "SURPLUS" | "DEFICIT" | "BALANCED"
+  const perVillage = villages.map((village) => ({
+    villageId: village.id,
+    villageName: village.name,
+    netResources: village.netResources,
+    reservedResources: village.reservedResources,
+    resourceStatus: {} as Record<ResourceKey, ResourceStatus>,
+  }))
+
+  const suggestions: Array<{
+    resource: ResourceKey
+    fromVillageId: string
+    toVillageId: string
+    amount: number
+  }> = []
+
+  for (const resource of RESOURCE_KEYS) {
+    const values = perVillage.map((entry) => entry.netResources[resource])
+    const average = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
+
+    const surpluses = perVillage
+      .map((entry) => ({
+        entry,
+        delta: entry.netResources[resource] - average,
+      }))
+      .filter((item) => item.delta > 0)
+      .sort((a, b) => b.delta - a.delta)
+
+    const deficits = perVillage
+      .map((entry) => ({
+        entry,
+        delta: entry.netResources[resource] - average,
+      }))
+      .filter((item) => item.delta < 0)
+      .sort((a, b) => a.delta - b.delta)
+
+    perVillage.forEach((entry) => {
+      const value = entry.netResources[resource]
+      entry.resourceStatus[resource] =
+        value > average
+          ? "SURPLUS"
+          : value < average
+          ? "DEFICIT"
+          : "BALANCED"
+    })
+
+    let i = 0
+    let j = 0
+    while (i < surpluses.length && j < deficits.length && suggestions.length < 5) {
+      const give = surpluses[i]
+      const need = deficits[j]
+      const transfer = Math.min(give.delta, Math.abs(need.delta))
+      if (transfer <= 0) break
+      suggestions.push({
+        resource,
+        fromVillageId: give.entry.villageId,
+        toVillageId: need.entry.villageId,
+        amount: Math.round(transfer),
+      })
+      give.delta -= transfer
+      need.delta += transfer
+      if (give.delta <= 0.01) i += 1
+      if (need.delta >= -0.01) j += 1
+    }
+  }
+
+  return { perVillage, suggestions }
 }
 
 async function buildContacts(

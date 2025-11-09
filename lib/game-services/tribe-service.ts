@@ -67,7 +67,7 @@ export const TRIBE_DATA: Record<GameTribe, TribeData> = {
       },
       {
         name: "Chief",
-        description: "Lowers enemy village loyalty by 20-25%."
+        description: "Lowers enemy village loyalty by 20-35 points."
       },
       {
         name: "Hero Bonus",
@@ -168,7 +168,7 @@ export const TRIBE_DATA: Record<GameTribe, TribeData> = {
       },
       {
         name: "Nomarch",
-        description: "Egyptian administrator; lowers enemy village loyalty by 20-25% during conquest attacks."
+        description: "Egyptian administrator; lowers enemy village loyalty by 20-35 points during conquest attacks."
       },
       {
         name: "Merchants",

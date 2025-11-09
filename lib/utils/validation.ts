@@ -122,9 +122,35 @@ export const messageSchema = z.object({
     "SYSTEM",
     "ALLIANCE_ATTACK",
     "PLAYER",
+    "BUILDING_COMPLETE",
+    "TRAINING_COMPLETE",
+    "TRIBE_BROADCAST",
+    "LOYALTY_ALERT",
+    "CONQUEST_REPORT",
+    "DAILY_SUMMARY",
   ]),
   subject: z.string().min(1).max(200),
   content: z.string().min(1).max(5000),
+})
+
+export const emailNotificationPreferenceSchema = z.object({
+  playerId: z.string().min(1, "Player ID required"),
+  email: z.string().email().optional(),
+  deliverySchedule: z.enum(["IMMEDIATE", "HOURLY", "DAILY"]).optional(),
+  language: z.enum(["EN", "DE"]).optional(),
+  dailyDigestHour: z.number().int().min(0).max(23).optional(),
+  preferences: z
+    .object({
+      attackIncoming: z.boolean().optional(),
+      attackReport: z.boolean().optional(),
+      conquestWarning: z.boolean().optional(),
+      conquestLost: z.boolean().optional(),
+      tribeMessage: z.boolean().optional(),
+      trainingComplete: z.boolean().optional(),
+      buildingComplete: z.boolean().optional(),
+      dailySummary: z.boolean().optional(),
+    })
+    .optional(),
 })
 
 const tribePermissionEnum = z.enum(TRIBE_PERMISSION_VALUES)

@@ -4,6 +4,7 @@ import { TroopService } from "./troop-service"
 import { LoyaltyService } from "./loyalty-service"
 import { VillageService } from "./village-service"
 import { handleVillageConquest } from "./task-service"
+import { EventQueueService } from "@/lib/game-services/event-queue-service"
 import type {
   Building,
   BuildingType,
@@ -173,6 +174,13 @@ export class ExpansionService {
         },
       },
     })
+
+    await EventQueueService.scheduleEvent(
+      "TROOP_MOVEMENT",
+      arrivalAt,
+      { movementId: movement.id },
+      { dedupeKey: `movement:${movement.id}` },
+    )
 
     await prisma.village.update({
       where: { id: sourceVillage.id },

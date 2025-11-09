@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { MovementService } from "@/lib/game-services/movement-service"
+import { EventQueueService } from "@/lib/game-services/event-queue-service"
 import { ProtectionService } from "@/lib/game-services/protection-service"
 import { CombatService } from "@/lib/game-services/combat-service"
 import { NightPolicyService, attackTypeToMission, formatWorldTime } from "@/lib/game-services/night-policy-service"
@@ -219,6 +220,13 @@ export async function POST(req: NextRequest) {
         arrivalAt,
       },
     })
+
+    await EventQueueService.scheduleEvent(
+      "TROOP_MOVEMENT",
+      arrivalAt,
+      { movementId: movement.id },
+      { dedupeKey: `movement:${movement.id}` },
+    )
 
     // Deduct troops from village
     for (const unit of units) {

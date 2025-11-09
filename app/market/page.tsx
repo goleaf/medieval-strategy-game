@@ -41,6 +41,8 @@ type TradeVillage = {
     premiumActive: boolean
     tilesPerHour: number
   } | null
+  reservedResources: ResourceBundle
+  netResources: ResourceBundle
 }
 
 type TradeContact = {
@@ -51,6 +53,53 @@ type TradeContact = {
   x: number
   y: number
   type: "SELF" | "ALLY" | "RECENT"
+}
+
+type InternalFlow = {
+  origin: { id: string; name: string; x: number; y: number }
+  destination: { id: string; name: string; x: number; y: number }
+  resources: ResourceBundle
+  shipments: number
+  totalResources: number
+}
+
+type RecurringTransfer = {
+  id: string
+  status: string
+  source: { id: string; name: string; x: number; y: number }
+  target: { id: string; name: string; x: number; y: number }
+  bundle: ResourceBundle
+  schedule: Record<string, unknown>
+  nextRunAt: string | null
+  lastRunAt: string | null
+  skipIfInsufficient: boolean
+}
+
+type ReservationEntry = {
+  id: string
+  villageId: string
+  villageName: string
+  coords: { x: number; y: number }
+  label: string
+  resources: ResourceBundle
+  reservedAt: string
+  expiresAt: string | null
+}
+
+type BalanceSummary = {
+  perVillage: Array<{
+    villageId: string
+    villageName: string
+    netResources: ResourceBundle
+    reservedResources: ResourceBundle
+    resourceStatus: Record<string, "SURPLUS" | "DEFICIT" | "BALANCED">
+  }>
+  suggestions: Array<{
+    resource: string
+    fromVillageId: string
+    toVillageId: string
+    amount: number
+  }>
 }
 
 type TradeShipment = {
@@ -83,6 +132,7 @@ type TradeShipment = {
     playerName: string
   }
   updatedAt: string
+  internal?: boolean
 }
 
 type QuickTemplate = {
@@ -106,8 +156,12 @@ type TradeOverview = {
   villages: TradeVillage[]
   shipments: { outgoing: TradeShipment[]; incoming: TradeShipment[] }
   history: TradeShipment[]
+  internalFlows: InternalFlow[]
   contacts: TradeContact[]
   quickTemplates: QuickTemplate[]
+  reservations: ReservationEntry[]
+  balance: BalanceSummary
+  recurringTransfers: RecurringTransfer[]
   totals: { merchants: { total: number; free: number } }
 }
 
@@ -280,6 +334,28 @@ const summarizeBundle = (bundle: ResourceBundle) => {
   return parts.join(", ") || "—"
 }
 
+const statusColor = (status?: string) => {
+  switch (status) {
+    case "SURPLUS":
+      return "text-emerald-600"
+    case "DEFICIT":
+      return "text-red-600"
+    default:
+      return "text-muted-foreground"
+  }
+}
+
+const describeSchedule = (schedule: any) => {
+  if (!schedule) return "Custom schedule"
+  if (schedule.type === "interval" && typeof schedule.everyMinutes === "number") {
+    return `Every ${schedule.everyMinutes}m`
+  }
+  if (schedule.type === "fixed_times" && Array.isArray(schedule.times)) {
+    return `Times ${schedule.times.join(", ")}`
+  }
+  return "Custom schedule"
+}
+
 export default function MarketPage() {
   const { auth, initialized } = useAuth({ redirectOnMissing: true, redirectTo: "/login" })
   const [orders, setOrders] = useState<MarketOrder[]>([])
@@ -304,6 +380,24 @@ export default function MarketPage() {
   const [calculatorSelection, setCalculatorSelection] = useState<string[]>([])
   const [calculatorTarget, setCalculatorTarget] = useState<ResourceBundle>({ wood: 3000, stone: 3000, iron: 3000, gold: 0, food: 0 })
   const [calculatorPlan, setCalculatorPlan] = useState<{ plan: Array<{ villageId: string; villageName: string; bundle: ResourceBundle; merchantsRequired: number }>; remaining: ResourceBundle } | null>(null)
+  const [calculatorLoading, setCalculatorLoading] = useState(false)
+  const [routeForm, setRouteForm] = useState({
+    sourceVillageId: "",
+    targetVillageId: "",
+    resources: { ...EMPTY_BUNDLE },
+    everyMinutes: 60,
+    skipIfInsufficient: true,
+  })
+  const [routeSubmitting, setRouteSubmitting] = useState(false)
+  const [reservationForm, setReservationForm] = useState({
+    villageId: "",
+    label: "",
+    expiresAt: "",
+    resources: { ...EMPTY_BUNDLE },
+  })
+  const [reservationSubmitting, setReservationSubmitting] = useState(false)
+  const [cancellingRouteId, setCancellingRouteId] = useState<string | null>(null)
+  const [releasingReservationId, setReleasingReservationId] = useState<string | null>(null)
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -389,10 +483,34 @@ export default function MarketPage() {
   }, [auth, fetchTradeOverview])
 
   useEffect(() => {
-    if (!tradeOverview) return
+    if (!tradeOverview || tradeOverview.villages.length === 0) return
+
     if (selectedVillageId && !tradeOverview.villages.some((village) => village.id === selectedVillageId)) {
       setSelectedVillageId(tradeOverview.villages[0]?.id ?? null)
     }
+
+    setRouteForm((prev) => {
+      if (prev.sourceVillageId && prev.targetVillageId) {
+        return prev
+      }
+      const sourceVillageId = prev.sourceVillageId || tradeOverview.villages[0].id
+      const fallbackTarget =
+        prev.targetVillageId ||
+        tradeOverview.villages.find((village) => village.id !== sourceVillageId)?.id ||
+        sourceVillageId
+      return {
+        ...prev,
+        sourceVillageId,
+        targetVillageId: fallbackTarget,
+      }
+    })
+
+    setReservationForm((prev) => {
+      if (prev.villageId) {
+        return prev
+      }
+      return { ...prev, villageId: tradeOverview.villages[0].id }
+    })
   }, [tradeOverview, selectedVillageId])
 
   const handleResourcesUpdated = useCallback(async () => {
@@ -469,6 +587,26 @@ export default function MarketPage() {
 
   const setResourceValue = (key: keyof ResourceBundle, value: number) => {
     setResourcesToSend((prev) => ({ ...prev, [key]: Math.max(0, Math.floor(value)) }))
+  }
+
+  const setRouteResourceValue = (key: keyof ResourceBundle, value: number) => {
+    setRouteForm((prev) => ({
+      ...prev,
+      resources: {
+        ...prev.resources,
+        [key]: Math.max(0, Math.floor(value)),
+      },
+    }))
+  }
+
+  const setReservationResourceValue = (key: keyof ResourceBundle, value: number) => {
+    setReservationForm((prev) => ({
+      ...prev,
+      resources: {
+        ...prev.resources,
+        [key]: Math.max(0, Math.floor(value)),
+      },
+    }))
   }
 
   const handleTemplateLoad = (template: QuickTemplate) => {
@@ -555,56 +693,189 @@ export default function MarketPage() {
     }
   }
 
+  const handleCreateRecurringTransfer = async () => {
+    if (!auth) {
+      setTradeError("Login required to create recurring transfers")
+      return
+    }
+    if (!routeForm.sourceVillageId || !routeForm.targetVillageId) {
+      setTradeError("Select source and target villages")
+      return
+    }
+    const total = sumBundle(routeForm.resources)
+    if (total <= 0) {
+      setTradeError("Add resources to the recurring transfer")
+      return
+    }
+    setRouteSubmitting(true)
+    try {
+      const payload = {
+        sourceVillageId: routeForm.sourceVillageId,
+        targetVillageId: routeForm.targetVillageId,
+        resources: routeForm.resources,
+        schedule: {
+          type: "interval" as const,
+          everyMinutes: Math.max(5, Math.floor(routeForm.everyMinutes)),
+        },
+        skipIfInsufficient: routeForm.skipIfInsufficient,
+      }
+      const res = await fetch("/api/market/trades/routes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify(payload),
+      })
+      const result = await res.json()
+      if (!result.success) {
+        setTradeError(result.error || "Failed to create recurring transfer")
+      } else {
+        await fetchTradeOverview()
+      }
+    } catch (error) {
+      console.error("Failed to create recurring transfer:", error)
+      setTradeError("Failed to create recurring transfer")
+    } finally {
+      setRouteSubmitting(false)
+    }
+  }
+
+  const handleCancelRecurringTransfer = async (routeId: string) => {
+    if (!auth) return
+    setCancellingRouteId(routeId)
+    try {
+      const res = await fetch("/api/market/trades/routes", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify({ routeId, action: "CANCEL" }),
+      })
+      const result = await res.json()
+      if (!result.success) {
+        setTradeError(result.error || "Failed to cancel recurring transfer")
+      } else {
+        await fetchTradeOverview()
+      }
+    } catch (error) {
+      console.error("Failed to cancel recurring transfer:", error)
+      setTradeError("Failed to cancel recurring transfer")
+    } finally {
+      setCancellingRouteId(null)
+    }
+  }
+
+  const handleCreateReservation = async () => {
+    if (!auth) {
+      setTradeError("Login required to reserve resources")
+      return
+    }
+    if (!reservationForm.villageId || reservationForm.label.trim().length === 0) {
+      setTradeError("Reservation requires a village and label")
+      return
+    }
+    const total = sumBundle(reservationForm.resources)
+    if (total <= 0) {
+      setTradeError("Add resources to reserve")
+      return
+    }
+    setReservationSubmitting(true)
+    try {
+      const res = await fetch("/api/market/trades/reservations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify({
+          villageId: reservationForm.villageId,
+          label: reservationForm.label,
+          resources: reservationForm.resources,
+          expiresAt: reservationForm.expiresAt || undefined,
+        }),
+      })
+      const result = await res.json()
+      if (!result.success) {
+        setTradeError(result.error || "Failed to create reservation")
+      } else {
+        setReservationForm((prev) => ({ ...prev, label: "" }))
+        await fetchTradeOverview()
+      }
+    } catch (error) {
+      console.error("Failed to create reservation:", error)
+      setTradeError("Failed to create reservation")
+    } finally {
+      setReservationSubmitting(false)
+    }
+  }
+
+  const handleReleaseReservation = async (reservationId: string) => {
+    if (!auth) return
+    setReleasingReservationId(reservationId)
+    try {
+      const res = await fetch("/api/market/trades/reservations", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify({ reservationId, action: "RELEASE" }),
+      })
+      const result = await res.json()
+      if (!result.success) {
+        setTradeError(result.error || "Failed to release reservation")
+      } else {
+        await fetchTradeOverview()
+      }
+    } catch (error) {
+      console.error("Failed to release reservation:", error)
+      setTradeError("Failed to release reservation")
+    } finally {
+      setReleasingReservationId(null)
+    }
+  }
+
   const toggleCalculatorSelection = (villageId: string) => {
     setCalculatorSelection((prev) =>
       prev.includes(villageId) ? prev.filter((id) => id !== villageId) : [...prev, villageId],
     )
   }
 
-  const runCalculator = () => {
-    if (!tradeOverview) return
-    const selectedVillages = tradeOverview.villages.filter((village) => calculatorSelection.includes(village.id))
-    if (selectedVillages.length === 0) {
-      setCalculatorPlan(null)
+  const runCalculator = async () => {
+    if (!auth) {
+      setTradeError("Login required to run the distribution calculator")
       return
     }
-    const remaining: ResourceBundle = { ...calculatorTarget }
-    const plan: Array<{ villageId: string; villageName: string; bundle: ResourceBundle; merchantsRequired: number }> = []
-
-    for (const village of selectedVillages) {
-      if (!village.merchants || village.merchants.free <= 0) continue
-      const allocation: ResourceBundle = { ...EMPTY_BUNDLE }
-      RESOURCE_KEYS.forEach((key) => {
-        const available = village[key]
-        if (available <= 0 || remaining[key] <= 0) return
-        const amount = Math.min(remaining[key], available)
-        allocation[key] = amount
-        remaining[key] -= amount
+    setCalculatorLoading(true)
+    try {
+      const res = await fetch("/api/market/trades/planner", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify({
+          villageIds: calculatorSelection.length > 0 ? calculatorSelection : undefined,
+          needs: calculatorTarget,
+        }),
       })
-      let total = sumBundle(allocation)
-      if (total === 0) continue
-      const maxCapacity = village.merchants.free * village.merchants.capacityPerMerchant
-      if (total > maxCapacity) {
-        const ratio = maxCapacity / total
-        RESOURCE_KEYS.forEach((key) => {
-          const scaled = Math.floor(allocation[key] * ratio)
-          const refund = allocation[key] - scaled
-          allocation[key] = scaled
-          remaining[key] += refund
+      const result = await res.json()
+      if (result.success) {
+        setCalculatorPlan({
+          plan: result.data.plan,
+          remaining: result.data.remainingNeeds,
         })
-        total = sumBundle(allocation)
+      } else {
+        setTradeError(result.error || "Unable to compute plan")
       }
-      if (total === 0) continue
-      const merchantsRequired = Math.ceil(total / village.merchants.capacityPerMerchant)
-      plan.push({
-        villageId: village.id,
-        villageName: village.name,
-        bundle: allocation,
-        merchantsRequired,
-      })
+    } catch (error) {
+      console.error("Failed to run planner:", error)
+      setTradeError("Failed to run planner")
+    } finally {
+      setCalculatorLoading(false)
     }
-
-    setCalculatorPlan({ plan, remaining })
   }
 
   const showingDemoData = usingMockOrders || usingMockVillages
@@ -690,6 +961,276 @@ export default function MarketPage() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Resource Balance</CardTitle>
+                      <CardDescription>Spot surpluses, shortages, and suggested balancing trades.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <TextTable
+                        headers={["Village", "Net", "Reserved", "Status"]}
+                        rows={tradeOverview.balance.perVillage.map((entry) => [
+                          entry.villageName,
+                          summarizeBundle(entry.netResources),
+                          summarizeBundle(entry.reservedResources),
+                          <div key={`status-${entry.villageId}`} className="flex flex-wrap gap-2 text-xs">
+                            {RESOURCE_KEYS.map((key) => (
+                              <span key={`${entry.villageId}-${key}`} className={`font-semibold ${statusColor(entry.resourceStatus[key])}`}>
+                                {key[0].toUpperCase()}:{entry.resourceStatus[key]?.charAt(0) ?? "B"}
+                              </span>
+                            ))}
+                          </div>,
+                        ])}
+                      />
+                      <div>
+                        <p className="text-sm font-semibold mb-2">Suggested reallocations</p>
+                        {tradeOverview.balance.suggestions.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No imbalances detected.</p>
+                        ) : (
+                          <ul className="list-disc pl-5 text-sm space-y-1">
+                            {tradeOverview.balance.suggestions.map((suggestion, index) => {
+                              const fromVillage = tradeOverview.villages.find((v) => v.id === suggestion.fromVillageId)
+                              const toVillage = tradeOverview.villages.find((v) => v.id === suggestion.toVillageId)
+                              return (
+                                <li key={`${suggestion.resource}-${index}`}>
+                                  Send {formatNumber(suggestion.amount)} {suggestion.resource.toUpperCase()} from{" "}
+                                  {fromVillage?.name ?? "Unknown"} → {toVillage?.name ?? "Unknown"}
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Trade Route Map</CardTitle>
+                      <CardDescription>Current internal flows between your villages.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {tradeOverview.internalFlows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No internal shipments in transit.</p>
+                      ) : (
+                        <TextTable
+                          headers={["Route", "Totals", "Shipments"]}
+                          rows={tradeOverview.internalFlows.map((flow) => [
+                            `${flow.origin.name} → ${flow.destination.name}`,
+                            summarizeBundle(flow.resources),
+                            `${flow.shipments} runs`,
+                          ])}
+                        />
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Recurring Transfers</CardTitle>
+                        <CardDescription>Automate resource pushes between your villages.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                          {tradeOverview.recurringTransfers.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No active recurring transfers.</p>
+                          ) : (
+                            tradeOverview.recurringTransfers.map((route) => (
+                              <div key={route.id} className="rounded border border-border p-2 text-sm space-y-1">
+                                <div className="flex items-center justify-between font-semibold">
+                                  <span>
+                                    {route.source.name} → {route.target.name}
+                                  </span>
+                                  <span className="text-muted-foreground text-xs">{route.status}</span>
+                                </div>
+                                <div className="text-muted-foreground">{summarizeBundle(route.bundle)}</div>
+                                <div className="flex items-center justify-between text-xs">
+                                  <span>
+                                    {describeSchedule(route.schedule)} • Next{" "}
+                                    {route.nextRunAt ? relativeTimeFromNow(route.nextRunAt) : "—"}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={cancellingRouteId === route.id}
+                                    onClick={() => handleCancelRecurringTransfer(route.id)}
+                                  >
+                                    {cancellingRouteId === route.id ? "Cancelling..." : "Cancel"}
+                                  </Button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Source village</Label>
+                          <Select
+                            value={routeForm.sourceVillageId}
+                            onValueChange={(value) => setRouteForm((prev) => ({ ...prev, sourceVillageId: value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose source" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tradeOverview.villages.map((village) => (
+                                <SelectItem key={village.id} value={village.id}>
+                                  {village.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Destination village</Label>
+                          <Select
+                            value={routeForm.targetVillageId}
+                            onValueChange={(value) => setRouteForm((prev) => ({ ...prev, targetVillageId: value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose destination" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tradeOverview.villages.map((village) => (
+                                <SelectItem key={village.id} value={village.id}>
+                                  {village.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {RESOURCE_KEYS.map((key) => (
+                            <div key={`route-${key}`}>
+                              <Label className="capitalize">{key}</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={routeForm.resources[key]}
+                                onChange={(event) => setRouteResourceValue(key, Number(event.target.value) || 0)}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 items-end">
+                          <div>
+                            <Label>Interval (minutes)</Label>
+                            <Input
+                              type="number"
+                              min={5}
+                              value={routeForm.everyMinutes}
+                              onChange={(event) =>
+                                setRouteForm((prev) => ({ ...prev, everyMinutes: Number(event.target.value) || 0 }))
+                              }
+                            />
+                          </div>
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={routeForm.skipIfInsufficient}
+                              onChange={(event) =>
+                                setRouteForm((prev) => ({ ...prev, skipIfInsufficient: event.target.checked }))
+                              }
+                            />
+                            Skip if insufficient
+                          </label>
+                        </div>
+                        <Button className="w-full" onClick={handleCreateRecurringTransfer} disabled={routeSubmitting}>
+                          {routeSubmitting ? "Creating..." : "Create Recurring Transfer"}
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Resource Reservations</CardTitle>
+                        <CardDescription>Protect resources earmarked for upgrades or nobles.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                          {tradeOverview.reservations.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No active reservations.</p>
+                          ) : (
+                            tradeOverview.reservations.map((reservation) => (
+                              <div key={reservation.id} className="rounded border border-border p-2 text-sm space-y-1">
+                                <div className="flex items-center justify-between font-semibold">
+                                  <span>{reservation.label}</span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={releasingReservationId === reservation.id}
+                                    onClick={() => handleReleaseReservation(reservation.id)}
+                                  >
+                                    {releasingReservationId === reservation.id ? "Releasing..." : "Release"}
+                                  </Button>
+                                </div>
+                                <div className="text-muted-foreground">
+                                  {reservation.villageName} ({reservation.coords.x}|{reservation.coords.y})
+                                </div>
+                                <div className="text-muted-foreground">{summarizeBundle(reservation.resources)}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {reservation.expiresAt ? `Expires ${relativeTimeFromNow(reservation.expiresAt)}` : "No expiry"}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div>
+                          <Label>Village</Label>
+                          <Select
+                            value={reservationForm.villageId}
+                            onValueChange={(value) => setReservationForm((prev) => ({ ...prev, villageId: value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose village" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tradeOverview.villages.map((village) => (
+                                <SelectItem key={village.id} value={village.id}>
+                                  {village.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Label</Label>
+                          <Input
+                            value={reservationForm.label}
+                            onChange={(event) => setReservationForm((prev) => ({ ...prev, label: event.target.value }))}
+                            placeholder="e.g., Academy lvl 15"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {RESOURCE_KEYS.map((key) => (
+                            <div key={`reservation-${key}`}>
+                              <Label className="capitalize">{key}</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={reservationForm.resources[key]}
+                                onChange={(event) =>
+                                  setReservationResourceValue(key, Number(event.target.value) || 0)
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div>
+                          <Label>Expires (optional)</Label>
+                          <Input
+                            type="datetime-local"
+                            value={reservationForm.expiresAt}
+                            onChange={(event) => setReservationForm((prev) => ({ ...prev, expiresAt: event.target.value }))}
+                          />
+                        </div>
+                        <Button className="w-full" onClick={handleCreateReservation} disabled={reservationSubmitting}>
+                          {reservationSubmitting ? "Saving..." : "Reserve Resources"}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <Card>
@@ -863,8 +1404,8 @@ export default function MarketPage() {
                               </div>
                             ))}
                           </div>
-                          <Button size="sm" onClick={runCalculator}>
-                            Calculate Plan
+                          <Button size="sm" onClick={runCalculator} disabled={calculatorLoading}>
+                            {calculatorLoading ? "Calculating..." : "Calculate Plan"}
                           </Button>
                           {calculatorPlan && (
                             <div className="text-sm space-y-2">
@@ -904,6 +1445,9 @@ export default function MarketPage() {
                               </span>
                               <span>{shipment.status}</span>
                             </div>
+                            <div className="text-xs uppercase text-muted-foreground">
+                              {shipment.internal ? "Internal transfer" : "External trade"}
+                            </div>
                             <div className="text-muted-foreground">
                               Arrives {formatArrival(shipment.arriveAt)} ({relativeTimeFromNow(shipment.arriveAt)})
                             </div>
@@ -940,6 +1484,9 @@ export default function MarketPage() {
                                 ← {shipment.origin.name} ({shipment.origin.x}|{shipment.origin.y})
                               </span>
                               <span>{shipment.status}</span>
+                            </div>
+                            <div className="text-xs uppercase text-muted-foreground">
+                              {shipment.internal ? "Internal transfer" : "External trade"}
                             </div>
                             <div className="text-muted-foreground">
                               Arrives {formatArrival(shipment.arriveAt)} ({relativeTimeFromNow(shipment.arriveAt)})

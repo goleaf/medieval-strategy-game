@@ -1,13 +1,13 @@
 # Catapult Targeting & Damage Resolution
 
-The rally-point mission pipeline now routes all post-combat catapult work through a dedicated resolver (`lib/combat/catapult`). This document outlines how players choose targets, how the resolver validates and damages structures/resource fields, and which knobs are world-tunable.
+Catapult damage is now resolved inside `lib/troop-system/mission-engine.ts` immediately after `resolveBattle` returns an attacker victory. This document explains how targets are selected, how many shots the attackers get, and how the probabilistic damage model matches the in-game spec.
 
 ## Ordering in the Battle Pipeline
 1. Combat resolution.
 2. Ram damage vs. wall.
-3. Catapult damage (this spec).
+3. Catapult damage (this document).
 4. Administrator (loyalty) effects.
-5. Loot.
+5. Loot / return scheduling.
 
 All waves that share the same landing timestamp use the deterministic movement ordering described in `docs/features/rally-point.md`.
 
@@ -35,55 +35,42 @@ Selections are stored with the movement and re-validated at arrival. If the firs
 - Production changes apply immediately after the catapult phase; starvation re-checks in the same tick.
 
 ## Damage Model
-- Each surviving catapult contributes one shot; smithy levels, artifacts, and events can boost shot power via percentage multipliers.
-- Base costs per level follow a diminishing-return curve (levels 1–5 are cheap, 6–10 moderate, 11–20 expensive). Great buildings multiply the cost, resource fields use a discounted multiplier, and WW entries use a massive multiplier plus per-wave drop caps.
-- Damage simulation subtracts level costs until power is depleted, the target hits its floor, or the wave hits its WW drop cap. Excess power/shots are marked as wasted.
-- A deterministic ±5 % variance is applied per target using the movement seed components so repeated simulations remain reproducible.
-- Stonemason (when present and allowed by the world rules) reduces incoming shot power by a configurable percentage.
+- Let `count` be the surviving catapults after combat.
+- Compute the tech multiplier: `techMult = 1 + averageSmithyAttackLevel × siege.catapult.techPct / 100`.
+- Effective catapults: `effectiveCats = floor(count × techMult)`.
+- `totalShots = floor(effectiveCats / 3)` (3 catapults = one shot). Values below three cats produce zero shots.
+- Shots are distributed via `distributeShots` (half/half for dual targeting, extra shot goes to the first target).
+- Each shot performs a Bernoulli trial whose success chance depends on the remaining catapults:
+
+| Surviving catapults | Success chance per shot |
+| --- | --- |
+| 3–5 | 30% |
+| 6–8 | 50% |
+| 9+ | 90% |
+
+- Every success reduces the current target by exactly one level (never below 0). Failures consume the shot.
+- RNG pulls from a hash of `battleReport.luck.seed`, making battle reports, replay tools, and post-processing fully deterministic.
 
 ## World Wonder Rules
-- Eligible targets inside a WW village: the WW itself plus Great Warehouses/Granaries (other buildings depend on the world’s build list).
-- Default per-wave drop cap: 1 level (tunable per world). Excess shots are wasted once the cap is reached.
-- Stonemason is disabled in WW villages by default.
+World Wonder (WW) support is data-driven. If the siege snapshot supplies WW or great-building targets, they are treated like any other target: shots can land as long as the structure level is above zero. Per-world drop caps or stonemason reductions can be layered on top by adjusting the snapshot or by wrapping the `applyCatapultDamage` result before persistence.
 
 ## Reporting & Persistence
-- The resolver returns a structured report containing the player selection (if any), target label/type, level `before → after`, shots allocated/consumed/wasted, active modifiers (variance, stonemason, artifact/event bonuses), and notes (floor hits, WW cap, invalidation).
-- `RallyPointEngine` now fetches a siege snapshot for defender villages, feeds it into the resolver, persists the resulting structure/resource-field levels inside the same transaction, and stores the full `catapultDamage` payload on the battle report.
+- `applyCatapultDamage` returns `CatapultResolution` summarising shots, per-target drops, and remaining levels.
+- The rally-point engine fetches the defender’s siege snapshot, supplies it via `SiegeContext.targets`, persists the new levels if drops occur, and stores the same payload inside the battle report (`battle.catapultResolution` and movement report history).
 
-## Configuration (`WorldConfig.siegeRulesConfig`)
+## Configuration
 
-`lib/combat/catapult/rules.ts` ships with `DEFAULT_CATAPULT_RULES` (classic preset). Override any subset per world by populating the `WorldConfig.siegeRulesConfig` JSON blob (see the new Prisma column + migration):
-
-```json
-{
-  "targeting": {
-    "fieldRule": {
-      "enabled": true,
-      "allowSlotSelection": false,
-      "randomEligible": false,
-      "selectionMode": "highest_first",
-      "capitalProtection": { "mode": "floor", "floorLevel": 10 },
-      "resilienceMultiplier": 0.85
-    }
-  },
-  "resilience": {
-    "worldWonderMultiplier": 30,
-    "overrides": {
-      "WORLD_WONDER": { "dropCap": 2 }
-    }
-  }
-}
-```
-
-`WorldRulesService#getSiegeRules()` merges overrides with the defaults, so API callers and background jobs can consistently apply the same rule set without duplicating constants.
+- `config/unit-system.json > siege.catapult` controls the smithy tech multiplier (`techPct`) and the threshold for shot creation.
+- Rally-point world settings still decide whether dual targeting or resource-field targeting is allowed; the movement snapshot should only contain targets that are legal for the current world.
+- Adjusting the success probabilities requires editing `applyCatapultDamage` so that combat reports, backend logic, and documentation remain in sync.
 
 ## Test Coverage
-- `lib/combat/__tests__/catapult-engine.test.ts` exercises floors, resource-field targeting, random fallback, and WW caps.
-- `lib/__tests__/rally-point-engine.test.ts` ensures RP gating, mission ordering, and cancellations all still hold with the new resolver in place.
+- `lib/__tests__/rally-point-engine.test.ts` checks RP gating, mission ordering, and cancellation handling.
+- Add scenario tests near `lib/combat/__tests__/travian-resolver.test.ts` whenever you tweak shot chance tables so regression coverage stays realistic.
 
 Run the suite via:
 
 ```bash
-npx vitest run lib/combat/__tests__/catapult-engine.test.ts
 npx vitest run lib/__tests__/rally-point-engine.test.ts
+npx vitest run lib/combat/__tests__/travian-resolver.test.ts
 ```

@@ -188,6 +188,29 @@ This ensures backward compatibility during the transition period.
 - **Balance Testing**: Recommended to test changes in staging environment
 - **Player Communication**: Consider announcing major balance changes
 
+## Default Tribal Wars Unit Stats
+
+The JSON blueprint at `config/unit-system.json` now stores a complete “Unit Statistics Database” for the Tribal Wars roster. Each entry matches Travian/Tribal Wars timings and population costs, and exposes optional `worldFeatureFlags` so presets can toggle Archers or Paladins without editing code. The defaults shipped with this repo are summarised below (minutes per field convert directly to the `speedTilesPerHour` values in config):
+
+| Unit | Cost (W/C/I) | Train Time | Pop | Speed (min/field) | Attack | Defense (Inf/Cav/Arch) | Carry | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Spear Fighter | 50 / 30 / 10 | 10 m | 1 | 18 | 10 | 15 / 45 / 20 | 25 | Core infantry starter |
+| Swordsman | 30 / 30 / 70 | 17 m | 1 | 22 | 25 | 50 / 15 / 40 | 15 | Defensive infantry |
+| Axeman | 60 / 30 / 40 | 12 m | 1 | 18 | 40 | 10 / 5 / 10 | 10 | Glass-cannon infantry |
+| Archer* | 100 / 30 / 60 | 18 m | 1 | 18 | 15 | 50 / 40 / 5 | 10 | `worldFeatureFlags: ["archers"]` |
+| Scout | 50 / 50 / 20 | 13 m | 2 | 9 | 0 | 2 / 2 / 2 | 0 | Enables spying missions |
+| Light Cavalry | 125 / 100 / 250 | 25 m | 4 | 10 | 130 | 30 / 40 / 30 | 80 | Fast raider |
+| Mounted Archer* | 250 / 100 / 150 | 30 m | 5 | 10 | 120 | 40 / 30 / 50 | 50 | Requires `archers` flag |
+| Heavy Cavalry | 200 / 150 / 600 | 40 m | 6 | 11 | 150 | 200 / 80 / 180 | 50 | High-defense cav |
+| Ram | 300 / 200 / 200 | 50 m | 5 | 30 | 2 | 20 / 20 / 20 | 0 | 2% wall drop chance per ram |
+| Catapult | 320 / 400 / 100 | 60 m | 8 | 30 | 100 | 100 / 100 / 100 | 0 | 3 catapults per building level |
+| Paladin* | 20k / 20k / 40k | 9 h | 10 | 10 | 150 | 250 / 250 / 250 | 100 | `worldFeatureFlags: ["paladin"]`, single per player, respawns |
+| Nobleman | 40k / 50k / 50k | 7 h | 100 | 35 | 30 | 100 / 100 / 100 | 0 | Loyalty hit 20–35, coin cost handled by economy systems |
+
+\* Units marked with `worldFeatureFlags` only spawn on worlds that enable the related feature switch (e.g., presets that disable Archers or Paladins automatically hide these definitions).
+
+Crop upkeep mirrors population for all of the above, so starvation simulations and population gating stay consistent with world speed modifiers.
+
 ## Audit Logging
 
 All unit balance changes are logged:
@@ -254,5 +277,4 @@ Unit balance integrates with:
 - Database entries take precedence once created
 - No data loss during migration
 - Backward compatibility maintained
-
 

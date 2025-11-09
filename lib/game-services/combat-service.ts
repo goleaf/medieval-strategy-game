@@ -13,6 +13,8 @@ import type { NightState } from "./night-policy-service"
 import { ScoutingService } from "./scouting-service"
 import { resolveUnitRole } from "./unit-classification"
 import { NotificationService } from "./notification-service"
+import { WorldSettingsService } from "@/lib/game-services/world-settings-service"
+import type { WorldSettings } from "@/lib/game-services/world-settings-service"
 import type {
   AttackStatus,
   AttackType,
@@ -82,6 +84,7 @@ interface ResolveCombatParams {
   heroAttackMultiplier?: number
   nightBonusMultiplier?: number
   seedComponents?: Array<string | number>
+  worldSettings?: WorldSettings
 }
 
 const DEFAULT_UNIT_ROLE: UnitRole = "inf"

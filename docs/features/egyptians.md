@@ -59,7 +59,7 @@ Although their days of ancient glory are past, the Egyptians remain a **formidab
 - **Speed**: 6
 - **Health**: 350
 - **Cost**: 600 wood, 450 stone, 300 iron, 300 gold, 800 food
-- **Special**: Egyptian administrator; lowers enemy village **loyalty by 20-25%** during conquest attacks.
+- **Special**: Egyptian administrator; lowers enemy village **loyalty by 20-35 points** during conquest attacks.
 
 ## Special Features
 
@@ -67,7 +67,7 @@ Although their days of ancient glory are past, the Egyptians remain a **formidab
 | --------------------------------- | ----------------------------------------------------------------------------- |
 | **Stone Wall**                    | Extremely durable defensive wall with 25% higher defense bonus and 50% damage resistance. |
 | **Waterworks**                    | Increases oasis bonuses, boosting resource production by 3 per level for all resources. |
-| **Nomarch**                       | Lowers enemy village **loyalty by 20-25%** during conquest attacks. |
+| **Nomarch**                       | Lowers enemy village **loyalty by 20-35 points** during conquest attacks. |
 | **Merchants**                     | Carry **750 resources** at **16 fields/hour**. |
 | **Hero Bonus**                    | Grants **15% increased resource production** across the empire. |
 | **Efficient Economy**             | **Cheap and fast-training basic units**, great for maintaining a strong army. |
@@ -112,7 +112,7 @@ Although their days of ancient glory are past, the Egyptians remain a **formidab
 | Mummy | 10 | 18 | 4 | 180 | Extremely defensive, slow |
 | Anubite | 15 | 25 | 5 | 220 | Balanced defensive unit |
 | Pharaoh | 25 | 35 | 6 | 350 | Elite Egyptian warrior |
-| Nomarch | 45 | 30 | 6 | 800 | Loyalty reduction (20-25%) |
+| Nomarch | 45 | 30 | 6 | 800 | Loyalty reduction (20-35) |
 
 ## Recommended Tactics
 

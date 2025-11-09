@@ -129,6 +129,32 @@ enum MentorshipStatus {
   DECLINED
 }
 
+enum AchievementCategory {
+  ECONOMIC
+  MILITARY
+  SOCIAL
+  PROGRESSION
+  SPECIAL
+}
+
+enum AchievementRarity {
+  COMMON
+  RARE
+  LEGENDARY
+}
+
+enum AchievementStatus {
+  LOCKED
+  IN_PROGRESS
+  COMPLETED
+  CLAIMED
+}
+
+enum AchievementProgressMode {
+  METRIC
+  MANUAL
+}
+
 enum SocialActivityVisibility {
   PUBLIC
   FRIENDS
@@ -214,6 +240,10 @@ model GameWorld {
 
   // Tribe Configuration
   availableTribes GameWorldTribe[]
+
+  // World Settings
+  worldType WorldType @default(CLASSIC)
+  settings  Json?     @default("{}")
 
   // Game State
   isActive           Boolean   @default(true)
@@ -1825,6 +1855,7 @@ model TrainingQueueItem {
   costClay              Int     @default(0)
   costIron              Int     @default(0)
   costCrop              Int     @default(0)
+  costGold              Int     @default(0)
   populationCost        Int     @default(0)
   worldSpeedApplied     Float   @default(1)
   cancelledAt DateTime?
@@ -1891,6 +1922,13 @@ enum MovementKind {
   SETTLER_FOUND
   SETTLER_RETURN
   LOGISTICS
+}
+
+enum WorldType {
+  CLASSIC
+  ARCHER
+  CHURCH
+  CASUAL
 }
 
 model ExpansionLink {

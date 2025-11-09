@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db"
+import { WorldSettingsService } from "@/lib/game-services/world-settings-service"
+import { EventQueueService } from "@/lib/game-services/event-queue-service"
 
 interface PathNode {
   x: number
@@ -100,17 +102,20 @@ export class MovementService {
   static async calculateTravelTime(
     distance: number,
     troopSpeeds: number[],
+    worldUnitSpeed?: number,
   ): Promise<number> {
-    // Get world unit speed multiplier
-    const config = await prisma.worldConfig.findFirst()
-    const worldUnitSpeed = config?.unitSpeed || 1.0
+    let effectiveUnitSpeed = worldUnitSpeed
+    if (effectiveUnitSpeed === undefined) {
+      const config = await prisma.worldConfig.findFirst({ select: { unitSpeed: true } })
+      effectiveUnitSpeed = config?.unitSpeed ?? 1.0
+    }
 
     // Slowest unit defines stack speed
     const slowestSpeed = Math.min(...troopSpeeds)
 
     // ETA = distance * unit_speed / world.unit_speed
     // Convert to milliseconds
-    const travelTimeSeconds = (distance * slowestSpeed) / worldUnitSpeed
+    const travelTimeSeconds = (distance * slowestSpeed) / Math.max(0.01, effectiveUnitSpeed)
     return Math.ceil(travelTimeSeconds * 1000)
   }
 
@@ -132,7 +137,7 @@ export class MovementService {
   ): Promise<void> {
     const fromVillage = await prisma.village.findUnique({
       where: { id: fromVillageId },
-      include: { player: true }
+      include: { player: { include: { gameWorld: true } } }
     })
 
     const toVillage = await prisma.village.findUnique({
@@ -168,7 +173,8 @@ export class MovementService {
     // Calculate travel time
     const distance = this.distance(fromVillage.x, fromVillage.y, toVillage.x, toVillage.y)
     const troopSpeeds = availableTroops.map(t => t.speed)
-    const travelTime = await this.calculateTravelTime(distance, troopSpeeds)
+    const worldSettings = WorldSettingsService.derive(fromVillage.player?.gameWorld)
+    const travelTime = await this.calculateTravelTime(distance, troopSpeeds, worldSettings.unitSpeed)
     const arrivalTime = new Date(Date.now() + travelTime)
 
     // Create movement record
@@ -189,6 +195,13 @@ export class MovementService {
         status: "IN_PROGRESS"
       }
     })
+
+    await EventQueueService.scheduleEvent(
+      "TROOP_MOVEMENT",
+      arrivalTime,
+      { movementId: movement.id },
+      { dedupeKey: `movement:${movement.id}` },
+    )
 
     // Create troop movements for each type
     for (const [troopType, amount] of Object.entries(troopAmounts)) {

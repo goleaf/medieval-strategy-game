@@ -24,10 +24,10 @@ This module implements the configurable troop/mission spec that powers infantry,
 1. Build attacker/defender armies via `buildArmyComposition`.
 2. Call `resolveCombatMission` with wall info, mission type (`attack`, `raid`, `siege`, or `admin_attack`), and optional siege/loot/loyalty contexts.
 3. The resolver:
-   - Delegates casualty math to `lib/combat/travian-resolver` with per-mission loss curves from the unit config.
-   - Applies ram and catapult damage using the log-shaped and divisor-based curves defined in JSON.
+   - Delegates the detailed multi-round casualty math described in `docs/features/combat-resolution.md` to `lib/combat/travian-resolver`.
+   - Applies deterministic ram rolls (2% per survivor) before round one and probabilistic catapult volleys (3 cats = one shot) after victory using the JSON siege settings.
    - Computes loot respecting cranny protection + loot priority and plans return movements with the same travel time as the outbound trip.
-   - Applies loyalty hits when administrators survive on `admin_attack` missions.
+   - Applies loyalty hits when administrators survive on `admin_attack` missions and only if the attacker won.
 
 Outputs contain full survivor breakdowns, siege effects, loot payloads, loyalty deltas, and a ready-to-schedule return plan.
 

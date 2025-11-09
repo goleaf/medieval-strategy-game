@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db"
 import { type NextRequest } from "next/server"
 import { messageSchema } from "@/lib/utils/validation"
 import { successResponse, errorResponse, serverErrorResponse, handleValidationError } from "@/lib/utils/api-response"
+import { EmailNotificationService } from "@/lib/notifications/email-notification-service"
+import { EmailNotificationTopic } from "@prisma/client"
 
 export async function GET(req: NextRequest) {
   try {
@@ -172,6 +174,19 @@ async function handleAllianceMessage(validated: any) {
         },
       })
       messages.push(message)
+
+      await EmailNotificationService.queueEvent({
+        playerId: member.id,
+        topic: EmailNotificationTopic.TRIBE_MESSAGE,
+        payload: {
+          subject: message.subject,
+          preview: validated.content.slice(0, 180),
+          sender: sender.playerName,
+          tribe: sender.tribe?.tag ?? sender.tribe?.name ?? "Tribe",
+        },
+        linkTarget: "/messages",
+        messageId: message.id,
+      })
     }
   }
 

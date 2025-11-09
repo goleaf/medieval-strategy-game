@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db"
-import type { Troop, TroopType } from "@prisma/client"
+import { WorldSettingsService } from "@/lib/game-services/world-settings-service"
+import { EmailNotificationService } from "@/lib/notifications/email-notification-service"
+import { EmailNotificationTopic, type Troop, type TroopType } from "@prisma/client"
 
 const TROOP_STATS: Record<TroopType, { cost: Record<string, number>; stats: Record<string, number>; buildTime: number }> = {
   WARRIOR: {
@@ -174,6 +176,8 @@ const TROOP_STATS: Record<TroopType, { cost: Record<string, number>; stats: Reco
   },
 }
 
+const ADMIN_UNITS = new Set<TroopType>(["NOBLEMAN", "NOMARCH", "LOGADES", "CHIEF", "SENATOR"] as TroopType[])
+
 export class TroopService {
   /**
    * Get building bonus for training speed
@@ -300,7 +304,7 @@ export class TroopService {
   static async completeTroopTraining(productionId: string): Promise<void> {
     const production = await prisma.troopProduction.findUnique({
       where: { id: productionId },
-      include: { building: { include: { village: true } } },
+      include: { building: { include: { village: { include: { player: true } } } } },
     })
 
     if (!production) return
@@ -332,6 +336,8 @@ export class TroopService {
     await prisma.troopProduction.delete({
       where: { id: productionId },
     })
+
+    await this.publishTrainingCompletion(production)
   }
 
   /**
@@ -349,6 +355,51 @@ export class TroopService {
     }
 
     return basePower
+  }
+
+  private static async publishTrainingCompletion(
+    production: {
+      troopType: TroopType
+      quantity: number
+      building: { village: { id: string; name: string; playerId: string; x: number; y: number } }
+    },
+  ): Promise<void> {
+    if (!ADMIN_UNITS.has(production.troopType)) return
+    const village = production.building.village
+    if (!village?.playerId) return
+
+    const message = await prisma.message.create({
+      data: {
+        senderId: village.playerId,
+        villageId: village.id,
+        type: "TRAINING_COMPLETE",
+        subject: `${production.troopType} ready in ${village.name}`,
+        content: JSON.stringify({
+          unitType: production.troopType,
+          quantity: production.quantity,
+          villageId: village.id,
+          villageName: village.name,
+          completedAt: new Date().toISOString(),
+        }),
+      },
+    })
+
+    await EmailNotificationService.queueEvent({
+      playerId: village.playerId,
+      topic: EmailNotificationTopic.TRAINING_COMPLETE,
+      payload: {
+        unitType: production.troopType,
+        quantity: production.quantity,
+        village: {
+          id: village.id,
+          name: village.name,
+          x: village.x,
+          y: village.y,
+        },
+      },
+      linkTarget: `/village/${village.id}/rally-point`,
+      messageId: message.id,
+    })
   }
 
   /**

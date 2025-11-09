@@ -13,6 +13,7 @@ type ChallengeContext = {
   trustedDeviceLabel?: string | null
   smsCodeHash?: string
   smsCodeCreatedAt?: string
+  hasSeenIpBefore?: boolean
 }
 
 const BACKUP_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"

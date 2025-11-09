@@ -26,6 +26,7 @@ Key documentation areas:
 - **Admin Dashboard** - Player management, moderation, and world configuration
 - **Real-time Updates** - WebSocket-powered live game state synchronization
 - **Leaderboard** - Global rankings based on points and conquest
+- **Email Alerts & Digests** - Offline attack warnings, conquest notices, training/building completions, and configurable daily summaries
 
 ## Tech Stack
 

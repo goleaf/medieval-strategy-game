@@ -75,7 +75,7 @@ While Teutonic troops lack the discipline and organization of the **Romans** and
 - **Health**: 500
 - **Speed**: 5
 - **Cost**: 900 wood, 700 stone, 500 iron, 600 gold, **1200 food**
-- **Special**: Administrator unit that lowers enemy village **loyalty by 20-25%**. Perfect for conquest operations.
+- **Special**: Administrator unit that lowers enemy village **loyalty by 20-35 points**. Perfect for conquest operations.
 
 ## Special Features
 
@@ -130,7 +130,7 @@ While Teutonic troops lack the discipline and organization of the **Romans** and
 | Scout | 0 | 10 | 9 | 240 | Fast reconnaissance |
 | Teutonic Paladin | 55 | 35 | 8 | 360 | Elite mounted warrior |
 | Teutonic Knight | 70 | 45 | 6 | 420 | Heavy cavalry powerhouse |
-| Chief | 80 | 50 | 5 | 1200 | Loyalty reduction (20-25%) |
+| Chief | 80 | 50 | 5 | 1200 | Loyalty reduction (20-35) |
 
 ## Recommended Tactics
 
@@ -151,5 +151,4 @@ While Teutonic troops lack the discipline and organization of the **Romans** and
 ## Historical Context
 
 The Teutons were a Germanic tribe that played a significant role in the Migration Period and the fall of the Western Roman Empire. Known for their fierce warriors and relentless raiding tactics, they were among the most formidable barbarian tribes that challenged Roman authority in Europe during the 4th and 5th centuries AD. Their reputation for ferocity and their ability to field large numbers of warriors made them a constant threat to settled civilizations, embodying the aggressive, raiding-focused playstyle that defines them in strategy games.
-
 

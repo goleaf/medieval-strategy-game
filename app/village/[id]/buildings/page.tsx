@@ -27,6 +27,9 @@ type VillageWithBuildings = {
     isBuilding: boolean
     completionAt: string | null
     queuePosition: number | null
+    isDemolishing: boolean
+    demolitionAt: string | null
+    demolitionMode: string | null
     research?: { isResearching: boolean } | null
   }>
   buildQueueTasks: Array<{
@@ -251,6 +254,67 @@ export default function BuildingsPage() {
     }
   }
 
+  const handleStartDemolition = async (buildingId: string, buildingName: string) => {
+    const confirmation = window.confirm(
+      `Demolishing ${buildingName} permanently removes its current level, cancels any training that was running there, and cannot be undone. Proceed?`,
+    )
+    if (!confirmation) return
+
+    setError(null)
+    setSuccess(null)
+    setLoading(true)
+    try {
+      const res = await fetch("/api/buildings/demolish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ buildingId, mode: "LEVEL_BY_LEVEL" }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSuccess("Demolition queued")
+        setTimeout(() => setSuccess(null), 5000)
+        await fetchVillage()
+      } else {
+        setError(data.error || "Failed to start demolition")
+        setTimeout(() => setError(null), 5000)
+      }
+    } catch (err) {
+      console.error("Failed to start demolition:", err)
+      setError("Failed to start demolition. Please try again.")
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCancelDemolition = async (buildingId: string) => {
+    setError(null)
+    setSuccess(null)
+    setLoading(true)
+    try {
+      const res = await fetch("/api/buildings/demolish", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ buildingId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSuccess("Demolition cancelled")
+        setTimeout(() => setSuccess(null), 5000)
+        await fetchVillage()
+      } else {
+        setError(data.error || "Failed to cancel demolition")
+        setTimeout(() => setError(null), 5000)
+      }
+    } catch (err) {
+      console.error("Failed to cancel demolition:", err)
+      setError("Failed to cancel demolition. Please try again.")
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleCancel = async (buildingId: string) => {
     setError(null)
     setSuccess(null)
@@ -340,6 +404,8 @@ export default function BuildingsPage() {
     village?.player?.hasGoldClubMembership &&
       (!village.player?.goldClubExpiresAt || new Date(village.player.goldClubExpiresAt) > new Date())
   )
+
+  const demolitionBuildings = village?.buildings.filter((building) => building.isDemolishing && building.demolitionAt) ?? []
 
   const checkInsufficientResources = (buildingType: string) => {
     if (!village) return null
@@ -510,6 +576,57 @@ export default function BuildingsPage() {
             onInstantComplete={fetchVillage}
           />
 
+          <section className="bg-secondary/50 border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold">Demolitions</h3>
+                <p className="text-sm text-muted-foreground">
+                  Demolitions run much faster than construction (~10% of the build timer) and return no resources. Any active training on the building is cancelled.
+                </p>
+              </div>
+            </div>
+            {demolitionBuildings.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">No demolitions are currently running.</p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {demolitionBuildings.map((building) => (
+                  <div
+                    key={building.id}
+                    className="flex items-center justify-between rounded border border-border bg-destructive/10 p-3 text-sm"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Image
+                        src={getBuildingImage(building.type)}
+                        alt={building.type}
+                        width={32}
+                        height={32}
+                        className="object-contain"
+                      />
+                      <div>
+                        <div className="font-semibold">
+                          {formatBuildingName(building.type)} (Level {building.level})
+                        </div>
+                        {building.demolitionAt && (
+                          <div className="text-xs text-muted-foreground">
+                            Completes in <CountdownTimer targetDate={building.demolitionAt} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCancelDemolition(building.id)}
+                      className="text-xs"
+                    >
+                      Cancel Demolition
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
           {/* Instant Completion Section */}
           <section className="bg-secondary/50 border border-border rounded-lg p-4">
             <div className="flex items-center justify-between">
@@ -554,6 +671,10 @@ export default function BuildingsPage() {
                 const statusNode = building.isBuilding && building.completionAt ? (
                   <span key={`status-${building.id}`} className="text-sm">
                     Building: <CountdownTimer targetDate={building.completionAt} />
+                  </span>
+                ) : building.isDemolishing && building.demolitionAt ? (
+                  <span key={`status-${building.id}`} className="text-sm text-destructive">
+                    Demolishing: <CountdownTimer targetDate={building.demolitionAt} />
                   </span>
                 ) : isUnlocked ? (
                   <span className="text-sm text-emerald-600">Ready (max {maxLevel})</span>
@@ -619,6 +740,17 @@ export default function BuildingsPage() {
                       }
                       return null
                     })()}
+                    {!building.isDemolishing && building.level > 1 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleStartDemolition(building.id, formatBuildingName(building.type))}
+                        title="Demolish this building level permanently"
+                        className="text-xs border-destructive text-destructive"
+                      >
+                        Demolish
+                      </Button>
+                    )}
                   </div>,
                 ]
               })}

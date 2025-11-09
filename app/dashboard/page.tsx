@@ -13,6 +13,7 @@ import {
   Info,
   LayoutPanelLeft,
   LayoutPanelRight,
+  Loader2,
   LogOut,
   Map as MapIcon,
   MapPin,
@@ -36,7 +37,10 @@ import { ResourceDisplay, type ResourceLedgerSnapshot } from "@/components/game/
 import { BuildingQueue } from "@/components/game/building-queue"
 import { VillageOverview } from "@/components/game/village-overview"
 import { NotificationBell } from "@/components/game/notification-bell"
+import { NotificationCenter } from "@/components/game/notifications"
 import { cn } from "@/lib/utils"
+import { useNotificationFeed } from "@/hooks/use-notifications"
+import type { NotificationController } from "@/types/notifications"
 // Types inferred from API responses
 type VillageWithRelations = {
   id: string
@@ -84,6 +88,8 @@ type VillageWithRelations = {
     speed: number
   }>
   resourceLedgers: ResourceLedgerSnapshot[]
+  tribeTag?: string | null
+  tribeName?: string | null
 }
 
 type ActivityItem = {
@@ -111,6 +117,53 @@ const CORE_RESOURCES: Record<CoreResourceKey, { label: string; icon: string }> =
   IRON: { label: "Iron", icon: "⛓" },
 }
 
+const RESOURCE_ACCENTS: Record<CoreResourceKey, string> = {
+  WOOD: "from-[#2a1b0d] via-[#1a1007] to-[#36230f] border-emerald-600/60",
+  CLAY: "from-[#30160f] via-[#1c0b07] to-[#3a1d14] border-orange-600/60",
+  IRON: "from-[#1b1c21] via-[#0f0f13] to-[#2b2e35] border-slate-500/60",
+}
+
+const ACTIVITY_ACCENTS: Record<
+  ActivityItem["type"],
+  { border: string; bg: string; text: string; icon: string; badge?: string }
+> = {
+  BUILDING: {
+    border: "border-amber-600/70",
+    bg: "bg-amber-950/40",
+    text: "text-amber-100",
+    icon: "🛠️",
+    badge: "text-amber-300",
+  },
+  TROOP: {
+    border: "border-emerald-600/70",
+    bg: "bg-emerald-950/30",
+    text: "text-emerald-100",
+    icon: "🛡️",
+    badge: "text-emerald-300",
+  },
+  ATTACK: {
+    border: "border-red-600/70",
+    bg: "bg-red-950/30",
+    text: "text-red-100",
+    icon: "⚔️",
+    badge: "text-red-300",
+  },
+  MESSAGE: {
+    border: "border-cyan-600/70",
+    bg: "bg-cyan-950/30",
+    text: "text-cyan-100",
+    icon: "📜",
+    badge: "text-cyan-300",
+  },
+  SYSTEM: {
+    border: "border-slate-600/70",
+    bg: "bg-slate-950/40",
+    text: "text-slate-100",
+    icon: "🔔",
+    badge: "text-slate-300",
+  },
+}
+
 const VIEW_TABS = [
   { id: "village", label: "Village View" },
   { id: "map", label: "Strategic Map" },
@@ -131,9 +184,26 @@ const REPORT_TABS = [
 
 type ReportTabId = (typeof REPORT_TABS)[number]["id"]
 
+const PANEL_BASE_CLASS =
+  "rounded-2xl border border-amber-900/50 bg-gradient-to-br from-[#1b1309] via-[#120903] to-[#2c1c0d] shadow-[0_12px_30px_rgba(0,0,0,0.55)]"
+const PANEL_ACCENT_CLASS = "border-amber-600/60 shadow-[0_0_24px_rgba(234,179,8,0.3)]"
+const SECTION_HEADING_CLASS = "text-xs font-semibold uppercase tracking-[0.25em] text-amber-300/80"
+const SURFACE_GRADIENT = "bg-[radial-gradient(circle_at_top,_rgba(77,36,6,0.25),_transparent_60%)]"
+
 const MAX_FEED_ITEMS = 10
 const WORLD_LIMIT = 999
 const NUMBER_FORMAT = new Intl.NumberFormat()
+
+function getTribeAccent(seed?: string | null) {
+  if (!seed) return "hsl(32 65% 55%)"
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i)
+    hash |= 0
+  }
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue} 65% 55%)`
+}
 
 function legacyResourceLedgers(village: VillageWithRelations): ResourceLedgerSnapshot[] {
   const timestamp = new Date().toISOString()
@@ -270,7 +340,9 @@ export default function Dashboard() {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true)
   const [serverTime, setServerTime] = useState(() => new Date())
   const [resourceTicker, setResourceTicker] = useState(() => Date.now())
+  const prefersReducedMotion = usePrefersReducedMotion()
   const { auth, initialized, clearAuth } = useAuth({ redirectOnMissing: true, redirectTo: "/login" })
+  const notificationController = useNotificationFeed(auth?.playerId ?? null)
   const online = useOnlineStatus()
   const viewStorageKey = auth ? `dashboard:view:${auth.playerId}` : null
 
@@ -415,6 +487,15 @@ export default function Dashboard() {
   const hasVillages = villages.length > 0
   const activeResearchCount =
     currentVillage?.buildings.filter((building) => building.research?.isResearching).length ?? 0
+  const panelClass = useMemo(
+    () =>
+      `${PANEL_BASE_CLASS} ${
+        prefersReducedMotion ? "" : "transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-500/70"
+      }`,
+    [prefersReducedMotion],
+  )
+  const staticPanelClass = PANEL_BASE_CLASS
+  const tribeAccentColor = getTribeAccent(currentVillage?.tribeTag ?? currentVillage?.id ?? null)
 
   return (
     <div
@@ -433,7 +514,7 @@ export default function Dashboard() {
           }
         }
       }`}
-      className="flex min-h-screen flex-col bg-background text-foreground"
+      className={`flex min-h-screen flex-col bg-[#060301] text-amber-50 ${SURFACE_GRADIENT}`}
     >
       <TopNavigationBar
         villages={villages}
@@ -450,10 +531,13 @@ export default function Dashboard() {
         onOpenRightPanel={() => setMobileRightOpen(true)}
         onToggleRightPanel={() => setIsRightSidebarOpen((prev) => !prev)}
         isRightSidebarOpen={isRightSidebarOpen}
+        notificationController={notificationController}
+        prefersReducedMotion={prefersReducedMotion}
+        tribeAccentColor={tribeAccentColor}
       />
 
-      <div className="flex flex-1 overflow-hidden bg-gradient-to-b from-background via-background/95 to-muted/40">
-        <aside className="hidden w-full max-w-sm border-r border-border lg:flex">
+      <div className="flex flex-1 overflow-hidden bg-gradient-to-b from-[#140a03] via-[#0c0501] to-[#1d1006]">
+        <aside className="hidden w-full max-w-sm border-r border-amber-900/40 lg:flex">
           {currentVillage ? (
             <LeftSidebarPanel
               village={currentVillage}
@@ -462,6 +546,8 @@ export default function Dashboard() {
               onMapNavigate={() => {
                 router.push(`/world-map?x=${currentVillage.x}&y=${currentVillage.y}`)
               }}
+              prefersReducedMotion={prefersReducedMotion}
+              tribeAccentColor={tribeAccentColor}
             />
           ) : (
             <div className="flex w-full items-center justify-center p-6 text-sm text-muted-foreground">
@@ -474,6 +560,7 @@ export default function Dashboard() {
           <div className="flex h-full flex-col overflow-hidden px-4 py-6">
             {loading && (
               <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading your realm...
               </div>
             )}
@@ -488,7 +575,7 @@ export default function Dashboard() {
             {!loading && hasVillages && currentVillage && (
               <Tabs value={activeView} onValueChange={(value) => setActiveView(value as ViewTabId)} className="flex h-full flex-col">
                 <div className="flex flex-col gap-3">
-                  <TabsList className="flex-wrap">
+                  <TabsList className="flex-wrap bg-[rgba(119,65,14,0.15)]">
                     {VIEW_TABS.map((tab) => (
                       <TabsTrigger key={tab.id} value={tab.id}>
                         {tab.label}
@@ -516,14 +603,19 @@ export default function Dashboard() {
 
                 <TabsContent value="village" className="flex-1 overflow-y-auto pt-4">
                   <div className="space-y-4 pb-6">
-                    <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-                      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    {notificationController && (
+                      <section className={`${panelClass} p-4`}>
+                        <NotificationCenter controller={notificationController} />
+                      </section>
+                    )}
+                    <section className={`${panelClass} p-4`}>
+                      <h3 className={`${SECTION_HEADING_CLASS} mb-3`}>
                         Resources
                       </h3>
                       <ResourceDisplay ledgers={ledgersToShow} showCrop={false} />
                     </section>
 
-                    <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
+                    <section className={`${panelClass} p-4`}>
                       <BuildingQueue
                         tasks={currentVillage.buildQueueTasks}
                         activeResearchCount={activeResearchCount}
@@ -555,7 +647,7 @@ export default function Dashboard() {
                       />
                     </section>
 
-                    <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
+                    <section className={`${panelClass} p-4`}>
                       <VillageOverview
                         village={currentVillage}
                         onUpgrade={async (buildingId) => {
@@ -608,8 +700,10 @@ export default function Dashboard() {
                       coordinate={{ x: currentVillage.x, y: currentVillage.y }}
                       onNavigate={() => router.push(`/world-map?x=${currentVillage.x}&y=${currentVillage.y}`)}
                       size="large"
+                      accentColor={tribeAccentColor}
+                      prefersReducedMotion={prefersReducedMotion}
                     />
-                    <div className="space-y-3 rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
+                    <div className={`${panelClass} space-y-3 p-4`}>
                       <h3 className="text-base font-semibold">Strategic overview</h3>
                       <p className="text-sm text-muted-foreground">
                         Track your current province, switch between tactical, province, or world scopes, and jump to tribe
@@ -659,7 +753,7 @@ export default function Dashboard() {
                         </Button>
                       </Link>
                     </div>
-                    <div className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
+                    <div className={`${panelClass} p-4`}>
                       <h3 className="mb-2 text-base font-semibold capitalize">{reportTab} reports</h3>
                       <p className="text-sm text-muted-foreground">
                         Reports remember the last tab you opened so you can keep multiple dossiers handy without losing
@@ -685,7 +779,7 @@ export default function Dashboard() {
                 </TabsContent>
 
                 <TabsContent value="messages" className="flex-1 overflow-y-auto pt-4">
-                  <div className="space-y-4 rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
+                  <div className={`${panelClass} space-y-4 p-4`}>
                     <h3 className="text-base font-semibold">Command communications</h3>
                     <p className="text-sm text-muted-foreground">
                       Quickly switch between tribe chat, diplomacy threads, and system updates. Long-press on touch
@@ -715,7 +809,7 @@ export default function Dashboard() {
                 </TabsContent>
 
                 <TabsContent value="rankings" className="flex-1 overflow-y-auto pt-4">
-                    <div className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
+                    <div className={`${panelClass} p-4`}>
                       <h3 className="text-base font-semibold">World standings</h3>
                       <p className="text-sm text-muted-foreground">
                         Compare your tribe&apos;s progress, monitor war fronts, and bookmark rivals for quick diplomacy or
@@ -736,7 +830,7 @@ export default function Dashboard() {
                 </TabsContent>
 
                 <TabsContent value="tribe" className="flex-1 overflow-y-auto pt-4">
-                  <div className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
+                  <div className={`${panelClass} p-4`}>
                     <h3 className="text-base font-semibold">Tribal operations</h3>
                     <p className="text-sm text-muted-foreground">
                       Coordinate recruitment, issue circulars, and review shared targets. Swipe between tabs on tablet or
@@ -762,13 +856,15 @@ export default function Dashboard() {
 
         {isRightSidebarOpen && currentVillage && (
           <aside className="hidden w-full max-w-sm border-l border-border lg:flex">
-            <RightSidebarPanel
-              village={currentVillage}
-              premiumPoints={premiumPoints}
-              premiumActive={premiumActive}
-              activeView={activeView}
-              onCollapse={() => setIsRightSidebarOpen(false)}
-            />
+          <RightSidebarPanel
+            village={currentVillage}
+            premiumPoints={premiumPoints}
+            premiumActive={premiumActive}
+            activeView={activeView}
+            onCollapse={() => setIsRightSidebarOpen(false)}
+            prefersReducedMotion={prefersReducedMotion}
+            tribeAccentColor={tribeAccentColor}
+          />
           </aside>
         )}
       </div>
@@ -793,6 +889,8 @@ export default function Dashboard() {
               }}
               onNavigate={() => setMobileLeftOpen(false)}
               onClose={() => setMobileLeftOpen(false)}
+              prefersReducedMotion={prefersReducedMotion}
+              tribeAccentColor={tribeAccentColor}
             />
           </div>
         </>
@@ -802,13 +900,15 @@ export default function Dashboard() {
         <>
           <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setMobileRightOpen(false)} />
           <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-full overflow-y-auto bg-background shadow-2xl lg:hidden">
-            <RightSidebarPanel
-              village={currentVillage}
-              premiumPoints={premiumPoints}
-              premiumActive={premiumActive}
-              activeView={activeView}
-              onClose={() => setMobileRightOpen(false)}
-            />
+          <RightSidebarPanel
+            village={currentVillage}
+            premiumPoints={premiumPoints}
+            premiumActive={premiumActive}
+            activeView={activeView}
+            onClose={() => setMobileRightOpen(false)}
+            prefersReducedMotion={prefersReducedMotion}
+            tribeAccentColor={tribeAccentColor}
+          />
           </div>
         </>
       )}
@@ -831,6 +931,9 @@ interface TopNavigationBarProps {
   onOpenRightPanel: () => void
   onToggleRightPanel: () => void
   isRightSidebarOpen: boolean
+  notificationController: NotificationController | null
+  prefersReducedMotion: boolean
+  tribeAccentColor: string
 }
 
 function TopNavigationBar({
@@ -848,6 +951,9 @@ function TopNavigationBar({
   onOpenRightPanel,
   onToggleRightPanel,
   isRightSidebarOpen,
+  notificationController,
+  prefersReducedMotion,
+  tribeAccentColor,
 }: TopNavigationBarProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -865,16 +971,28 @@ function TopNavigationBar({
   const populationRatio = populationCapacity > 0 ? population / populationCapacity : 0
   const populationColor =
     populationRatio > 0.95 ? "text-red-500" : populationRatio > 0.8 ? "text-amber-500" : "text-emerald-500"
+  const interactiveControlClass = prefersReducedMotion
+    ? ""
+    : "transition-all duration-200 hover:-translate-y-0.5 hover:bg-amber-500/10"
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
-      <div className="flex flex-col gap-4 p-4">
+    <header
+      className="sticky top-0 z-30 border-b border-amber-900/40 bg-gradient-to-r from-[#1d1209]/95 via-[#120803]/95 to-[#1a0d09]/95 backdrop-blur"
+      style={{ boxShadow: `0 10px 40px rgba(0,0,0,0.45)` }}
+    >
+      <div className="flex flex-col gap-4 p-4 text-amber-100">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-xl font-semibold tracking-tight">
+            <Link
+              href="/"
+              className={cn(
+                "text-2xl font-serif tracking-wide text-amber-100 drop-shadow",
+                !prefersReducedMotion && "transition-transform duration-300 hover:-translate-y-0.5",
+              )}
+            >
               🏰 <span className="hidden sm:inline">Medieval Strategy</span>
             </Link>
-            <span className="hidden text-sm text-muted-foreground sm:inline">
+            <span className="hidden text-sm text-amber-200/80 sm:inline">
               {currentVillage ? `${currentVillage.name} (${currentVillage.x}|${currentVillage.y})` : "No village selected"}
             </span>
           </div>
@@ -882,7 +1000,7 @@ function TopNavigationBar({
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden"
+              className={cn("lg:hidden text-amber-200", interactiveControlClass)}
               onClick={onOpenLeftPanel}
               aria-label="Open village panel"
             >
@@ -891,7 +1009,7 @@ function TopNavigationBar({
             <Button
               variant="ghost"
               size="icon"
-              className="hidden lg:inline-flex"
+              className={cn("hidden lg:inline-flex text-amber-200", interactiveControlClass)}
               onClick={onToggleRightPanel}
               aria-label="Toggle intel panel"
             >
@@ -900,26 +1018,30 @@ function TopNavigationBar({
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden"
+              className={cn("lg:hidden text-amber-200", interactiveControlClass)}
               onClick={onOpenRightPanel}
               aria-label="Open intel panel"
             >
               <LayoutPanelRight className="h-4 w-4" />
             </Button>
-            <NotificationBell />
+            <NotificationBell controller={notificationController} />
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-sm hover:bg-secondary"
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm",
+                  interactiveControlClass,
+                )}
+                style={{ borderColor: tribeAccentColor }}
               >
                 Commander
                 <ChevronDown className="h-4 w-4" />
               </button>
               {menuOpen && (
-                <div className="absolute right-0 mt-2 w-48 rounded-lg border border-border bg-card shadow-lg">
+                <div className="absolute right-0 mt-2 w-48 rounded-lg border border-amber-900/60 bg-[#1a0f08] shadow-2xl">
                   <Link
                     href="/settings"
-                    className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-secondary"
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-amber-100 hover:bg-amber-500/10"
                     onClick={() => setMenuOpen(false)}
                   >
                     <Settings className="h-4 w-4" />
@@ -944,14 +1066,18 @@ function TopNavigationBar({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <label htmlFor="village-select" className="text-xs uppercase text-muted-foreground">
+              <label htmlFor="village-select" className="text-xs uppercase tracking-[0.2em] text-amber-300/80">
                 Village
               </label>
               <select
                 id="village-select"
                 value={selectedVillageId ?? ""}
                 onChange={(event) => onVillageChange(event.target.value)}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                className={cn(
+                  "rounded-md border bg-[#140a05] px-3 py-1.5 text-sm text-amber-100 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40",
+                  !prefersReducedMotion && "transition-colors duration-200",
+                )}
+                style={{ borderColor: tribeAccentColor }}
                 disabled={villages.length === 0}
               >
                 {villages.map((village) => (
@@ -961,7 +1087,7 @@ function TopNavigationBar({
                 ))}
               </select>
             </div>
-            <Badge variant="secondary">
+            <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-200">
               {villages.length} {villages.length === 1 ? "village" : "villages"}
             </Badge>
           </div>
@@ -970,7 +1096,11 @@ function TopNavigationBar({
             {resourceSummaries.map((resource) => (
               <div
                 key={resource.key}
-                className="rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-xs shadow-sm"
+                className={cn(
+                  "min-w-[140px] rounded-xl border bg-gradient-to-br px-3 py-2 text-xs shadow-lg",
+                  RESOURCE_ACCENTS[resource.key],
+                  prefersReducedMotion ? "" : "transition-all duration-300 hover:-translate-y-0.5",
+                )}
               >
                 <p className="flex items-center gap-2 font-semibold">
                   <span>{resource.icon}</span>
@@ -986,17 +1116,23 @@ function TopNavigationBar({
 
           <div className="flex items-center gap-4 text-sm">
             <div>
-              <p className="text-xs uppercase text-muted-foreground">Population</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-amber-300/80">Population</p>
               <p className={populationColor}>
                 {NUMBER_FORMAT.format(population)} / {NUMBER_FORMAT.format(populationCapacity)}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase text-muted-foreground">Premium</p>
-              <div className="flex items-center gap-1">
-                <Sparkles className={cn("h-4 w-4", premiumActive ? "text-amber-400" : "text-muted-foreground")} />
+              <p className="text-xs uppercase tracking-[0.2em] text-amber-300/80">Premium</p>
+              <div className="flex items-center gap-1 text-amber-100">
+                <Sparkles className={cn("h-4 w-4", premiumActive ? "text-amber-300" : "text-muted-foreground")} />
                 <span>{premiumActive ? "Active" : "Inactive"}</span>
-                <Badge variant="outline">{premiumPoints} pts</Badge>
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/70 text-amber-200"
+                  style={{ borderColor: premiumActive ? "#f59e0b" : "#55321a" }}
+                >
+                  {premiumPoints} pts
+                </Badge>
               </div>
             </div>
           </div>
@@ -1012,9 +1148,19 @@ interface LeftSidebarPanelProps {
   onNavigate?: () => void
   onMapNavigate: () => void
   onClose?: () => void
+  prefersReducedMotion: boolean
+  tribeAccentColor: string
 }
 
-function LeftSidebarPanel({ village, activityFeed, onNavigate, onMapNavigate, onClose }: LeftSidebarPanelProps) {
+function LeftSidebarPanel({
+  village,
+  activityFeed,
+  onNavigate,
+  onMapNavigate,
+  onClose,
+  prefersReducedMotion,
+  tribeAccentColor,
+}: LeftSidebarPanelProps) {
   const buildingQueueCount = village.buildQueueTasks.length
   const nextTask = [...village.buildQueueTasks].sort((a, b) => {
     const aTime = a.finishesAt ? new Date(a.finishesAt).getTime() : Number.POSITIVE_INFINITY
@@ -1023,6 +1169,22 @@ function LeftSidebarPanel({ village, activityFeed, onNavigate, onMapNavigate, on
   })[0]
   const trainingTasks = village.buildQueueTasks.filter((task) => task.entityKey.toLowerCase().includes("train"))
   const incomingAttacks = village.buildQueueTasks.filter((task) => task.entityKey.toLowerCase().includes("attack"))
+  const queueProgress =
+    nextTask?.startedAt && nextTask?.finishesAt
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            ((Date.now() - new Date(nextTask.startedAt).getTime()) /
+              (new Date(nextTask.finishesAt).getTime() - new Date(nextTask.startedAt).getTime())) *
+              100,
+          ),
+        )
+      : null
+  const panelShell = `${PANEL_BASE_CLASS} ${
+    prefersReducedMotion ? "" : "transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-500/70"
+  }`
+  const tribeBorderStyle = { borderColor: tribeAccentColor }
 
   const shortcuts = [
     {
@@ -1067,66 +1229,79 @@ function LeftSidebarPanel({ village, activityFeed, onNavigate, onMapNavigate, on
         </div>
       )}
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <div className="mb-2 flex items-center justify-between text-sm font-semibold">
-          <span>Village overview</span>
-          <Badge variant="secondary">{buildingQueueCount} builds</Badge>
+      <section className={`${panelShell} p-4`}>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-base font-semibold text-amber-100">Village overview</p>
+          <Badge variant="secondary" className="bg-amber-500/20 text-amber-100">
+            {buildingQueueCount} builds
+          </Badge>
         </div>
-        <ul className="space-y-2 text-sm text-muted-foreground">
-          <li>
-            Building queue:{" "}
-            <span className="font-medium text-foreground">
-              {buildingQueueCount > 0 ? `${buildingQueueCount} task${buildingQueueCount > 1 ? "s" : ""} active` : "Idle"}
+        <ul className="space-y-2 text-sm text-amber-200/80">
+          <li className="flex justify-between">
+            <span>Building queue</span>
+            <span className="font-semibold text-amber-100">
+              {buildingQueueCount > 0 ? `${buildingQueueCount} active` : "Idle"}
             </span>
           </li>
-          <li>
-            {nextTask ? (
-              <>
-                Next completion: <span className="font-medium text-foreground">{nextTask.entityKey}</span>
-              </>
-            ) : (
-              "No pending construction"
-            )}
-          </li>
-          <li>
-            Troop training:{" "}
-            <span className="font-medium text-foreground">
+          <li className="flex justify-between">
+            <span>Troop training</span>
+            <span className="font-semibold text-amber-100">
               {trainingTasks.length > 0 ? `${trainingTasks.length} queues` : "Idle"}
             </span>
           </li>
-          <li className="flex items-center gap-2">
-            <AlertTriangle className={cn("h-4 w-4", incomingAttacks.length > 0 ? "text-red-500" : "text-muted-foreground")} />
-            {incomingAttacks.length > 0 ? `${incomingAttacks.length} incoming` : "Borders calm"}
+          <li className="flex items-center justify-between">
+            <span>Incoming attacks</span>
+            <span className={incomingAttacks.length > 0 ? "text-red-400 font-semibold" : "text-emerald-300 font-semibold"}>
+              {incomingAttacks.length > 0 ? `${incomingAttacks.length} spotted` : "Borders calm"}
+            </span>
           </li>
         </ul>
+        {nextTask && (
+          <div className="mt-3">
+            <p className="text-xs uppercase tracking-[0.25em] text-amber-300/80">Next completion</p>
+            <p className="text-sm text-amber-100">{nextTask.entityKey.replace(/_/g, " ")}</p>
+            {queueProgress !== null && Number.isFinite(queueProgress) && (
+              <div className="mt-2 h-2 rounded-full bg-[#281307]">
+                <div
+                  className="h-full rounded-full bg-amber-500 transition-[width]"
+                  style={{ width: `${queueProgress}%` }}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Action shortcuts
-        </h3>
+      <section className={`${panelShell} p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-3`}>Action shortcuts</h3>
         <div className="grid gap-2">
           {shortcuts.map((shortcut) => (
             <Link
               key={shortcut.label}
               href={shortcut.href}
-              className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-sm hover:bg-secondary/60"
+              className={cn(
+                "flex items-center gap-3 rounded-xl border bg-[#120803]/70 px-3 py-2 text-sm text-amber-100",
+                !prefersReducedMotion && "transition-all duration-200 hover:-translate-y-0.5",
+              )}
+              style={tribeBorderStyle}
               onClick={onNavigate}
             >
               <span className="text-primary">{shortcut.icon}</span>
               <div className="flex flex-col">
-                <span className="font-medium text-foreground">{shortcut.label}</span>
-                <span className="text-xs text-muted-foreground">{shortcut.description}</span>
+                <span className="font-medium text-amber-100">{shortcut.label}</span>
+                <span className="text-xs text-amber-200/80">{shortcut.description}</span>
               </div>
             </Link>
           ))}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Map minimap</h3>
+      <section className={`${panelShell} p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-3`}>Map minimap</h3>
         <MapMiniMap
           coordinate={{ x: village.x, y: village.y }}
+          accentColor={tribeAccentColor}
+          prefersReducedMotion={prefersReducedMotion}
           onNavigate={() => {
             onNavigate?.()
             onMapNavigate()
@@ -1134,9 +1309,9 @@ function LeftSidebarPanel({ village, activityFeed, onNavigate, onMapNavigate, on
         />
       </section>
 
-      <section className="flex-1 rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent activity</h3>
-        <ActivityFeedList activityFeed={activityFeed} />
+      <section className={`${panelShell} flex-1 p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-3`}>Recent activity</h3>
+        <ActivityFeedList activityFeed={activityFeed} prefersReducedMotion={prefersReducedMotion} />
       </section>
     </div>
   )
@@ -1149,6 +1324,8 @@ interface RightSidebarPanelProps {
   activeView: ViewTabId
   onCollapse?: () => void
   onClose?: () => void
+  prefersReducedMotion: boolean
+  tribeAccentColor: string
 }
 
 function RightSidebarPanel({
@@ -1158,7 +1335,7 @@ function RightSidebarPanel({
   activeView,
   onCollapse,
   onClose,
-}: RightSidebarPanelProps) {
+: RightSidebarPanelProps) {
   const sortedBuildings = [...village.buildings].sort((a, b) => a.type.localeCompare(b.type)).slice(0, 12)
   const researching = village.buildings.filter((building) => building.research?.isResearching)
   const tips = [
@@ -1171,10 +1348,13 @@ function RightSidebarPanel({
     "Two major conquests reported on the eastern front.",
     `${village.name} achieved 100% production efficiency.`,
   ]
+  const panelShell = `${PANEL_BASE_CLASS} ${
+    prefersReducedMotion ? "" : "transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-500/70"
+  }`
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 p-4">
-      <div className="flex items-center justify-between text-sm font-semibold">
+    <div className="flex h-full w-full flex-col gap-4 p-4 text-amber-50">
+      <div className="flex items-center justify-between text-sm font-semibold text-amber-200">
         <span>Intel panel</span>
         <div className="flex items-center gap-2">
           {onClose && (
@@ -1190,40 +1370,42 @@ function RightSidebarPanel({
         </div>
       </div>
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Village detail</h3>
-        <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+      <section className={`${panelShell} p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-2`}>Village detail</h3>
+        <ul className="max-h-40 space-y-1 overflow-y-auto text-sm text-amber-100">
           {sortedBuildings.map((building) => (
-            <li key={building.id} className="flex items-center justify-between text-muted-foreground">
+            <li key={building.id} className="flex items-center justify-between">
               <span>{building.type.replace(/_/g, " ")}</span>
-              <Badge variant="outline">Lv {building.level}</Badge>
+              <Badge variant="outline" className="border-amber-500/60 text-amber-200">
+                Lv {building.level}
+              </Badge>
             </li>
           ))}
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Stationed troops</h3>
+      <section className={`${panelShell} p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-2`}>Stationed troops</h3>
         {village.troops.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No troops garrisoned.</p>
+          <p className="text-sm text-amber-200/70">No troops garrisoned.</p>
         ) : (
-          <ul className="space-y-1 text-sm text-muted-foreground">
+          <ul className="space-y-1 text-sm text-amber-100">
             {village.troops.map((troop) => (
               <li key={troop.id} className="flex items-center justify-between">
                 <span>{troop.type}</span>
-                <span className="font-medium text-foreground">{NUMBER_FORMAT.format(troop.quantity)}</span>
+                <span className="font-medium">{NUMBER_FORMAT.format(troop.quantity)}</span>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Research</h3>
+      <section className={`${panelShell} p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-2`}>Research</h3>
         {researching.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No active research.</p>
+          <p className="text-sm text-amber-200/70">No active research.</p>
         ) : (
-          <ul className="space-y-1 text-sm text-muted-foreground">
+          <ul className="space-y-1 text-sm text-amber-100">
             {researching.map((building) => (
               <li key={building.id}>{building.type.replace(/_/g, " ")} researching...</li>
             ))}
@@ -1231,36 +1413,36 @@ function RightSidebarPanel({
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      <section className={`${panelShell} p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-2 flex items-center gap-2`}>
           <Info className="h-4 w-4" />
           Tips & tutorials
         </h3>
-        <ul className="space-y-1 text-sm text-muted-foreground">
+        <ul className="space-y-1 text-sm text-amber-200/80">
           {tips.map((tip) => (
             <li key={tip}>• {tip}</li>
           ))}
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      <section className={`${panelShell} p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-2 flex items-center gap-2`}>
           <Globe className="h-4 w-4" />
           World news
         </h3>
-        <ul className="space-y-1 text-sm text-muted-foreground">
+        <ul className="space-y-1 text-sm text-amber-200/80">
           {news.map((entry) => (
             <li key={entry}>• {entry}</li>
           ))}
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm">
-        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      <section className={`${panelShell} p-4`}>
+        <h3 className={`${SECTION_HEADING_CLASS} mb-2 flex items-center gap-2`}>
           <Sparkles className="h-4 w-4 text-amber-400" />
           Premium offers
         </h3>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-amber-100">
           {premiumActive
             ? `Premium active with ${premiumPoints} points available for instant completions or queue boosts.`
             : "Activate premium to unlock build queue automation, quick marching, and instant reports."}
@@ -1274,11 +1456,14 @@ interface MapMiniMapProps {
   coordinate: { x: number; y: number }
   onNavigate?: () => void
   size?: "compact" | "large"
+  accentColor?: string
+  prefersReducedMotion?: boolean
 }
 
-function MapMiniMap({ coordinate, onNavigate, size = "compact" }: MapMiniMapProps) {
+function MapMiniMap({ coordinate, onNavigate, size = "compact", accentColor, prefersReducedMotion }: MapMiniMapProps) {
   const normalizedX = (clampCoordinate(coordinate.x) / WORLD_LIMIT) * 100
   const normalizedY = (clampCoordinate(coordinate.y) / WORLD_LIMIT) * 100
+  const accent = accentColor ?? "hsl(32 70% 55%)"
 
   return (
     <div
@@ -1292,13 +1477,15 @@ function MapMiniMap({ coordinate, onNavigate, size = "compact" }: MapMiniMapProp
         }
       }}
       className={cn(
-        "relative w-full overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-inner",
-        size === "large" ? "h-72" : "h-48"
+        "relative w-full overflow-hidden rounded-2xl border bg-gradient-to-br from-[#050301] via-[#0a0502] to-[#1a0e06] text-white shadow-inner",
+        size === "large" ? "h-72" : "h-48",
+        prefersReducedMotion ? "" : "transition-all duration-300 hover:-translate-y-1 hover:shadow-amber-500/20",
       )}
+      style={{ borderColor: accent }}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px,rgba(255,255,255,0.15),transparent_40%)] bg-[length:24px_24px]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px,rgba(255,255,255,0.08),transparent_45%)] bg-[length:24px_24px]" />
       <div className="relative z-10 flex h-full flex-col justify-between p-4 text-xs uppercase tracking-wide">
-        <div className="flex items-center justify-between text-muted-foreground">
+        <div className="flex items-center justify-between text-amber-200/70">
           <span>Current position</span>
           <span>
             {coordinate.x}|{coordinate.y}
@@ -1306,13 +1493,13 @@ function MapMiniMap({ coordinate, onNavigate, size = "compact" }: MapMiniMapProp
         </div>
         <div className="relative flex flex-1 items-center justify-center">
           <span
-            className="absolute text-xl"
+            className={cn("absolute text-xl", prefersReducedMotion ? "" : "animate-pulse")}
             style={{ left: `${normalizedX}%`, top: `${normalizedY}%`, transform: "translate(-50%, -50%)" }}
           >
-            <MapPin className="h-5 w-5 text-amber-300 drop-shadow" />
+            <MapPin className="h-5 w-5 drop-shadow" style={{ color: accent }} />
           </span>
         </div>
-        <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center justify-between text-xs text-amber-200/70">
           <span>Tap to open full map</span>
           <MapIcon className="h-4 w-4" />
         </div>
@@ -1323,18 +1510,34 @@ function MapMiniMap({ coordinate, onNavigate, size = "compact" }: MapMiniMapProp
 
 interface ActivityFeedListProps {
   activityFeed: ActivityItem[]
+  prefersReducedMotion: boolean
 }
 
-function ActivityFeedList({ activityFeed }: ActivityFeedListProps) {
+function ActivityFeedList({ activityFeed, prefersReducedMotion }: ActivityFeedListProps) {
   return (
     <ul className="space-y-2 text-sm">
       {activityFeed.map((activity) => (
-        <li key={activity.id} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2">
+        <li
+          key={activity.id}
+          className={cn(
+            "rounded-xl border px-3 py-3",
+            ACTIVITY_ACCENTS[activity.type]?.border ?? "border-amber-900/60",
+            ACTIVITY_ACCENTS[activity.type]?.bg ?? "bg-[#140a05]/60",
+            prefersReducedMotion ? "" : "transition-all duration-200 hover:-translate-y-0.5",
+          )}
+        >
           <div className="flex items-center justify-between">
-            <p className="font-medium text-foreground">{activity.label}</p>
-            <span className="text-xs text-muted-foreground">{formatActivityTimestamp(activity.timestamp)}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{ACTIVITY_ACCENTS[activity.type]?.icon ?? "•"}</span>
+              <p className={cn("font-medium", ACTIVITY_ACCENTS[activity.type]?.text)}>{activity.label}</p>
+            </div>
+            <span className="text-xs text-amber-200/80">{formatActivityTimestamp(activity.timestamp)}</span>
           </div>
-          {activity.description && <p className="text-xs text-muted-foreground">{activity.description}</p>}
+          {activity.description && (
+            <p className={cn("text-xs", ACTIVITY_ACCENTS[activity.type]?.badge ?? "text-amber-200/80")}>
+              {activity.description}
+            </p>
+          )}
         </li>
       ))}
     </ul>
@@ -1350,7 +1553,7 @@ interface BottomStatusBarProps {
 
 function BottomStatusBar({ serverTime, worldSpeed, coordinate, online }: BottomStatusBarProps) {
   return (
-    <footer className="border-t border-border bg-card/60 px-4 py-2 text-xs text-muted-foreground">
+    <footer className="border-t border-amber-900/40 bg-[#0b0503]/90 px-4 py-2 text-xs text-amber-200">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="flex items-center gap-1">
           <Clock className="h-4 w-4" />
@@ -1391,4 +1594,21 @@ function useOnlineStatus() {
   }, [])
 
   return online
+}
+
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const handler = () => setPrefersReducedMotion(mediaQuery.matches)
+    mediaQuery.addEventListener("change", handler)
+    return () => mediaQuery.removeEventListener("change", handler)
+  }, [])
+
+  return prefersReducedMotion
 }

@@ -11,6 +11,7 @@ The Travian-style construction pipeline now mirrors the full specification share
 
 - **Queue lifecycle**
   - Resources stay in the village stores until an upgrade actually begins building. When a task becomes active we deduct the snapshot cost, and cancellations inside the first 10% of the build timer refund 90% of that spend.
+  - Demolitions run at ~10% of the construction timer, never return resources, cancel any queued training in that slot, and free up population immediately once finished. Cancelling a demolition simply aborts the process without refunds.
   - `BuildingService.upgradeBuilding` validates queue limits, computes modifier-aware build times (server speed + main building multiplier), and enqueues a `BuildQueueTask`. Tasks auto-start when concurrency slots free up.
   - `BuildQueueTask` is the source of truth for progress bars, start/finish timestamps, and queue ordering. Buildings keep a light-weight flag (`isBuilding`, `queuePosition`) for backwards compatibility, but UI pulls from task data now.
 - `BuildingService.completeBuilding` advances the task, bumps the building level, refreshes production, and triggers `CulturePointService.recalculateVillageContribution`. `startNextTasks` automatically launches the next waiting task per category.
@@ -24,6 +25,7 @@ The Travian-style construction pipeline now mirrors the full specification share
 - **Surface changes**
   - `/api/villages` and `/api/villages/central-overview` include `buildQueueTasks` so dashboards, detail pages, and the instant-complete tooling can render the new queue data.
   - Front-end `BuildingQueue` renders queue entries directly from `BuildQueueTask` (status, order, countdown), shows real-time progress bars, and exposes cancel/speed-up controls (per-building instant completion for Gold Club).
+  - Village buildings now show demolition timers, reinforce the HQ/Smithy/Market dependency chain, and prompt a confirmation when removing a level so players know demolitions are permanent and cancel training.
   - The buildings dashboard now greys out locked structures with tooltips, enforces the HQ/Smithy/Market dependency chain, and adds a simple technology-tree card so players can see why a structure is unavailable.
   - `docs/features/instant-completion.md` references this doc for queue semantics.
 

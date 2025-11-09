@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useAuth } from "@/hooks/use-auth"
 import type { ApiResponse } from "@/lib/utils/api-response"
 import { cn } from "@/lib/utils"
@@ -45,6 +46,7 @@ type VisionTile = {
     villageId?: string | null
     villageName?: string | null
     ownerName?: string | null
+    ownerId?: string | null
     allianceTag?: string | null
     tribeTag?: string | null
     tribeName?: string | null
@@ -93,6 +95,7 @@ type SelectedVillage = {
   name: string | null
   coordinate: Coordinate
   ownerName: string | null
+  playerId?: string | null
   tribeTag: string | null
   tribeName: string | null
   allianceTag: string | null
@@ -377,6 +380,7 @@ export function WorldMapExplorer() {
       name: tile.metadata?.villageName ?? null,
       coordinate: tile.coordinate,
       ownerName: tile.metadata?.ownerName ?? null,
+      playerId: tile.metadata?.ownerId ?? null,
       tribeTag: tile.metadata?.tribeTag ?? null,
       tribeName: tile.metadata?.tribeName ?? null,
       allianceTag: tile.metadata?.allianceTag ?? null,
@@ -404,6 +408,7 @@ export function WorldMapExplorer() {
       name: village.name,
       coordinate: { x: village.x, y: village.y },
       ownerName: village.playerName,
+      playerId: village.playerId,
       tribeTag: village.tribeTag,
       tribeName: village.tribeName,
       allianceTag: null,
@@ -796,6 +801,11 @@ export function WorldMapExplorer() {
                   >
                     Use as “To”
                   </Button>
+                  {selectedVillage.playerId && !selectedVillage.isBarbarian && (
+                    <Button size="sm" asChild>
+                      <Link href={`/players/${selectedVillage.playerId}`}>View Profile</Link>
+                    </Button>
+                  )}
                 </div>
               </div>
             ) : (

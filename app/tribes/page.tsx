@@ -599,7 +599,13 @@ export default function TribesPage() {
                     tribe.tag,
                     tribe.totalPoints?.toLocaleString() || "0",
                     tribe.memberCount?.toString() || "0",
-                    tribe.leader?.playerName || "-",
+                    tribe.leader ? (
+                      <Link href={`/players/${tribe.leader.id}`} className="text-primary hover:underline">
+                        {tribe.leader.playerName}
+                      </Link>
+                    ) : (
+                      "-"
+                    ),
                     <Button
                       key={tribe.id}
                       variant={tribe.id === selectedTribeId ? "default" : "outline"}
@@ -734,7 +740,11 @@ export default function TribesPage() {
                           const role = member.tribeRole || "MEMBER"
                           return (
                             <tr key={member.id} className="border-t border-border/60">
-                              <td className="p-2 font-medium">{member.playerName}</td>
+                              <td className="p-2 font-medium">
+                                <Link href={`/players/${member.id}`} className="hover:underline">
+                                  {member.playerName}
+                                </Link>
+                              </td>
                               <td className="p-2">
                                 {roleLabels[role]}
                                 {role === "FOUNDER" && <Badge variant="outline" className="ml-2 text-xs">Founder</Badge>}

@@ -23,6 +23,7 @@ docs/
 │   ├── beginner-protection.md
 │   ├── new-player-experience.md   # Tutorial quests, advisors, mentor program
 │   ├── resource-system.md
+│   ├── combat-resolution.md   # Detailed Travian-style battle pipeline
 │   ├── market-trading.md       # Marketplace & merchant trading spec with printable logistics checklists
 │   ├── subsystem-effects.md
 │   ├── troop-system.md
@@ -139,6 +140,15 @@ DATABASE_URL="file:./dev.db"
 JWT_SECRET="your-secret-key"
 NEXTAUTH_SECRET="auth-secret"
 NEXTAUTH_URL="http://localhost:3000"
+APP_ORIGIN="http://localhost:3000"
+EMAIL_SMTP_HOST="smtp.dev.local"
+EMAIL_SMTP_PORT="587"
+EMAIL_SMTP_USER="username"
+EMAIL_SMTP_PASS="password"
+EMAIL_FROM="Medieval Strategy HQ <no-reply@medievalstrategy.game>"
+EMAIL_RATE_LIMIT_MAX="20"
+EMAIL_RATE_LIMIT_WINDOW_MINUTES="60"
+EMAIL_OFFLINE_THRESHOLD_MINUTES="10"
 ```
 
 ### Build Commands

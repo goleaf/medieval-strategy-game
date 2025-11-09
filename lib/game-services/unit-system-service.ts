@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import type { Prisma } from "@prisma/client"
 import { BuildingType, TrainingBuilding, TrainingStatus, StorageLedgerReason } from "@prisma/client"
+import { WorldSettingsService } from "@/lib/game-services/world-settings-service"
 
 import { getTroopSystemConfig, requireUnitDefinition } from "@/lib/troop-system/config"
 import { enqueueTraining, type TrainingQueueItem as TrainingPlanItem } from "@/lib/troop-system/training"
@@ -84,15 +85,16 @@ type TrainingQueueRow = {
   costClay: number
   costIron: number
   costCrop: number
+  costGold: number
 }
 
-function bundleFromJobCosts(job: Pick<TrainingQueueRow, "costWood" | "costClay" | "costIron" | "costCrop">) {
+function bundleFromJobCosts(job: Pick<TrainingQueueRow, "costWood" | "costClay" | "costIron" | "costCrop" | "costGold">) {
   return {
     wood: job.costWood,
     stone: job.costClay,
     iron: job.costIron,
     food: job.costCrop,
-    gold: 0,
+    gold: job.costGold,
   }
 }
 
@@ -300,6 +302,7 @@ export class UnitSystemService {
         costClay: true,
         costIron: true,
         costCrop: true,
+        costGold: true,
       },
     })
 
@@ -348,7 +351,7 @@ export class UnitSystemService {
           player: {
             select: {
               gameWorld: {
-                select: { speed: true },
+                select: { id: true, speed: true, worldType: true, settings: true },
               },
             },
           },
@@ -367,6 +370,11 @@ export class UnitSystemService {
         throw new Error("Village not found")
       }
 
+      const worldSettings = WorldSettingsService.derive(village.player?.gameWorld)
+      if (WorldSettingsService.isArcherUnit(input.unitTypeId) && !worldSettings.archersEnabled) {
+        throw new Error("Archer units are disabled on this world.")
+      }
+
       this.assertBuildingRequirements(village, definition)
 
       const existingQueue: TrainingPlanItem[] = village.trainingQueueItems.map((item) => ({
@@ -383,7 +391,7 @@ export class UnitSystemService {
         throw new Error(`${trainingStructureType} required to train ${input.unitTypeId}`)
       }
 
-      const serverSpeed = village.player?.gameWorld?.speed ?? 1
+      const serverSpeed = worldSettings.speed ?? village.player?.gameWorld?.speed ?? 1
 
       const { order, totalCost, unitDurationSeconds, totalDurationSeconds } = enqueueTraining({
         unitType: input.unitTypeId,
@@ -395,6 +403,8 @@ export class UnitSystemService {
       })
 
       const populationCost = definition.popCost * input.count
+      const totalGoldCost =
+        input.unitTypeId === "NOBLEMAN" ? worldSettings.noble.coinCost * input.count : 0
 
       const createdQueueItem = await tx.trainingQueueItem.create({
         data: {
@@ -411,6 +421,7 @@ export class UnitSystemService {
           costClay: totalCost.clay,
           costIron: totalCost.iron,
           costCrop: totalCost.crop,
+          costGold: totalGoldCost,
           populationCost,
           worldSpeedApplied: serverSpeed,
           status: TrainingStatus.WAITING,
@@ -502,7 +513,7 @@ export class UnitSystemService {
         stone: Math.floor(job.costClay * 0.9),
         iron: Math.floor(job.costIron * 0.9),
         food: Math.floor(job.costCrop * 0.9),
-        gold: 0,
+        gold: Math.floor(job.costGold * 0.9),
       }
 
       await StorageService.addResources(job.villageId, refundBundle, StorageLedgerReason.TRAINING_REFUND, {

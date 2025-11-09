@@ -10,7 +10,12 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
-import type { CombatReportListItem, SupportStatusPayload } from "@/lib/reports/types"
+import type {
+  CombatReportListItem,
+  ParticipantSummary,
+  ScoutIntelReport,
+  SupportStatusPayload,
+} from "@/lib/reports/types"
 
 type PlayerResponse = {
   success: boolean
@@ -26,6 +31,12 @@ type ReportListResponse = {
 type SupportResponse = {
   success: boolean
   data?: SupportStatusPayload
+  error?: string
+}
+
+type IntelResponse = {
+  success: boolean
+  data?: ScoutIntelReport[]
   error?: string
 }
 
@@ -48,8 +59,11 @@ export default function ReportsPage() {
   const [supportStatus, setSupportStatus] = useState<SupportStatusPayload | null>(null)
   const [loadingReports, setLoadingReports] = useState(false)
   const [loadingSupport, setLoadingSupport] = useState(false)
+  const [intelReports, setIntelReports] = useState<ScoutIntelReport[]>([])
+  const [loadingIntel, setLoadingIntel] = useState(false)
   const [reportError, setReportError] = useState<string | null>(null)
   const [supportError, setSupportError] = useState<string | null>(null)
+  const [intelError, setIntelError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"combat" | "support">("combat")
   const [directionFilter, setDirectionFilter] = useState<string>("all")
   const [missionFilter, setMissionFilter] = useState<string>("all")
@@ -338,8 +352,11 @@ function ReportRow({ report }: { report: CombatReportListItem }) {
             <p className="font-semibold">{report.subject}</p>
             {report.isNew && <Badge variant="secondary">New</Badge>}
           </div>
-          <p className="text-sm text-muted-foreground">
-            {report.attacker.playerName ?? "Unknown"} → {report.defender.playerName ?? "Unknown"} • {formatDate(report.createdAt)}
+          <p className="text-sm text-muted-foreground flex flex-wrap items-center gap-1">
+            <ParticipantLink participant={report.attacker} />
+            <span>→</span>
+            <ParticipantLink participant={report.defender} />
+            <span>• {formatDate(report.createdAt)}</span>
           </p>
           <p className="text-xs text-muted-foreground">
             Expires {formatDate(report.expiresAt)} • Outcome: {describeOutcome(report.outcome)}
@@ -358,6 +375,18 @@ function ReportRow({ report }: { report: CombatReportListItem }) {
       </div>
     </Link>
   )
+}
+
+function ParticipantLink({ participant }: { participant: ParticipantSummary }) {
+  const label = participant.playerName ?? "Unknown"
+  if (participant.playerId) {
+    return (
+      <Link href={`/players/${participant.playerId}`} className="text-primary hover:underline">
+        {label}
+      </Link>
+    )
+  }
+  return <span>{label}</span>
 }
 
 function SupportOverview({ status, loading }: { status: SupportStatusPayload | null; loading: boolean }) {
