@@ -4,27 +4,23 @@ import { errorResponse, serverErrorResponse, successResponse } from "@/lib/utils
 import { UnitSystemService } from "@/lib/game-services/unit-system-service"
 import { SitterPermissions } from "@/lib/utils/sitter-permissions"
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest, context: { params: { queueItemId: string } }) {
   try {
-    const auth = await authenticateRequest(req)
+    const auth = await authenticateRequest(_req)
     if (!auth?.playerId) {
       return errorResponse("Unauthorized", 401)
     }
 
-    const body = await req.json()
-    const villageId = String(body.villageId || "")
-    const troopType = String(body.troopType || "")
-    const quantity = Number(body.quantity || 0)
-
-    if (!villageId || !troopType || !Number.isFinite(quantity) || quantity <= 0) {
-      return errorResponse("Invalid payload", 400)
+    const queueItemId = context.params.queueItemId
+    if (!queueItemId) {
+      return errorResponse("Missing queue item id", 400)
     }
 
-    // Enforce sitter permission for resource usage
+    // Enforce sitter permission for resource refunds
     const sitterContext = await SitterPermissions.getSitterContext(auth)
     if (sitterContext.isSitter) {
       const permissionCheck = await SitterPermissions.enforcePermission(
-        req,
+        _req,
         sitterContext.sitterId!,
         sitterContext.ownerId!,
         "useResources",
@@ -32,8 +28,8 @@ export async function POST(req: NextRequest) {
       if (permissionCheck) return permissionCheck
     }
 
-    await UnitSystemService.trainUnits({ villageId, unitTypeId: troopType, count: quantity })
-    return successResponse({ ok: true })
+    const result = await UnitSystemService.cancelTrainingJob(queueItemId)
+    return successResponse(result)
   } catch (error) {
     return serverErrorResponse(error)
   }

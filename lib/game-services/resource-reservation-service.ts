@@ -124,6 +124,20 @@ export class ResourceReservationService {
     })
   }
 
+  static async releaseReservationByLabel(playerId: string, villageId: string, label: string) {
+    const reservation = await prisma.resourceReservation.findFirst({
+      where: {
+        playerId,
+        villageId,
+        label,
+        fulfilledAt: null,
+      },
+      select: { id: true },
+    })
+    if (!reservation) return null
+    return this.releaseReservation(reservation.id, playerId)
+  }
+
   static async listActiveReservations(playerId: string) {
     const reservations = await prisma.resourceReservation.findMany({
       where: {

@@ -83,10 +83,14 @@ export function ResourceDisplay({
                 <span>{meta.label}</span>
               </div>
               <div className="text-right">
-                <div className="font-mono text-base">{NUMBER_FORMAT.format(Math.floor(amount))}</div>
+                <div className="font-mono text-base">
+                  {capacity > 0
+                    ? `${NUMBER_FORMAT.format(Math.floor(amount))} / ${NUMBER_FORMAT.format(capacity)}`
+                    : NUMBER_FORMAT.format(Math.floor(amount))}
+                </div>
                 {capacity > 0 && (
                   <div className="text-xs text-muted-foreground">
-                    {percent.toFixed(0)}% of {NUMBER_FORMAT.format(capacity)} {meta.capacityLabel}
+                    {percent.toFixed(0)}% of {meta.capacityLabel}
                   </div>
                 )}
               </div>
@@ -97,7 +101,12 @@ export function ResourceDisplay({
                 {netPerHour >= 0 ? "+" : ""}
                 {Math.round(netPerHour)} /h
               </span>
-              {nearingCap && <span className="text-amber-600 font-medium">Approaching capacity</span>}
+              {nearingCap && percent < 100 && (
+                <span className="text-amber-600 font-medium">Approaching capacity</span>
+              )}
+              {capacity > 0 && percent >= 100 && netPerHour > 0 && (
+                <span className="text-red-500 font-medium">At capacity • overflow wasted</span>
+              )}
               {!nearingCap && netPerHour < 0 && <span className="text-red-500 font-medium">Net loss</span>}
             </div>
 

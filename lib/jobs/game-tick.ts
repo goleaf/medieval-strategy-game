@@ -65,6 +65,8 @@ const EVENT_PROCESSORS: Record<EventQueueType, TickEventHandler> = {
   BUILDING_COMPLETION: handleBuildingCompletionEvent,
   LOYALTY_TICK: handleLoyaltyTick,
   NOTIFICATION: handleNotificationEvent,
+  RESEARCH_COMPLETION: handleResearchCompletionEvent,
+  SMITHY_UPGRADE_COMPLETION: handleSmithyUpgradeCompletionEvent,
 }
 
 type BuildingEventPayload = {
@@ -99,6 +101,8 @@ export async function bootstrapTickEvents(now = new Date()) {
 
   await seedOutstandingBuildingEvents()
   await seedOutstandingMovementEvents()
+  await seedOutstandingResearchEvents()
+  await seedOutstandingSmithyEvents()
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +189,7 @@ async function handleTroopMovementEvent(event: EventQueueItem, context: TickCont
       "TROOP_MOVEMENT",
       movement.arrivalAt,
       { movementId: movement.id },
-      { dedupeKey: `movement:${movement.id}` },
+      { dedupeKey: `movement:${movement.id}`, priority: PRIORITY.TROOP_MOVEMENT },
     )
     return
   }
@@ -297,6 +301,82 @@ async function handleLoyaltyTick(event: EventQueueItem, context: TickContext) {
 
 async function handleNotificationEvent(event: EventQueueItem) {
   console.log(`[tick] Notification event delivered`, event.payload)
+}
+
+type ResearchEventPayload = { jobId: string }
+
+async function handleResearchCompletionEvent(event: EventQueueItem, context: TickContext) {
+  const payload = parsePayload<ResearchEventPayload>(event)
+  if (!payload?.jobId) return
+
+  const job = await prisma.researchJob.findUnique({
+    where: { id: payload.jobId },
+  })
+  if (!job || job.completedAt) return
+
+  if (job.completionAt > context.now) {
+    await EventQueueService.scheduleEvent(
+      "RESEARCH_COMPLETION",
+      job.completionAt,
+      { jobId: job.id },
+      { dedupeKey: `research:${job.id}`, priority: PRIORITY.BUILDING_COMPLETION },
+    )
+    return
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Mark job complete
+    await tx.researchJob.update({ where: { id: job.id }, data: { completedAt: context.now } })
+    // Mark player tech as completed
+    const state = await tx.playerTechnology.upsert({
+      where: { playerId_technologyId: { playerId: job.playerId, technologyId: job.technologyId } },
+      update: { completedAt: context.now },
+      create: { playerId: job.playerId, technologyId: job.technologyId, completedAt: context.now },
+    })
+    return state
+  })
+}
+
+type SmithyEventPayload = { jobId: string }
+
+async function handleSmithyUpgradeCompletionEvent(event: EventQueueItem, context: TickContext) {
+  const payload = parsePayload<SmithyEventPayload>(event)
+  if (!payload?.jobId) return
+
+  const job = await prisma.smithyUpgradeJob.findUnique({ where: { id: payload.jobId } })
+  if (!job || job.completedAt) return
+
+  if (job.completionAt > context.now) {
+    await EventQueueService.scheduleEvent(
+      "SMITHY_UPGRADE_COMPLETION",
+      job.completionAt,
+      { jobId: job.id },
+      { dedupeKey: `smithy:${job.id}`, priority: PRIORITY.BUILDING_COMPLETION },
+    )
+    return
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.smithyUpgradeJob.update({ where: { id: job.id }, data: { completedAt: context.now } })
+    const existing = await tx.unitTech.findUnique({
+      where: { playerId_unitTypeId: { playerId: job.playerId, unitTypeId: job.unitTypeId } },
+    })
+    if (!existing) {
+      await tx.unitTech.create({
+        data: {
+          playerId: job.playerId,
+          unitTypeId: job.unitTypeId,
+          attackLevel: job.kind === "ATTACK" ? job.targetLevel : 0,
+          defenseLevel: job.kind === "DEFENSE" ? job.targetLevel : 0,
+        },
+      })
+    } else {
+      await tx.unitTech.update({
+        where: { playerId_unitTypeId: { playerId: job.playerId, unitTypeId: job.unitTypeId } },
+        data: job.kind === "ATTACK" ? { attackLevel: job.targetLevel } : { defenseLevel: job.targetLevel },
+      })
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -610,7 +690,7 @@ async function seedOutstandingBuildingEvents() {
         "BUILDING_COMPLETION",
         task.finishesAt,
         { buildingId: task.buildingId, taskId: task.id },
-        { dedupeKey: `building:${task.id}` },
+        { dedupeKey: `building:${task.id}`, priority: PRIORITY.BUILDING_COMPLETION },
       )
     }
 
@@ -628,7 +708,7 @@ async function seedOutstandingBuildingEvents() {
       "BUILDING_COMPLETION",
       building.demolitionAt,
       { buildingId: building.id, demolition: true },
-      { dedupeKey: `demolition:${building.id}` },
+      { dedupeKey: `demolition:${building.id}`, priority: PRIORITY.BUILDING_COMPLETION },
     )
   }
 }
@@ -653,13 +733,78 @@ async function seedOutstandingMovementEvents() {
         "TROOP_MOVEMENT",
         movement.arrivalAt,
         { movementId: movement.id },
-        { dedupeKey: `movement:${movement.id}` },
+        { dedupeKey: `movement:${movement.id}`, priority: PRIORITY.TROOP_MOVEMENT },
       )
     }
 
     cursor = { id: movements[movements.length - 1].id }
   }
 }
+
+async function seedOutstandingResearchEvents() {
+  const batchSize = 500
+  let cursor: { id: string } | undefined
+
+  while (true) {
+    const jobs = await prisma.researchJob.findMany({
+      where: { completedAt: null },
+      select: { id: true, completionAt: true },
+      orderBy: { id: "asc" },
+      take: batchSize,
+      ...(cursor ? { cursor, skip: 1 } : {}),
+    })
+
+    if (!jobs.length) break
+
+    for (const job of jobs) {
+      await EventQueueService.scheduleEvent(
+        "RESEARCH_COMPLETION",
+        job.completionAt,
+        { jobId: job.id },
+        { dedupeKey: `research:${job.id}`, priority: PRIORITY.BUILDING_COMPLETION },
+      )
+    }
+
+    cursor = { id: jobs[jobs.length - 1].id }
+  }
+}
+
+async function seedOutstandingSmithyEvents() {
+  const batchSize = 500
+  let cursor: { id: string } | undefined
+
+  while (true) {
+    const jobs = await prisma.smithyUpgradeJob.findMany({
+      where: { completedAt: null },
+      select: { id: true, completionAt: true },
+      orderBy: { id: "asc" },
+      take: batchSize,
+      ...(cursor ? { cursor, skip: 1 } : {}),
+    })
+
+    if (!jobs.length) break
+
+    for (const job of jobs) {
+      await EventQueueService.scheduleEvent(
+        "SMITHY_UPGRADE_COMPLETION",
+        job.completionAt,
+        { jobId: job.id },
+        { dedupeKey: `smithy:${job.id}`, priority: PRIORITY.BUILDING_COMPLETION },
+      )
+    }
+
+    cursor = { id: jobs[jobs.length - 1].id }
+  }
+}
+
+// Priorities ensure logical ordering when multiple events share the same second.
+// Higher numbers execute first.
+const PRIORITY = {
+  TROOP_MOVEMENT: 100,
+  BUILDING_COMPLETION: 50,
+  RESOURCE_TICK: -10,
+  LOYALTY_TICK: -10,
+} as const
 
 async function scheduleRecurringTick(
   type: Extract<EventQueueType, "RESOURCE_TICK" | "LOYALTY_TICK">,
@@ -670,7 +815,7 @@ async function scheduleRecurringTick(
     type,
     new Date(now.getTime() + intervalMs),
     undefined,
-    { dedupeKey: RECURRING_EVENT_KEYS[type] },
+    { dedupeKey: RECURRING_EVENT_KEYS[type], priority: PRIORITY[type] },
   )
 }
 

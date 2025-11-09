@@ -9,6 +9,8 @@ import type { UnitCosts, UnitDefinition, TroopSystemConfig } from "@/lib/troop-s
 import { adjustHomeUnitCount } from "@/lib/game-services/unit-ledger"
 import { StorageService } from "@/lib/game-services/storage-service"
 import { BuildingService } from "@/lib/game-services/building-service"
+import { NotificationService } from "@/lib/game-services/notification-service"
+import { buildingPopulationPerLevel } from "@/lib/game-services/population-helpers"
 
 interface TrainUnitsInput {
   villageId: string
@@ -192,7 +194,20 @@ export class UnitSystemService {
       where: { villageId: village.id, status: TrainingStatus.TRAINING },
       _sum: { populationCost: true },
     })
-    const nextTotal = usedPopulation + (reservedPopulation._sum.populationCost ?? 0) + populationCost
+    // Reserve population for buildings currently under construction (delta per level)
+    const buildingReservations = await tx.buildQueueTask.findMany({
+      where: { villageId: village.id, status: "BUILDING" },
+      include: { building: { select: { type: true } } },
+    })
+    const reservedForBuildings = buildingReservations.reduce((sum, task) => {
+      const type = task.building?.type as any
+      if (!type) return sum
+      // Reserve only the next level increment while under construction
+      const perLevel = buildingPopulationPerLevel(type)
+      return sum + perLevel
+    }, 0)
+
+    const nextTotal = usedPopulation + (reservedPopulation._sum.populationCost ?? 0) + reservedForBuildings + populationCost
     return nextTotal <= limit
   }
 
@@ -377,6 +392,25 @@ export class UnitSystemService {
 
       this.assertBuildingRequirements(village, definition)
 
+      // Enforce paladin uniqueness across player's account
+      if (input.unitTypeId === "paladin") {
+        const allVillages = await tx.village.findMany({ where: { playerId: village.player?.id }, select: { id: true } })
+        const villageIds = allVillages.map((v) => v.id)
+        if (villageIds.length > 0) {
+          const existingStacks = await tx.unitStack.findMany({
+            where: { villageId: { in: villageIds }, unitTypeId: "paladin" },
+            select: { count: true },
+          })
+          const existingQueued = await tx.trainingQueueItem.count({
+            where: { villageId: { in: villageIds }, unitTypeId: "paladin", status: { in: [TrainingStatus.WAITING, TrainingStatus.TRAINING] } },
+          })
+          const hasPaladin = existingStacks.some((s) => s.count > 0) || existingQueued > 0
+          if (hasPaladin) {
+            throw new Error("Only one Paladin is allowed per player.")
+          }
+        }
+      }
+
       const existingQueue: TrainingPlanItem[] = village.trainingQueueItems.map((item) => ({
         unitType: item.unitTypeId,
         count: item.count,
@@ -542,6 +576,9 @@ export class UnitSystemService {
         village: {
           select: { playerId: true },
         },
+        unitType: {
+          select: { id: true, role: true, attack: true },
+        },
       },
       orderBy: { finishAt: "asc" },
     })
@@ -568,6 +605,28 @@ export class UnitSystemService {
 
         await this.tryStartQueuedTraining(tx, job.villageId, job.building, referenceTime)
       })
+      // Fire a completion notification
+      try {
+        const ownerAccountId = job.village?.playerId
+        if (ownerAccountId) {
+          const isNoble = job.unitTypeId === "admin" || job.unitType?.role === "admin"
+          await NotificationService.emit({
+            playerId: ownerAccountId,
+            type: isNoble ? "NOBLE_TRAINING_COMPLETE" : "TROOP_TRAINING_COMPLETE",
+            title: isNoble ? "Nobleman Ready" : "Troop Training Complete",
+            message: `${job.count.toLocaleString()} × ${job.unitType?.id ?? job.unitTypeId} completed`,
+            actionUrl: `/village/${job.villageId}/rally-point`,
+            metadata: {
+              unitTypeId: job.unitTypeId,
+              count: job.count,
+              villageId: job.villageId,
+              finishAt: job.finishAt,
+            },
+          })
+        }
+      } catch (err) {
+        console.warn("[training] Notification emit failed:", err)
+      }
       processed += 1
     }
     return processed

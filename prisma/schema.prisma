@@ -1460,6 +1460,8 @@ enum EventQueueType {
   BUILDING_COMPLETION
   LOYALTY_TICK
   NOTIFICATION
+  RESEARCH_COMPLETION
+  SMITHY_UPGRADE_COMPLETION
 }
 
 enum EventQueueStatus {
@@ -2288,6 +2290,120 @@ model Research {
   @@index([isResearching, completionAt]) // For active research queries
   @@index([completionAt]) // For research completion processing
   @@index([type, level]) // For research type/level queries
+}
+
+// ============================================================================
+// TECHNOLOGY TREE (Account-wide unlocks via Academy)
+// ============================================================================
+
+model Technology {
+  id          String   @id
+  key         String   @unique
+  displayName String
+  description String?
+  category    TechnologyCategory
+
+  // Base research cost and time (scaled by world speed)
+  costWood  Int @default(0)
+  costStone Int @default(0)
+  costIron  Int @default(0)
+  costGold  Int @default(0)
+  costFood  Int @default(0)
+  baseTimeSeconds Int @default(3600)
+
+  // Requirements
+  academyLevelRequired Int @default(1)
+  prerequisites Json   // { tech: string[], buildings: [{ type: string, level: number }] }
+  effects       Json   // e.g., { unlocks: { units: ["SCOUT"], systems: ["PALADIN"] } }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  playerStates PlayerTechnology[]
+  researchJobs ResearchJob[]
+}
+
+enum TechnologyCategory {
+  UNIT
+  BUILDING
+  SYSTEM
+}
+
+model PlayerTechnology {
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  technologyId String
+  technology   Technology @relation(fields: [technologyId], references: [id], onDelete: Cascade)
+
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([playerId, technologyId])
+  @@index([playerId])
+  @@index([technologyId])
+}
+
+model ResearchJob {
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  villageId    String
+  village      Village  @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  buildingId   String
+  building     Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  technologyId String
+  technology   Technology @relation(fields: [technologyId], references: [id], onDelete: Cascade)
+
+  startedAt    DateTime @default(now())
+  completionAt DateTime
+  // jobs cannot be canceled; upon completion, we mark completedAt and keep as history
+  completedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId])
+  @@index([villageId])
+  @@index([buildingId])
+  @@index([completionAt])
+}
+
+// ============================================================================
+// SMITHY UPGRADES (per-player, account-wide; jobs run in Smithy per village)
+// ============================================================================
+
+enum SmithyUpgradeKind {
+  ATTACK
+  DEFENSE
+}
+
+model SmithyUpgradeJob {
+  id         String            @id @default(cuid())
+  playerId   String
+  player     Player            @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  villageId  String
+  village    Village           @relation(fields: [villageId], references: [id], onDelete: Cascade)
+  buildingId String
+  building   Building          @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unitTypeId String
+  unitType   UnitType          @relation(fields: [unitTypeId], references: [id], onDelete: Cascade)
+  kind       SmithyUpgradeKind
+  targetLevel Int
+
+  startedAt    DateTime @default(now())
+  completionAt DateTime
+  completedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId])
+  @@index([villageId])
+  @@index([buildingId])
+  @@index([completionAt])
 }
 
 enum ResearchType {

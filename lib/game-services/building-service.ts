@@ -7,8 +7,10 @@ import { BUILDING_BONUSES, LEGACY_BUILDING_COSTS, LEGACY_BUILDING_TIMES } from "
 import { CONSTRUCTION_CONFIG, getLevelData, getMainBuildingMultiplier, getQueuePreset } from "@/lib/config/construction"
 import { getSubsystemEffectsConfig } from "@/lib/config/subsystem-effects"
 import { NotificationService } from "./notification-service"
+import { sumFarmCapacity, buildingPopulationPerLevel } from "@/lib/game-services/population-helpers"
 import { EmailNotificationService } from "@/lib/notifications/email-notification-service"
 import { EventQueueService } from "@/lib/game-services/event-queue-service"
+import { ResourceReservationService } from "@/lib/game-services/resource-reservation-service"
 import type {
   BuildQueueTask,
   BuildTaskStatus,
@@ -189,6 +191,10 @@ export class BuildingService {
           bonuses.gold += building.level * 3
           bonuses.food += building.level * 15
           break
+        case "SNOB":
+          // Noble building: produces gold coins over time
+          bonuses.gold += building.level * 5
+          break
       }
     }
 
@@ -199,23 +205,10 @@ export class BuildingService {
    * Calculate population limit based on Farm level
    */
   static calculatePopulationLimit(buildings: Array<{ type: BuildingType; level: number }>): number {
-    const farm = buildings.find((b) => b.type === "FARM")
-    const farmLevel = farm?.level ?? 0
-
-    if (farmLevel > 0) {
-      // Pull the configured population cap from the blueprint so game rules and docs stay in sync.
-      const blueprintKey = getBlueprintKeyForBuilding("FARM" as BuildingType)
-      if (blueprintKey) {
-        const levelData = getLevelData(blueprintKey, farmLevel)
-        const rawCap = levelData.effects ? (levelData.effects as Record<string, unknown>)["populationCap"] : undefined
-        if (typeof rawCap === "number" && rawCap > 0) {
-          return rawCap
-        }
-      }
-    }
-
-    // Fallback preserves the legacy behaviour if the blueprint is missing or misconfigured.
-    return 100 + farmLevel * 50
+    // Sum capacity across all farms (supports variants with multiple Farms)
+    const capacity = sumFarmCapacity(buildings as Array<{ type: BuildingType; level: number }>)
+    // Ensure a minimum baseline
+    return Math.max(0, capacity)
   }
 
   private static async getQueueLimitsForVillage(
@@ -418,6 +411,7 @@ export class BuildingService {
           include: {
             player: {
               select: {
+                id: true,
                 gameWorld: { select: { speed: true } },
                 gameTribe: true,
                 hasGoldClubMembership: true,
@@ -444,14 +438,53 @@ export class BuildingService {
     )
     const village = building.village
 
+    // Respect reservations when checking affordability for queueing
+    const reserved = await ResourceReservationService.getVillageReservedTotals(village.id)
+    const available = {
+      wood: village.wood - (reserved.wood ?? 0),
+      stone: village.stone - (reserved.stone ?? 0),
+      iron: village.iron - (reserved.iron ?? 0),
+      gold: village.gold - (reserved.gold ?? 0),
+      food: village.food - (reserved.food ?? 0),
+    }
     const hasResources =
-      village.wood >= upgrade.cost.wood &&
-      village.stone >= upgrade.cost.stone &&
-      village.iron >= upgrade.cost.iron &&
-      village.gold >= upgrade.cost.gold &&
-      village.food >= upgrade.cost.food
+      available.wood >= upgrade.cost.wood &&
+      available.stone >= upgrade.cost.stone &&
+      available.iron >= upgrade.cost.iron &&
+      available.gold >= upgrade.cost.gold &&
+      available.food >= upgrade.cost.food
 
     if (!hasResources) {
+      return false
+    }
+
+    // Population capacity: prevent starting if this upgrade would exceed Farm capacity.
+    // Compute current limit from all Farm buildings.
+    const popLimit = BuildingService.calculatePopulationLimit(village.buildings)
+    // Units in village consume population
+    const unitStacks = await prisma.unitStack.findMany({
+      where: { villageId: village.id },
+      select: { count: true, unitType: { select: { popCost: true } } },
+    })
+    const usedUnitPop = unitStacks.reduce((sum, stack) => sum + stack.count * (stack.unitType.popCost || 0), 0)
+    // Training reservations (only active training counts)
+    const trainingAgg = await prisma.trainingQueueItem.aggregate({
+      where: { villageId: village.id, status: "TRAINING" },
+      _sum: { populationCost: true },
+    })
+    const reservedTraining = trainingAgg._sum.populationCost ?? 0
+    // Buildings under construction reserve their per-level population now
+    const activeTasks = await prisma.buildQueueTask.findMany({
+      where: { villageId: village.id, status: "BUILDING" },
+      include: { building: { select: { type: true } } },
+    })
+    const reservedBuilding = activeTasks.reduce((sum, t) => {
+      const per = t.building?.type ? buildingPopulationPerLevel(t.building.type as any) : 0
+      return sum + per
+    }, 0)
+    const deltaForThisUpgrade = buildingPopulationPerLevel(building.type as any)
+    const nextPopUsage = usedUnitPop + reservedTraining + reservedBuilding + deltaForThisUpgrade
+    if (nextPopUsage > popLimit) {
       return false
     }
 
@@ -465,6 +498,19 @@ export class BuildingService {
         food: { decrement: upgrade.cost.food },
       },
     })
+
+    // Release any reservation tied to this task now that resources are deducted
+    try {
+      if (building.village.player?.id) {
+        await ResourceReservationService.releaseReservationByLabel(
+          building.village.player.id,
+          village.id,
+          `building:task:${task.id}`,
+        )
+      }
+    } catch (error) {
+      console.warn(`[build] Failed to release reservation for task ${task.id}:`, error)
+    }
 
     const now = new Date()
     const finishesAt = new Date(now.getTime() + upgrade.effectiveTimeSeconds * 1000)
@@ -502,7 +548,7 @@ export class BuildingService {
       "BUILDING_COMPLETION",
       finishesAt,
       { buildingId: building.id, taskId: task.id },
-      { dedupeKey: `building:${task.id}` },
+      { dedupeKey: `building:${task.id}`, priority: 50 },
     )
 
     return true
@@ -631,7 +677,7 @@ export class BuildingService {
     const position = (lastTask?.position ?? 0) + 1
     const now = new Date()
 
-    await prisma.buildQueueTask.create({
+    const createdTask = await prisma.buildQueueTask.create({
       data: {
         villageId: building.villageId,
         buildingId: building.id,
@@ -654,6 +700,28 @@ export class BuildingService {
         createdBy: BuildTaskSource.PLAYER,
       },
     })
+
+    // Create a reservation matching the queued task cost so other actions cannot overspend
+    try {
+      const reservation = await ResourceReservationService.createReservation({
+        playerId: village.playerId,
+        villageId: village.id,
+        label: `building:task:${createdTask.id}`,
+        resources: {
+          wood: upgrade.cost.wood,
+          stone: upgrade.cost.stone,
+          iron: upgrade.cost.iron,
+          gold: upgrade.cost.gold,
+          food: upgrade.cost.food,
+        },
+      })
+      await prisma.buildQueueTask.update({
+        where: { id: createdTask.id },
+        data: { metadata: { ...(createdTask.metadata as any), reservationId: reservation.id } },
+      })
+    } catch (error) {
+      console.warn(`[build] Reservation failed for queued task ${createdTask.id}:`, error)
+    }
 
     await prisma.building.update({
       where: { id: buildingId },
@@ -702,6 +770,15 @@ export class BuildingService {
     }
 
     const task = building.queueTasks[0]
+
+    // Release any reservation tied to this queued task
+    try {
+      await ResourceReservationService.releaseReservationByLabel(
+        building.village.playerId,
+        building.villageId,
+        `building:task:${task.id}`,
+      )
+    } catch {}
 
     let refundMultiplier = 0
     if (task.status === BuildTaskStatus.BUILDING) {
@@ -848,14 +925,8 @@ export class BuildingService {
         },
       })
 
-      // Update population limit if Farm was upgraded
-      if (building.type === "FARM") {
-        const populationLimit = this.calculatePopulationLimit(village.buildings)
-        await prisma.village.update({
-          where: { id: building.villageId },
-          data: { population: Math.min(village.population, populationLimit) },
-        })
-      }
+      // Update population metrics after any building completion
+      await VillageDestructionService.updateVillagePopulation(building.villageId)
     }
     await this.publishCompletionNotification(building, building.level + 1)
     await CulturePointService.recalculateVillageContribution(building.villageId)
@@ -1121,6 +1192,7 @@ export class BuildingService {
     // Update production rates
     await this.updateVillageProductionRates(building.villageId)
     await this.ensureVillagePopulationWithinLimit(building.villageId)
+    await VillageDestructionService.updateVillagePopulation(building.villageId)
   }
 
   /**
@@ -1152,6 +1224,7 @@ export class BuildingService {
     // Update production rates
     await this.updateVillageProductionRates(building.villageId)
     await this.ensureVillagePopulationWithinLimit(building.villageId)
+    await VillageDestructionService.updateVillagePopulation(building.villageId)
   }
 
   /**

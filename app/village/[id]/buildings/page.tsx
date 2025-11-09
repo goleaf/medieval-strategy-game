@@ -710,6 +710,12 @@ export default function BuildingsPage() {
                       {building.isBuilding ? "Building..." : isUnlocked ? "Upgrade" : "Locked"}
                     </Button>
 
+                    {building.type === "ACADEMY" && (
+                      <Link href={`/village/${villageId}/academy`} className="text-xs underline">
+                        Open Academy Tech Tree
+                      </Link>
+                    )}
+
                     {requirementStatuses.length > 0 && (
                       <ul className="text-[11px] leading-tight text-muted-foreground">
                         {requirementStatuses.map((req) => (

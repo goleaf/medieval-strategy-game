@@ -104,10 +104,28 @@ export function VillageOverview({ village, onUpgrade, onNpcMerchantExchange }: V
     }
   }
 
-  // Calculate max population based on farms
+  // Farm capacity (piecewise exponential to match anchors: L1=240, L10=1200, L20=4000, L30=12000)
+  const farmCapForLevel = (level: number) => {
+    if (level <= 0) return 0
+    const lvl = Math.min(30, Math.max(1, Math.floor(level)))
+    if (lvl <= 10) {
+      const t = (lvl - 1) / 9
+      return Math.round(240 * Math.pow(5, t))
+    }
+    if (lvl <= 20) {
+      const t = (lvl - 10) / 10
+      return Math.round(1200 * Math.pow(4000 / 1200, t))
+    }
+    const t = (lvl - 20) / 10
+    return Math.round(4000 * Math.pow(12000 / 4000, t))
+  }
+
   const maxPopulation = village.buildings
-    .filter(b => b.type === "FARM")
-    .reduce((sum, farm) => sum + 100 + farm.level * 50, 100) // Base 100 + 50 per level
+    .filter((b) => b.type === "FARM")
+    .reduce((sum, farm) => sum + farmCapForLevel(farm.level), 0)
+
+  const popPct = maxPopulation > 0 ? (village.population / maxPopulation) * 100 : 0
+  const nearCap = popPct >= 95
 
   return (
     <div className="w-full space-y-4">
@@ -161,10 +179,18 @@ export function VillageOverview({ village, onUpgrade, onNpcMerchantExchange }: V
               village.isDestroyed ? (
                 <span className="text-destructive font-semibold">0 (Destroyed)</span>
               ) : (
-                <span className={`font-semibold ${village.population <= 0 ? 'text-destructive' : ''}`}>
-                  👨‍🌾 {village.population}/{maxPopulation}
-                  {village.population <= 0 && " ⚠️"}
-                </span>
+                <div className="min-w-[180px]">
+                  <div className={`font-semibold ${nearCap ? 'text-amber-600' : ''}`}>
+                    👨‍🌾 {village.population} / {maxPopulation}
+                    {nearCap && " • Approaching cap"}
+                  </div>
+                  <div className="mt-1 h-2 w-full rounded bg-muted">
+                    <div
+                      className={`h-2 rounded ${nearCap ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                      style={{ width: `${Math.max(0, Math.min(100, popPct))}%` }}
+                    />
+                  </div>
+                </div>
               )
             ],
             ["Loyalty", `${village.loyalty}% ${village.loyalty < 25 ? '⚠️' : ''}`],

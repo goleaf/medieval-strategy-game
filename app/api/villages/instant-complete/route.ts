@@ -43,9 +43,11 @@ export async function POST(req: NextRequest) {
     const queuedBuildings = village.buildings.filter(
       (b) => b.isBuilding && b.queuePosition !== null,
     )
-    const activeResearch = village.buildings.filter(
-      (b) => b.research?.isResearching === true,
-    )
+    const activeResearch = village.buildings.filter((b) => b.research?.isResearching === true)
+    const activeResearchJobs = await prisma.researchJob.findMany({
+      where: { villageId: village.id, completedAt: null },
+      select: { id: true },
+    })
     const activeTroopProduction = village.buildings.flatMap((b) =>
       b.troopProduction.filter((tp) => tp.completionAt > new Date()),
     )
@@ -53,7 +55,7 @@ export async function POST(req: NextRequest) {
     const activeModernTraining = village.trainingQueueItems.length
 
     const totalActiveItems =
-      queuedBuildings.length + activeResearch.length + activeTroopProduction.length + activeModernTraining
+      queuedBuildings.length + activeResearch.length + activeResearchJobs.length + activeTroopProduction.length + activeModernTraining
 
     if (totalActiveItems === 0) {
       return errorResponse("No active constructions or research to complete", 400)
@@ -85,7 +87,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Complete all active research
+    // Complete all legacy building-attached research
     for (const building of activeResearch) {
       if (building.research?.isResearching) {
         try {
@@ -100,6 +102,30 @@ export async function POST(req: NextRequest) {
           completedResearch++
         } catch (error) {
           console.error(`Failed to complete research for building ${building.id}:`, error)
+        }
+      }
+    }
+
+    // Complete all active tech-tree research jobs
+    if (activeResearchJobs.length > 0) {
+      const now = new Date()
+      for (const job of activeResearchJobs) {
+        try {
+          const data = await prisma.researchJob.update({
+            where: { id: job.id },
+            data: { completedAt: now },
+            include: { technology: true },
+          })
+          await prisma.playerTechnology.upsert({
+            where: {
+              playerId_technologyId: { playerId: village.playerId, technologyId: data.technologyId },
+            },
+            update: { completedAt: now },
+            create: { playerId: village.playerId, technologyId: data.technologyId, completedAt: now },
+          })
+          completedResearch++
+        } catch (error) {
+          console.error(`Failed to complete research job ${job.id}:`, error)
         }
       }
     }

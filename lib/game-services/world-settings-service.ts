@@ -201,7 +201,9 @@ export class WorldSettingsService {
 
     return {
       ...base,
-      unitSpeed: patch.unitSpeed ?? base.unitSpeed,
+      // Default unitSpeed to world speed when not explicitly set,
+      // so higher speed worlds proportionally reduce travel times.
+      unitSpeed: patch.unitSpeed ?? base.speed,
       archersEnabled: patch.archersEnabled ?? base.archersEnabled,
       churchEnabled: patch.churchEnabled ?? base.churchEnabled,
       casualModeEnabled: patch.casualMode?.enabled ?? base.casualModeEnabled,

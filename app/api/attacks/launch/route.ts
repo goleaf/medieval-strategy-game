@@ -61,6 +61,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { fromVillageId, toX, toY, type, units } = validated.data
+    const catapultTargets: string[] | undefined = Array.isArray(body.catapultTargets)
+      ? (body.catapultTargets as string[])
+      : undefined
     const attackType = type as AttackType
 
     const fromVillage = await prisma.village.findUnique({
@@ -153,6 +156,7 @@ export async function POST(req: NextRequest) {
         mission,
         target,
         units: unitsByType,
+        catapultTargets,
         idempotencyKey: randomUUID(),
       })
 
@@ -218,6 +222,7 @@ export async function POST(req: NextRequest) {
         path: JSON.stringify(path),
         totalSteps: Math.max(1, path.length),
         arrivalAt,
+        payload: catapultTargets && catapultTargets.length ? ({ catapultTargets } as any) : undefined,
       },
     })
 

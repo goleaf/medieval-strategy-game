@@ -69,13 +69,12 @@ export class VillageDestructionService {
   }
 
   /**
-   * Calculate maximum population capacity based on Farm levels
-   * Base 100 + 50 per farm level
+   * Calculate maximum population capacity based on Farm levels.
+   * Uses the shared farm capacity curve (supports multiple Farms).
    */
   static calculateMaxPopulation(buildings: Array<{ type: BuildingType; level: number }>): number {
-    const farm = buildings.find((b) => b.type === "FARM")
-    const farmLevel = farm?.level || 0
-    return 100 + farmLevel * 50
+    const { sumFarmCapacity } = require("@/lib/game-services/population-helpers") as typeof import("@/lib/game-services/population-helpers")
+    return sumFarmCapacity(buildings as Array<{ type: BuildingType; level: number }>)
   }
 
   /**
@@ -311,5 +310,4 @@ export class VillageDestructionService {
     }
   }
 }
-
 

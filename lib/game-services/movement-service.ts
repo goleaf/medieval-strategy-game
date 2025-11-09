@@ -200,7 +200,7 @@ export class MovementService {
       "TROOP_MOVEMENT",
       arrivalTime,
       { movementId: movement.id },
-      { dedupeKey: `movement:${movement.id}` },
+      { dedupeKey: `movement:${movement.id}`, priority: 100 },
     )
 
     // Create troop movements for each type

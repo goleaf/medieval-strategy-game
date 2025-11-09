@@ -16,6 +16,7 @@
     "resource:seed": "npx tsx scripts/seed-resource-system.ts",
     "seed:troops": "npx tsx scripts/seed-troop-balance.ts",
     "seed:heroes": "npx tsx scripts/seed-hero-bonuses.ts",
+    "seed:tech": "npx tsx scripts/seed-technologies.ts",
     "test:resources": "npx tsx --test tests/resource-production-helpers.test.ts",
     "start": "next start"
   },

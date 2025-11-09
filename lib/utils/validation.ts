@@ -45,6 +45,7 @@ export const attackLaunchSchema = z.object({
       quantity: z.number().int().min(1),
     }),
   ),
+  catapultTargets: z.array(z.string().min(1)).optional(),
 })
 
 export const sendSettlersSchema = z.object({
