@@ -11,6 +11,7 @@ export async function authenticateRequest(req: NextRequest): Promise<{
   isDual?: boolean;
   dualFor?: string;
   sessionId?: string;
+  rotatedToken?: string;
 } | null> {
   try {
     const authHeader = req.headers.get("authorization")
@@ -65,6 +66,7 @@ export async function authenticateRequest(req: NextRequest): Promise<{
       isDual,
       dualFor,
       sessionId,
+      rotatedToken: (decoded as any).rotatedToken,
     }
   } catch (error) {
     return null

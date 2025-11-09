@@ -3,8 +3,9 @@ import combatConfig from "@/config/combat.json"
 import { calculateMoraleMultiplier } from "@/lib/combat/morale"
 import { type NextRequest } from "next/server"
 import { errorResponse, successResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/attacks/morale", async (req: NextRequest) => {
   try {
     const { searchParams } = new URL(req.url)
     const fromVillageId = searchParams.get("fromVillageId")
@@ -23,8 +24,13 @@ export async function GET(req: NextRequest) {
       return errorResponse("Source village not found", 404)
     }
 
+    // Bounds check
+    const tx = Number(toX), ty = Number(toY)
+    if (Number.isNaN(tx) || Number.isNaN(ty) || tx < 0 || tx > 999 || ty < 0 || ty > 999) {
+      return errorResponse("Coordinates out of bounds", 400)
+    }
     const targetVillage = await prisma.village.findUnique({
-      where: { x_y: { x: Number(toX), y: Number(toY) } },
+      where: { x_y: { x: tx, y: ty } },
       include: { player: true },
     })
 
@@ -45,5 +51,4 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return errorResponse(error as Error, 500)
   }
-}
-
+})

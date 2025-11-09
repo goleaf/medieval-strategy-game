@@ -906,9 +906,14 @@ export default function MarketPage() {
             ← Back
           </Link>
           <h1 className="text-xl font-bold">🏪 Marketplace</h1>
-          <Button variant="outline" size="sm" onClick={() => fetchTradeOverview()}>
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/tutorial">
+              <Button variant="outline" size="sm">Help</Button>
+            </Link>
+            <Button variant="outline" size="sm" onClick={() => fetchTradeOverview()}>
+              Refresh
+            </Button>
+          </div>
         </div>
       </header>
 

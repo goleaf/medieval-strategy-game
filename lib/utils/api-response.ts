@@ -8,13 +8,14 @@ export interface ApiResponse<T = any> {
   errors?: Record<string, string[]>
 }
 
-export function successResponse<T>(data: T, status = 200): NextResponse<ApiResponse<T>> {
-  return NextResponse.json({ success: true, data }, { status })
+export function successResponse<T>(data: T, status = 200, headers?: Record<string, string>): NextResponse<ApiResponse<T>> {
+  return NextResponse.json({ success: true, data }, { status, headers })
 }
 
 export function errorResponse(
   error: string | Error | ZodError,
   status = 400,
+  headers?: Record<string, string>,
 ): NextResponse<ApiResponse> {
   if (error instanceof ZodError) {
     const errors: Record<string, string[]> = {}
@@ -31,7 +32,7 @@ export function errorResponse(
         error: "Validation failed",
         errors,
       },
-      { status },
+      { status, headers },
     )
   }
 
@@ -41,7 +42,7 @@ export function errorResponse(
       success: false,
       error: message,
     },
-    { status },
+    { status, headers },
   )
 }
 
@@ -52,12 +53,12 @@ export function handleValidationError(error: unknown): NextResponse<ApiResponse>
   return null
 }
 
-export function unauthorizedResponse(): NextResponse<ApiResponse> {
-  return errorResponse("Unauthorized", 401)
+export function unauthorizedResponse(headers?: Record<string, string>): NextResponse<ApiResponse> {
+  return errorResponse("Unauthorized", 401, headers)
 }
 
-export function notFoundResponse(): NextResponse<ApiResponse> {
-  return errorResponse("Not found", 404)
+export function notFoundResponse(headers?: Record<string, string>): NextResponse<ApiResponse> {
+  return errorResponse("Not found", 404, headers)
 }
 
 export function serverErrorResponse(error: unknown): NextResponse<ApiResponse> {
@@ -65,4 +66,3 @@ export function serverErrorResponse(error: unknown): NextResponse<ApiResponse> {
   const message = error instanceof Error ? error.message : "Internal server error"
   return errorResponse(message, 500)
 }
-

@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server"
 import { errorResponse, serverErrorResponse, successResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 import { NotificationService } from "@/lib/game-services/notification-service"
 import { notificationPreferenceUpdateSchema } from "@/lib/utils/validation"
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/notifications/preferences", async (req: NextRequest) => {
   try {
     const playerId = req.nextUrl.searchParams.get("playerId")
     if (!playerId) {
@@ -15,9 +16,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})
 
-export async function PATCH(req: NextRequest) {
+export const PATCH = withMetrics("PATCH /api/notifications/preferences", async (req: NextRequest) => {
   try {
     const body = await req.json()
     const parsed = notificationPreferenceUpdateSchema.safeParse(body)
@@ -31,4 +32,4 @@ export async function PATCH(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})

@@ -270,6 +270,11 @@ export class ExpansionService {
     })
 
     await LoyaltyService.syncVillageMaxLoyalty(formedVillage.id)
+    try {
+      const { cache } = await import("@/lib/cache")
+      await cache.del(`village:${formedVillage.id}`)
+      await cache.del(`village:${movement.fromVillageId!}`)
+    } catch {}
   }
 
   private static async returnSettlers(

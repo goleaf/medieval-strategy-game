@@ -475,6 +475,37 @@ model User {
   @@index([ipBanUntil])
 }
 
+// ============================================================================
+// OPS & ANALYTICS (METRICS, FEEDBACK)
+// ============================================================================
+
+model ApiMetricSample {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  route      String
+  durationMs Int
+  status     Int
+  traceId    String?
+
+  @@index([createdAt])
+  @@index([route, createdAt])
+}
+
+model FeedbackEntry {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  playerId  String?
+  category  String
+  severity  String
+  summary   String
+  details   String?
+  contact   String?
+  status    String   @default("open")
+
+  @@index([createdAt])
+  @@index([status])
+}
+
 model SecurityQuestion {
   id          String   @id @default(cuid())
   userId      String

@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse, notFoundResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export const GET = withMetrics("GET /api/attacks/[id]", async (req: NextRequest, { params }: { params: { id: string } }) => {
   try {
     const { id } = params
 
@@ -25,9 +26,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export const DELETE = withMetrics("DELETE /api/attacks/[id]", async (req: NextRequest, { params }: { params: { id: string } }) => {
   try {
     const { id } = params
 
@@ -82,4 +83,4 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})

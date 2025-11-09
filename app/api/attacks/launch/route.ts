@@ -45,8 +45,24 @@ const attackTypeToRallyMission = (attackType: AttackType): "attack" | "raid" => 
 }
 export async function POST(req: NextRequest) {
   try {
+    // Generic rate limit: max 10 launches per minute per player
+    try {
+      const { rateLimit } = await import("@/lib/security/ratelimit")
+      const authTmp = await authenticateRequest(req)
+      const limiterKey = `atk:${authTmp?.playerId ?? 'anon'}`
+      if (!rateLimit({ key: limiterKey, rate: 10, perMs: 60_000 })) {
+        return errorResponse("Too many attacks launched. Please slow down.", 429)
+      }
+    } catch {}
     const auth = await authenticateRequest(req)
     if (!auth?.playerId) return errorResponse("Unauthorized", 401)
+    // Propagate rotated token for session hardening
+    try {
+      const decoded = await (await import("@/lib/auth")).verifyAuth((req.headers.get("authorization") || "").slice(7))
+      if (decoded && (decoded as any).rotatedToken) {
+        ;(global as any).__NEXT_RESPONSE_HEADERS__?.set?.("Authentication", `Bearer ${(decoded as any).rotatedToken}`)
+      }
+    } catch {}
     const body = await req.json()
     
     // Validate basic structure first
@@ -225,6 +241,11 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Tutorial: mark first attack
+      try {
+        const { TutorialProgress } = await import("@/lib/tutorial/progress")
+        await TutorialProgress.maybeCompleteOnAttack(fromVillage.playerId)
+      } catch {}
       return successResponse(
         {
           movement: rallyResult.movement,
@@ -233,6 +254,12 @@ export async function POST(req: NextRequest) {
         201,
       )
     }
+
+    // Tutorial: mark first attack (legacy path too)
+    try {
+      const { TutorialProgress } = await import("@/lib/tutorial/progress")
+      await TutorialProgress.maybeCompleteOnAttack(fromVillage.playerId)
+    } catch {}
 
     // Legacy (troopId-based) handling
     const troopSpeeds: number[] = []
@@ -426,4 +453,8 @@ export async function POST(req: NextRequest) {
         action
       )
       if (permissionCheck) return permissionCheck
+    }
+    // Coordinate bounds guard (0-999)
+    if (toX < 0 || toX > 999 || toY < 0 || toY > 999) {
+      return errorResponse("Target coordinates out of bounds", 400)
     }

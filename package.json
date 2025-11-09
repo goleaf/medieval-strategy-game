@@ -80,6 +80,7 @@
     "http": "latest",
     "input-otp": "1.4.1",
     "jsonwebtoken": "latest",
+    "ioredis": "^5.4.1",
     "lucide-react": "^0.454.0",
     "nodemailer": "^7.0.7",
     "next": "16.0.0",

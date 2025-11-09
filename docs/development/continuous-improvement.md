@@ -18,6 +18,8 @@ A practical loop to ensure fixes don’t break existing features and that we imp
     ```ts
     export const GET = withMetrics("GET /api/stats/world", async (req) => { /* ... */ })
     ```
+  - Response headers:
+    - `X-Trace-Id` for correlation, `X-Response-Time` with total ms, and `Server-Timing: total;dur=<ms>` for DevTools.
 - Metrics endpoints
   - Admin performance snapshot: `GET /api/admin/perf`
   - Admin operational stats: `GET /api/admin/stats`
@@ -52,5 +54,9 @@ A practical loop to ensure fixes don’t break existing features and that we imp
 - Export metrics to an APM (OpenTelemetry) and visualize in dashboards.
 - Add an admin UI tab for feedback triage and per-route latency charts.
 
-*** Keep this doc updated as the tooling evolves. ***
+### Optional persistence (no migrations required)
+- Set `METRICS_PERSIST=true` to append API samples to a lightweight `ApiMetricSample` table (auto-created with `CREATE TABLE IF NOT EXISTS`).
+- Set `FEEDBACK_PERSIST=true` to mirror feedback submissions to a `FeedbackEntry` table.
+- Both features are best-effort and silently skip writes if the table is missing or the DB denies writes.
 
+*** Keep this doc updated as the tooling evolves. ***

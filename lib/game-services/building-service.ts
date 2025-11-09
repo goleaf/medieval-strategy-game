@@ -929,6 +929,18 @@ export class BuildingService {
       await VillageDestructionService.updateVillagePopulation(building.villageId)
     }
     await this.publishCompletionNotification(building, building.level + 1)
+    // Cache: invalidate village snapshot
+    try {
+      const { cache } = await import("@/lib/cache")
+      await cache.del(`village:${building.villageId}`)
+    } catch {}
+    // Tutorial: auto-complete building quest if applicable
+    try {
+      const { TutorialProgress } = await import("@/lib/tutorial/progress")
+      await TutorialProgress.maybeCompleteOnBuilding(building.village.playerId, building.villageId, building.type, building.level + 1)
+    } catch (err) {
+      console.warn("[tutorial] building completion hook failed:", err)
+    }
     await CulturePointService.recalculateVillageContribution(building.villageId)
     await this.startNextTasks(building.villageId)
     await updateTaskProgress(building.village.playerId, building.villageId)
@@ -1193,6 +1205,10 @@ export class BuildingService {
     await this.updateVillageProductionRates(building.villageId)
     await this.ensureVillagePopulationWithinLimit(building.villageId)
     await VillageDestructionService.updateVillagePopulation(building.villageId)
+    try {
+      const { cache } = await import("@/lib/cache")
+      await cache.del(`village:${building.villageId}`)
+    } catch {}
   }
 
   /**

@@ -72,7 +72,12 @@ export default function TutorialPage() {
             {q.tasks.map((t) => (
               <li key={t.id} className="flex items-center justify-between border border-border rounded-md p-3">
                 <div>
-                  <div className="font-medium">{t.title}</div>
+                  <div className="font-medium flex items-center gap-2">
+                    <span>{t.title}</span>
+                    {t.progress?.status === 'COMPLETED' && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-600/20 text-green-500 border border-green-600/40">Completed</span>
+                    )}
+                  </div>
                   {t.description && <div className="text-sm text-muted-foreground">{t.description}</div>}
                   {t.reward && (
                     <div className="text-xs text-muted-foreground mt-1">Reward: {Object.entries(t.reward).map(([k,v]) => `${k}+${v}`).join(', ')}</div>
@@ -80,7 +85,7 @@ export default function TutorialPage() {
                 </div>
                 <div>
                   {t.progress?.status === 'COMPLETED' ? (
-                    <span className="text-green-600 text-sm">Completed</span>
+                    <span className="text-green-600 text-sm">✓</span>
                   ) : (
                     <button
                       className="px-3 py-1 bg-primary text-primary-foreground rounded"

@@ -138,6 +138,19 @@ export type PlayerProfileDTO = {
 export class PlayerProfileService {
   static async getProfile(params: { playerId?: string; handle?: string; viewerId?: string | null }): Promise<PlayerProfileDTO | null> {
     const { playerId, handle, viewerId } = params
+    try {
+      const { cache } = await import("@/lib/cache")
+      const key = `profile:${playerId ?? handle ?? "unknown"}:viewer:${viewerId ?? "anon"}`
+      return await cache.wrap<PlayerProfileDTO | null>(key, 300, async () => {
+        return await this._getProfileUncached({ playerId, handle, viewerId })
+      })
+    } catch {
+      return await this._getProfileUncached({ playerId, handle, viewerId })
+    }
+  }
+
+  private static async _getProfileUncached(params: { playerId?: string; handle?: string; viewerId?: string | null }): Promise<PlayerProfileDTO | null> {
+    const { playerId, handle, viewerId } = params
     const player = await prisma.player.findFirst({
       where: playerId
         ? { id: playerId }

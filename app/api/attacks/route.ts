@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/attacks", async (req: NextRequest) => {
   try {
     const playerId = req.nextUrl.searchParams.get("playerId")
 
@@ -41,6 +42,5 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
-
+})
 

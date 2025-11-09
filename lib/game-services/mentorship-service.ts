@@ -75,13 +75,50 @@ export class MentorshipService {
   static async accept(mentorshipId: string, mentorId: string) {
     const ms = await prisma.playerMentorship.findUnique({ where: { id: mentorshipId } })
     if (!ms || ms.mentorId !== mentorId) throw new Error("Mentorship not found")
-    return prisma.playerMentorship.update({ where: { id: mentorshipId }, data: { status: "ACTIVE", startedAt: new Date() } })
+    const updated = await prisma.playerMentorship.update({ where: { id: mentorshipId }, data: { status: "ACTIVE", startedAt: new Date() } })
+    // Notify both parties
+    try {
+      const { NotificationService } = await import("@/lib/game-services/notification-service")
+      await Promise.all([
+        NotificationService.emit({
+          playerId: updated.menteeId,
+          type: "TRIBE_LEADERSHIP_MESSAGE",
+          priority: "MEDIUM",
+          title: "Mentor accepted",
+          message: "Your mentor accepted your request. You can start chatting and coordinating now.",
+          actionUrl: "/mentor",
+          metadata: { mentorshipId: updated.id },
+        }),
+        NotificationService.emit({
+          playerId: updated.mentorId,
+          type: "TRIBE_LEADERSHIP_MESSAGE",
+          priority: "LOW",
+          title: "Mentorship active",
+          message: "You accepted a new mentee. Share tips and help them grow!",
+          actionUrl: "/mentor",
+          metadata: { mentorshipId: updated.id },
+        }),
+      ])
+    } catch {}
+    return updated
   }
 
   static async decline(mentorshipId: string, mentorId: string) {
     const ms = await prisma.playerMentorship.findUnique({ where: { id: mentorshipId } })
     if (!ms || ms.mentorId !== mentorId) throw new Error("Mentorship not found")
-    return prisma.playerMentorship.update({ where: { id: mentorshipId }, data: { status: "REJECTED" as any } })
+    const updated = await prisma.playerMentorship.update({ where: { id: mentorshipId }, data: { status: "REJECTED" as any } })
+    try {
+      const { NotificationService } = await import("@/lib/game-services/notification-service")
+      await NotificationService.emit({
+        playerId: updated.menteeId,
+        type: "TRIBE_LEADERSHIP_MESSAGE",
+        priority: "LOW",
+        title: "Mentor declined",
+        message: "The mentor declined your request. Please request another mentor.",
+        actionUrl: "/mentor",
+        metadata: { mentorshipId: updated.id },
+      })
+    } catch {}
+    return updated
   }
 }
-

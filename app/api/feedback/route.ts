@@ -19,7 +19,7 @@ export const POST = withMetrics("POST /api/feedback", async (req: NextRequest) =
     const body = await req.json()
     const { category, severity, summary, details, contact } = feedbackSchema.parse(body)
 
-    const saved = submitFeedback({
+    const saved = await submitFeedback({
       playerId: auth?.playerId,
       category,
       severity,
@@ -34,4 +34,3 @@ export const POST = withMetrics("POST /api/feedback", async (req: NextRequest) =
     return serverErrorResponse(error)
   }
 })
-

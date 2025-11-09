@@ -51,8 +51,8 @@ export async function verifyAuth(token: string) {
     if (!session) {
       return null
     }
-
-    return { ...decoded, session }
+    const rotatedToken = await maybeRotateToken(decoded.userId, session)
+    return { ...decoded, session, rotatedToken }
   } catch (error) {
     return null
   }
@@ -90,4 +90,19 @@ export const auth = {
   verifyAuth,
   createSessionToken,
   getAuthUser,
+}
+
+// Rotate JWT periodically to reduce replay window (stateless servers)
+const ROTATE_MINUTES = parseInt(process.env.SESSION_ROTATE_MINUTES || "15", 10)
+async function maybeRotateToken(userId: string, session: { id: string; lastSeenAt: Date; expiresAt: Date }) {
+  try {
+    const now = Date.now()
+    if (now - new Date(session.lastSeenAt).getTime() < ROTATE_MINUTES * 60_000) return undefined
+    const expiresInMs = new Date(session.expiresAt).getTime() - now
+    if (expiresInMs <= 0) return undefined
+    const token = jwt.sign({ userId, sessionId: session.id }, JWT_SECRET, { expiresIn: Math.floor(expiresInMs / 1000) })
+    return token
+  } catch {
+    return undefined
+  }
 }

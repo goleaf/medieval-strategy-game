@@ -227,7 +227,11 @@ export default function AttacksPage() {
             </Button>
           </Link>
           <h1 className="text-xl font-bold">⚔️ Attacks</h1>
-          <div className="w-16" />
+          <div className="w-16 text-right">
+            <Link href="/tutorial">
+              <Button size="sm" variant="outline">Help</Button>
+            </Link>
+          </div>
         </div>
       </header>
 

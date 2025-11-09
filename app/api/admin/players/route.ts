@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
 import { authenticateAdmin } from "../middleware"
+import { withMetrics } from "@/lib/utils/metrics"
 
 // GET all players with pagination and search
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/admin/players", async (req: NextRequest) => {
   const adminAuth = await authenticateAdmin(req)
 
   if (!adminAuth) {
@@ -62,4 +63,4 @@ export async function GET(req: NextRequest) {
     console.error("Get players error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-}
+})

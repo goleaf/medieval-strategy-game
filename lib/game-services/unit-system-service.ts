@@ -646,6 +646,13 @@ export class UnitSystemService {
               finishAt: job.finishAt,
             },
           })
+          // Tutorial: auto-complete training quest when enough spears trained
+          try {
+            const { TutorialProgress } = await import("@/lib/tutorial/progress")
+            await TutorialProgress.maybeCompleteOnTraining(ownerAccountId)
+          } catch (err) {
+            console.warn("[tutorial] training completion hook failed:", err)
+          }
         }
       } catch (err) {
         console.warn("[training] Notification emit failed:", err)

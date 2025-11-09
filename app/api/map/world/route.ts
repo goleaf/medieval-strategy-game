@@ -3,10 +3,11 @@ import { authenticateRequest } from "@/app/api/auth/middleware"
 import { prisma } from "@/lib/db"
 import { MapCoordinateService } from "@/lib/map-vision/coordinate-service"
 import { errorResponse, serverErrorResponse, successResponse, unauthorizedResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 
 const coordinateService = new MapCoordinateService()
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/map/world", async (req: NextRequest) => {
   try {
     const auth = await authenticateRequest(req)
     if (!auth?.playerId) {
@@ -33,12 +34,27 @@ export async function GET(req: NextRequest) {
       const message = parseError instanceof Error ? parseError.message : "Invalid map window request"
       return errorResponse(message, 400)
     }
+    // Bounds guard 0..999
+    for (const r of requestedRanges) {
+      if (
+        r.range.minX < 0 || r.range.maxX > 999 || r.range.minY < 0 || r.range.maxY > 999 ||
+        r.range.minX > r.range.maxX || r.range.minY > r.range.maxY
+      ) {
+        return errorResponse("Requested map bounds out of range", 400)
+      }
+    }
     const rangeFilters = requestedRanges.map((entry) => ({
       x: { gte: entry.range.minX, lte: entry.range.maxX },
       y: { gte: entry.range.minY, lte: entry.range.maxY },
     }))
 
-    const villages = await prisma.village.findMany({
+    const { cache } = await import("@/lib/cache")
+    const cacheKey = (() => {
+      const base = [`w:${gameWorldId}`]
+      requestedRanges.forEach((r) => base.push(`${r.range.minX}-${r.range.maxX}-${r.range.minY}-${r.range.maxY}`))
+      return `map:world:${base.join('|')}`
+    })()
+    const villages = await cache.wrap(cacheKey, 60, async () => prisma.village.findMany({
       where: {
         player: {
           gameWorldId,
@@ -70,7 +86,7 @@ export async function GET(req: NextRequest) {
           take: 1,
         },
       },
-    })
+    }))
 
     const payload = villages.map((village) => ({
       id: village.id,
@@ -95,18 +111,27 @@ export async function GET(req: NextRequest) {
       blockRange.villageCount += 1
     })
 
-    return successResponse({
+    // ETag based on count + block ranges
+    const etag = `W/"${payload.length}-${requestedRanges.length}"`
+    const ifNoneMatch = req.headers.get('if-none-match')
+    const body = {
       gameWorldId,
       villages: payload,
       blocks: Array.from(blockSummaries.values()),
       extent: coordinateService.extent,
       blockSize: coordinateService.blockSize,
       fetchedAt: new Date().toISOString(),
-    })
+    }
+    const headers: Record<string, string> = { 'Cache-Control': 'public, max-age=60', ETag: etag }
+    if (auth.rotatedToken) headers['Authentication'] = `Bearer ${auth.rotatedToken}`
+    if (ifNoneMatch === etag) {
+      return new Response(null, { status: 304, headers })
+    }
+    return new Response(JSON.stringify({ success: true, data: body }), { status: 200, headers })
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})
 
 type RequestedRange = {
   blockId?: string

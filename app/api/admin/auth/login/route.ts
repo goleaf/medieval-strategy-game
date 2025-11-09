@@ -2,8 +2,9 @@ import { prisma } from "@/lib/db"
 import { sign } from "jsonwebtoken"
 import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
+import { withMetrics } from "@/lib/utils/metrics"
 
-export async function POST(req: NextRequest) {
+export const POST = withMetrics("POST /api/admin/auth/login", async (req: NextRequest) => {
   try {
     const { username, password } = await req.json()
 
@@ -71,4 +72,4 @@ export async function POST(req: NextRequest) {
       error: "Internal server error"
     }, { status: 500 })
   }
-}
+})

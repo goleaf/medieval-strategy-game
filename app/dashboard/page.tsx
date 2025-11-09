@@ -1385,6 +1385,36 @@ function RightSidebarPanel({
     prefersReducedMotion ? "" : "transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-500/70"
   }`
 
+  // Beginner quest summary panel (fetches using local playerId from storage)
+  const [questSummary, setQuestSummary] = useState<{
+    total: number
+    completed: number
+    next: Array<{ id: string; title: string }>
+  } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const pid = (typeof window !== 'undefined' && (localStorage.getItem('playerId') || localStorage.getItem('authPlayerId'))) || ''
+    if (!pid) return
+    async function load() {
+      try {
+        const res = await fetch(`/api/tutorial/quests?playerId=${pid}`)
+        const json = await res.json()
+        if (!res.ok || !json?.data) return
+        const quests = json.data as Array<{ tasks: Array<{ id: string; title: string; progress?: { status: string } }> }>
+        const allTasks = quests.flatMap((q) => q.tasks)
+        const completed = allTasks.filter((t) => t.progress?.status === 'COMPLETED' || t.progress?.status === 'REWARDED').length
+        const total = allTasks.length
+        const next = allTasks.filter((t) => !t.progress || t.progress.status === 'PENDING').slice(0, 3).map((t) => ({ id: t.id, title: t.title }))
+        if (!cancelled) setQuestSummary({ total, completed, next })
+      } catch {
+        if (!cancelled) setQuestSummary(null)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <div className="flex h-full w-full flex-col gap-4 p-4 text-amber-50">
       <div className="flex items-center justify-between text-sm font-semibold text-amber-200">
@@ -1445,6 +1475,27 @@ function RightSidebarPanel({
           </ul>
         )}
       </section>
+
+      {questSummary && (
+        <section className={`${panelShell} p-4`}>
+          <h3 className={`${SECTION_HEADING_CLASS} mb-2`}>Beginner quests</h3>
+          <div className="text-sm text-amber-100">{questSummary.completed}/{questSummary.total} completed</div>
+          {questSummary.next.length > 0 ? (
+            <ul className="mt-2 space-y-1 text-sm text-amber-200">
+              {questSummary.next.map((t) => (
+                <li key={t.id}>• {t.title}</li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-2 text-sm text-amber-200/70">All starter tasks complete — great work!</div>
+          )}
+          <div className="mt-3">
+            <Link href="/tutorial">
+              <Button size="sm" variant="outline">Open Beginner Quests</Button>
+            </Link>
+          </div>
+        </section>
+      )}
 
       <section className={`${panelShell} p-4`}>
         <h3 className={`${SECTION_HEADING_CLASS} mb-2 flex items-center gap-2`}>

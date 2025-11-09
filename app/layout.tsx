@@ -7,6 +7,7 @@ import { startScheduler } from "@/lib/jobs/scheduler"
 import { AlpineProvider } from "@/components/alpine-provider"
 import { Footer } from "@/components/footer"
 import { SwRegister } from "@/components/pwa/sw-register"
+import { Toaster } from "@/components/ui/toaster"
 
 import { Libre_Baskerville as V0_Font_Libre_Baskerville, IBM_Plex_Mono as V0_Font_IBM_Plex_Mono, Lora as V0_Font_Lora } from 'next/font/google'
 
@@ -49,6 +50,7 @@ export default function RootLayout({
           <Footer />
         </AlpineProvider>
         <SwRegister />
+        <Toaster />
         <Analytics />
       </body>
     </html>

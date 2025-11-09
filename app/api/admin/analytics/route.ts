@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db"
 import { NextRequest, NextResponse } from "next/server"
 import { authenticateAdmin } from "../middleware"
+import { withMetrics } from "@/lib/utils/metrics"
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/admin/analytics", async (req: NextRequest) => {
   const adminAuth = await authenticateAdmin(req)
 
   if (!adminAuth) {
@@ -255,6 +256,5 @@ export async function GET(req: NextRequest) {
       error: "Failed to retrieve analytics data"
     }, { status: 500 })
   }
-}
-
+})
 

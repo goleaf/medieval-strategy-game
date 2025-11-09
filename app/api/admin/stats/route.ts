@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
 import { type NextRequest, NextResponse } from "next/server"
-import { trackAction, trackError, getActionCounts, getErrorLogs } from "@/lib/admin-utils"
+import { trackAction, trackError, getActionCounts, getErrorLogs, getErrorCounts } from "@/lib/admin-utils"
 
 // Re-export for backward compatibility
 export { trackAction, trackError }
@@ -43,6 +43,13 @@ export async function GET(req: NextRequest) {
     }
     const avgActionsPerMinute = minuteCount > 0 ? totalActions / minuteCount : 0
 
+    // Build simple actions count time series (last 30 minutes)
+    const actionSeries: Array<{ minute: number; count: number }> = []
+    for (let i = 29; i >= 0; i--) {
+      const m = currentMinute - i
+      actionSeries.push({ minute: m, count: getActionCounts().get(m) || 0 })
+    }
+
     // Queued jobs depth (simplified - in production, check actual job queue)
     // For now, count pending attacks and movements
     const queuedAttacks = await prisma.attack.count({
@@ -60,7 +67,7 @@ export async function GET(req: NextRequest) {
     const queuedJobsDepth = queuedAttacks + queuedMovements
 
     // Error logs (last 50)
-    const recentErrors = errorLogs.slice(-50).map((e) => ({
+    const recentErrors = getErrorLogs().slice(-50).map((e) => ({
       timestamp: e.timestamp.toISOString(),
       message: e.message,
       error: e.error.substring(0, 200), // Truncate long errors
@@ -81,6 +88,15 @@ export async function GET(req: NextRequest) {
 
     const worldConfig = await prisma.worldConfig.findFirst()
 
+    // Build simple error count time series (last 30 minutes)
+    const errorCounts = getErrorCounts()
+    const nowMinute = Math.floor(Date.now() / 60000)
+    const errorSeries: Array<{ minute: number; count: number }> = []
+    for (let i = 29; i >= 0; i--) {
+      const m = nowMinute - i
+      errorSeries.push({ minute: m, count: errorCounts.get(m) || 0 })
+    }
+
     return NextResponse.json(
       {
         stats: {
@@ -94,6 +110,8 @@ export async function GET(req: NextRequest) {
           activeAttacks: totalAttacks,
           worldSpeed: worldConfig?.speed || 1,
           gameRunning: worldConfig?.isRunning || false,
+          errorSeries,
+          actionSeries,
         },
         errorLogs: recentErrors,
         timestamp: new Date().toISOString(),
@@ -106,4 +124,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
-

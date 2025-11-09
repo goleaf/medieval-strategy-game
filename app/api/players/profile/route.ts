@@ -1,9 +1,10 @@
 import { type NextRequest } from "next/server"
 import { getAuthUser } from "@/lib/auth"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 import { PlayerProfileService } from "@/lib/game-services/player-profile-service"
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/players/profile", async (req: NextRequest) => {
   try {
     const url = new URL(req.url)
     const playerId = url.searchParams.get("playerId") ?? undefined
@@ -22,5 +23,4 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
-
+})

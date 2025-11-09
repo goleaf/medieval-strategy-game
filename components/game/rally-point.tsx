@@ -97,6 +97,11 @@ export function RallyPoint({
   const [movementsLoading, setMovementsLoading] = useState(false)
   const [movementError, setMovementError] = useState<string | null>(null)
   const [cancellingMovementId, setCancellingMovementId] = useState<string | null>(null)
+  const [garrison, setGarrison] = useState<Record<string, number>>({})
+  const [recallUnits, setRecallUnits] = useState<Record<string, number>>({})
+  const [recallTargetVillageId, setRecallTargetVillageId] = useState<string>("")
+  const [myVillages, setMyVillages] = useState<Array<{ id: string; name: string }>>([])
+  const [recalling, setRecalling] = useState(false)
 
   const [evasionLoading, setEvasionLoading] = useState(false)
 
@@ -164,6 +169,39 @@ export function RallyPoint({
       clearInterval(interval)
     }
   }, [fetchMovements])
+
+  // Load my stationed garrison at this village and my villages for recall target
+  useEffect(() => {
+    const run = async () => {
+      try {
+        // Garrisons
+        const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null
+        const headers = token ? { Authorization: `Bearer ${token}` } : {}
+        const gRes = await fetch(`/api/rally-point/garrisons?villageId=${encodeURIComponent(villageId)}`, { headers })
+        const gJson = await gRes.json()
+        if (gJson?.success && gJson.data?.stacks) {
+          const map: Record<string, number> = {}
+          for (const s of gJson.data.stacks as Array<{ unitTypeId: string; count: number }>) {
+            map[s.unitTypeId] = s.count
+          }
+          setGarrison(map)
+          setRecallUnits(map)
+        }
+        // My villages for recall destination
+        if (ownerAccountId) {
+          const vRes = await fetch(`/api/villages?playerId=${ownerAccountId}`)
+          const vJson = await vRes.json()
+          if (vJson?.success && Array.isArray(vJson.data)) {
+            setMyVillages(vJson.data.map((v: any) => ({ id: v.id, name: v.name })))
+            if (vJson.data.length && !recallTargetVillageId) {
+              setRecallTargetVillageId(vJson.data[0].id)
+            }
+          }
+        }
+      } catch {}
+    }
+    run()
+  }, [villageId, ownerAccountId])
 
   const handleEvasionToggleInternal = async (checked: boolean) => {
     setEvasionLoading(true)
@@ -532,6 +570,102 @@ export function RallyPoint({
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recall stationed reinforcements (owned by me at this village) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Stationed Reinforcements Here</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {Object.keys(garrison).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No reinforcements from your account are stationed in this village.</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.entries(garrison).map(([unit, count]) => (
+                    <div key={unit} className="flex items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <span className="font-medium">{unit}</span> — <span className="text-muted-foreground">{count}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          className="h-8 w-24"
+                          value={recallUnits[unit] ?? 0}
+                          onChange={(e) => setRecallUnits((prev) => ({ ...prev, [unit]: Math.max(0, parseInt(e.target.value || '0', 10)) }))}
+                        />
+                        <Button variant="outline" size="sm" onClick={() => setRecallUnits((prev) => ({ ...prev, [unit]: count }))}>Max</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm">Return to</Label>
+                  <select className="border rounded h-9 px-2 bg-background" value={recallTargetVillageId} onChange={(e) => setRecallTargetVillageId(e.target.value)}>
+                    {myVillages.map((v) => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={async () => {
+                      const payloadUnits: Record<string, number> = {}
+                      for (const [unit, count] of Object.entries(recallUnits)) {
+                        const n = Math.max(0, Math.min(garrison[unit] ?? 0, Math.floor(count)))
+                        if (n > 0) payloadUnits[unit] = n
+                      }
+                      const total = Object.values(payloadUnits).reduce((a, b) => a + b, 0)
+                      if (!total) {
+                        toast({ title: 'No units selected', description: 'Set quantities to recall.', variant: 'destructive' })
+                        return
+                      }
+                      if (!recallTargetVillageId) {
+                        toast({ title: 'Select destination', description: 'Choose a village to return to.', variant: 'destructive' })
+                        return
+                      }
+                      setRecalling(true)
+                      try {
+                        const token = localStorage.getItem('authToken')
+                        const res = await fetch('/api/rally-point/reinforcements/recall', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                          body: JSON.stringify({
+                            fromVillageId: villageId,
+                            toVillageId: recallTargetVillageId,
+                            ownerAccountId: ownerAccountId,
+                            units: payloadUnits,
+                            idempotencyKey: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+                          })
+                        })
+                        const json = await res.json()
+                        if (!res.ok || !json.success) throw new Error(json.error || 'Recall failed')
+                        toast({ title: 'Recall dispatched', description: 'Your reinforcements are returning.' })
+                        // Refresh stacks
+                        const gRes = await fetch(`/api/rally-point/garrisons?villageId=${encodeURIComponent(villageId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+                        const gJson = await gRes.json()
+                        if (gJson?.success && gJson.data?.stacks) {
+                          const map: Record<string, number> = {}
+                          for (const s of gJson.data.stacks as Array<{ unitTypeId: string; count: number }>) map[s.unitTypeId] = s.count
+                          setGarrison(map)
+                          setRecallUnits(map)
+                        }
+                        fetchMovements()
+                      } catch (e) {
+                        toast({ title: 'Recall failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' })
+                      } finally {
+                        setRecalling(false)
+                      }
+                    }}
+                    disabled={recalling}
+                  >
+                    {recalling ? 'Recalling…' : 'Recall Selected'}
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>

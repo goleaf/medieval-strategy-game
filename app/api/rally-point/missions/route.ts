@@ -3,6 +3,7 @@ import { type NextRequest } from "next/server"
 
 import { getRallyPointEngine } from "@/lib/rally-point/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 
 const targetSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("village"), villageId: z.string().min(1) }),
@@ -27,7 +28,7 @@ const missionSchema = z.object({
   idempotencyKey: z.string().uuid(),
 })
 
-export async function POST(req: NextRequest) {
+export const POST = withMetrics("POST /api/rally-point/missions", async (req: NextRequest) => {
   try {
     const json = await req.json()
     const parsed = missionSchema.safeParse(json)
@@ -50,4 +51,4 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})

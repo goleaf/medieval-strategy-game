@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { successResponse, errorResponse, serverErrorResponse, handleValidationError } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 import {
   tribeApplicationReviewSchema,
   tribeApplicationSubmitSchema,
@@ -27,7 +28,7 @@ import { type TribePermissionValue, TRIBE_PERMISSION_VALUES } from "@/lib/tribes
 const HOUR_IN_MS = 60 * 60 * 1000
 const PERMISSION_SET = new Set<TribePermissionValue>(TRIBE_PERMISSION_VALUES as TribePermissionValue[])
 
-export async function POST(req: NextRequest) {
+export const POST = withMetrics("POST /api/tribes", async (req: NextRequest) => {
   try {
     const body = await req.json()
     const action = (body.action || "create") as string
@@ -63,17 +64,18 @@ export async function POST(req: NextRequest) {
     if (validationError) return validationError
     return serverErrorResponse(error)
   }
-}
+})
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/tribes", async (req: NextRequest) => {
   try {
     const tribeId = req.nextUrl.searchParams.get("tribeId")
     const tagParam = req.nextUrl.searchParams.get("tag")
     const managerId = req.nextUrl.searchParams.get("managerId")
 
     if (tribeId || tagParam) {
+      const { cache } = await import("@/lib/cache")
       const by = tribeId ? { id: tribeId } : { tag: tagParam!.toUpperCase() }
-      const tribe = await prisma.tribe.findUnique({
+      const tribe = await cache.wrap(`tribe:detail:${tribeId ?? tagParam}`, 600, async () => prisma.tribe.findUnique({
         where: by as any,
         include: {
           leader: { select: { id: true, playerName: true } },
@@ -92,7 +94,7 @@ export async function GET(req: NextRequest) {
           },
           _count: { select: { members: true } },
         },
-      })
+      }))
 
       if (!tribe) {
         return errorResponse("Tribe not found", 404)
@@ -167,14 +169,15 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const tribes = await prisma.tribe.findMany({
+    const { cache } = await import("@/lib/cache")
+    const tribes = await cache.wrap("tribe:list", 600, async () => prisma.tribe.findMany({
       include: {
         leader: { select: { id: true, playerName: true } },
         _count: { select: { members: true } },
       },
       orderBy: { totalPoints: "desc" },
       take: 100,
-    })
+    }))
 
     return successResponse({
       tribes,
@@ -186,7 +189,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})
 
 async function handleCreate(body: unknown) {
   const validated = tribeCreateSchema.parse(body)
@@ -260,6 +263,11 @@ async function handleCreate(body: unknown) {
     return created
   })
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${tribe.id}`)
+  } catch {}
   return successResponse(tribe, 201)
 }
 
@@ -329,7 +337,17 @@ async function handleJoin(body: unknown) {
     role: "MEMBER",
     customPermissions: null,
   })
+  // Tutorial: auto-complete join tribe
+  try {
+    const { TutorialProgress } = await import("@/lib/tutorial/progress")
+    await TutorialProgress.maybeCompleteOnJoinTribe(player.id)
+  } catch {}
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${tribe.id}`)
+  } catch {}
   return successResponse({ message: `Joined ${tribe.name} successfully` })
 }
 
@@ -515,6 +533,11 @@ async function handleBulkInvite(body: unknown) {
     }
   }
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${validated.tribeId}`)
+  } catch {}
   return successResponse({ created, skipped })
 }
 
@@ -559,6 +582,11 @@ async function handleRespondInvite(body: unknown) {
       where: { id: invite.id },
       data: { status: "DECLINED" },
     })
+    try {
+      const { cache } = await import("@/lib/cache")
+      await cache.del("tribe:list")
+      await cache.del(`tribe:detail:${invite.tribe.id}`)
+    } catch {}
     return successResponse({ message: "Invite declined" })
   }
 
@@ -582,6 +610,11 @@ async function handleRespondInvite(body: unknown) {
     data: { status: "ACCEPTED" },
   })
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${invite.tribe.id}`)
+  } catch {}
   return successResponse({ message: `Joined ${invite.tribe.name}` })
 }
 
@@ -711,7 +744,11 @@ async function handleReviewApplication(body: unknown) {
         reviewResponse: validated.responseMessage,
       },
     })
-
+    try {
+      const { cache } = await import("@/lib/cache")
+      await cache.del("tribe:list")
+      await cache.del(`tribe:detail:${application.tribe.id}`)
+    } catch {}
     return successResponse({ message: "Application rejected" })
   }
 
@@ -744,6 +781,11 @@ async function handleReviewApplication(body: unknown) {
     },
   })
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${application.tribe.id}`)
+  } catch {}
   return successResponse({ message: `Application approved for ${application.player.id}` })
 }
 
@@ -801,6 +843,11 @@ async function handleLeave(body: any) {
     }
   }
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${tribeId}`)
+  } catch {}
   return successResponse({ message: "Left tribe successfully" })
 }
 
@@ -861,6 +908,11 @@ async function handleRemoveMember(body: unknown) {
 
   await removeMemberFromTribe(target.id, validated.tribeId, { applyCooldown: true })
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${validated.tribeId}`)
+  } catch {}
   return successResponse({ message: "Member removed" })
 }
 
@@ -928,6 +980,11 @@ async function handleRoleUpdate(body: unknown) {
     },
   })
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${validated.tribeId}`)
+  } catch {}
   return successResponse({ message: "Member role updated" })
 }
 
@@ -969,6 +1026,11 @@ async function handleDefaultPermissions(body: unknown) {
     },
   })
 
+  try {
+    const { cache } = await import("@/lib/cache")
+    await cache.del("tribe:list")
+    await cache.del(`tribe:detail:${validated.tribeId}`)
+  } catch {}
   return successResponse({ message: "Default permissions updated", memberDefaultPermissions })
 }
 

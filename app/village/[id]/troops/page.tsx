@@ -13,6 +13,8 @@ import { TrainingQueuePanel } from "@/components/game/training-queue-panel"
 import { useToast } from "@/components/ui/use-toast"
 import { AdvisorHints } from "@/components/advisor/AdvisorHints"
 import type { TrainingBuilding, TrainingStatus } from "@prisma/client"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 // Types inferred from API responses
 type VillageWithTroops = {
   id: string
@@ -51,6 +53,11 @@ export default function TroopsPage() {
   const previousQueueRef = useRef<Map<string, TrainingQueueItem>>(new Map())
   const cancelledJobIdsRef = useRef<Set<string>>(new Set())
   const { toast } = useToast()
+  const [dismissTroopId, setDismissTroopId] = useState<string>("")
+  const [dismissQty, setDismissQty] = useState<number>(0)
+  const [batchRows, setBatchRows] = useState<Array<{ id: string; qty: number }>>([{ id: "", qty: 0 }])
+  const [dismissing, setDismissing] = useState(false)
+  const [rowDismissQty, setRowDismissQty] = useState<Record<string, number>>({})
 
   const fetchVillage = useCallback(async () => {
     try {
@@ -188,7 +195,11 @@ export default function TroopsPage() {
             </Button>
           </Link>
           <h1 className="text-xl font-bold">Troops - {village.name}</h1>
-          <div className="w-16" />
+          <div className="w-16 text-right">
+            <Link href="/tutorial">
+              <Button size="sm" variant="outline">Help</Button>
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -208,16 +219,201 @@ export default function TroopsPage() {
                   <p className="text-sm text-muted-foreground">No troops stationed</p>
                 ) : (
                   <TextTable
-                    headers={["Type", "Quantity", "Attack", "Defense", "Speed"]}
+                    headers={["Type", "Quantity", "Attack", "Defense", "Speed", "Actions"]}
                     rows={village.troops.map((troop) => [
                       troop.type,
                       troop.quantity.toLocaleString(),
                       troop.attack.toString(),
                       troop.defense.toString(),
                       troop.speed.toString(),
+                      (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            placeholder="Qty"
+                            className="w-24 h-8"
+                            value={rowDismissQty[troop.id] ?? ""}
+                            onChange={(e) =>
+                              setRowDismissQty((prev) => ({ ...prev, [troop.id]: parseInt(e.target.value || "0", 10) }))
+                            }
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const qty = rowDismissQty[troop.id] ?? 0
+                              if (!qty || qty <= 0) return
+                              setDismissing(true)
+                              try {
+                                const token = localStorage.getItem('authToken')
+                                const res = await fetch('/api/troops/dismiss', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                                  body: JSON.stringify({ troopId: troop.id, quantity: qty })
+                                })
+                                const json = await res.json()
+                                if (!res.ok || !json.success) throw new Error(json.error || 'Failed to dismiss troops')
+                                toast({ title: 'Troops dismissed', description: `${qty} ${troop.type} disbanded.` })
+                                setRowDismissQty((prev) => ({ ...prev, [troop.id]: 0 }))
+                                await fetchVillage()
+                              } catch (e) {
+                                toast({ title: 'Dismiss failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' })
+                              } finally {
+                                setDismissing(false)
+                              }
+                            }}
+                            disabled={dismissing || (rowDismissQty[troop.id] ?? 0) <= 0}
+                          >
+                            Dismiss
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={async () => {
+                              if (troop.quantity <= 0) return
+                              setDismissing(true)
+                              try {
+                                const token = localStorage.getItem('authToken')
+                                const res = await fetch('/api/troops/dismiss', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                                  body: JSON.stringify({ troopId: troop.id, quantity: troop.quantity })
+                                })
+                                const json = await res.json()
+                                if (!res.ok || !json.success) throw new Error(json.error || 'Failed to dismiss all')
+                                toast({ title: 'All dismissed', description: `All ${troop.type} disbanded.` })
+                                await fetchVillage()
+                              } catch (e) {
+                                toast({ title: 'Dismiss all failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' })
+                              } finally {
+                                setDismissing(false)
+                              }
+                            }}
+                          >
+                            Dismiss all
+                          </Button>
+                        </div>
+                      ),
                     ])}
                   />
                 )}
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-base font-semibold">Dismiss Troops</h3>
+                <p className="text-xs text-muted-foreground">Disband selected troops at this village. Sitter accounts require the Dismiss permission.</p>
+                <div className="flex flex-col sm:flex-row gap-2 items-end">
+                  <div className="flex-1">
+                    <Label className="text-xs">Troop</Label>
+                    <select
+                      className="w-full border rounded h-9 px-2 bg-background"
+                      value={dismissTroopId}
+                      onChange={(e) => setDismissTroopId(e.target.value)}
+                    >
+                      <option value="">Select troop...</option>
+                      {village.troops.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.type} — {t.quantity}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="w-40">
+                    <Label className="text-xs">Quantity</Label>
+                    <Input type="number" value={dismissQty} onChange={(e) => setDismissQty(parseInt(e.target.value || "0", 10))} />
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      if (!dismissTroopId || dismissQty <= 0) return
+                      setDismissing(true)
+                      try {
+                        const token = localStorage.getItem('authToken')
+                        const res = await fetch('/api/troops/dismiss', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                          body: JSON.stringify({ troopId: dismissTroopId, quantity: dismissQty })
+                        })
+                        const json = await res.json()
+                        if (!res.ok || !json.success) throw new Error(json.error || 'Failed to dismiss troops')
+                        toast({ title: 'Troops dismissed', description: `${dismissQty} unit(s) disbanded.` })
+                        setDismissQty(0)
+                        setDismissTroopId("")
+                        await fetchVillage()
+                      } catch (e) {
+                        toast({ title: 'Dismiss failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' })
+                      } finally {
+                        setDismissing(false)
+                      }
+                    }}
+                    disabled={dismissing || !dismissTroopId || dismissQty <= 0}
+                  >
+                    {dismissing ? 'Working...' : 'Dismiss'}
+                  </Button>
+                </div>
+
+                <div className="pt-2 border-t">
+                  <h4 className="text-sm font-medium mb-2">Batch Dismiss</h4>
+                  <div className="space-y-2">
+                    {batchRows.map((row, idx) => (
+                      <div key={idx} className="flex flex-col sm:flex-row gap-2 items-end">
+                        <div className="flex-1">
+                          <Label className="text-xs">Troop</Label>
+                          <select
+                            className="w-full border rounded h-9 px-2 bg-background"
+                            value={row.id}
+                            onChange={(e) => setBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, id: e.target.value } : r))}
+                          >
+                            <option value="">Select troop...</option>
+                            {village.troops.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.type} — {t.quantity}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="w-40">
+                          <Label className="text-xs">Quantity</Label>
+                          <Input
+                            type="number"
+                            value={row.qty}
+                            onChange={(e) => setBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, qty: parseInt(e.target.value || '0', 10) } : r))}
+                          />
+                        </div>
+                        <Button variant="outline" onClick={() => setBatchRows(prev => prev.filter((_, i) => i !== idx))}>Remove</Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <Button variant="secondary" onClick={() => setBatchRows(prev => [...prev, { id: '', qty: 0 }])}>Add Row</Button>
+                    <Button
+                      onClick={async () => {
+                        const items = batchRows.filter(r => r.id && r.qty > 0)
+                        if (items.length === 0) return
+                        setDismissing(true)
+                        try {
+                          const token = localStorage.getItem('authToken')
+                          const res = await fetch('/api/troops/dismiss/batch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                            body: JSON.stringify({ items: items.map(r => ({ troopId: r.id, quantity: r.qty })) })
+                          })
+                          const json = await res.json()
+                          if (!res.ok || !json.success) throw new Error(json.error || 'Batch dismiss failed')
+                          toast({ title: 'Batch dismissed', description: `${items.length} row(s) processed` })
+                          setBatchRows([{ id: '', qty: 0 }])
+                          await fetchVillage()
+                        } catch (e) {
+                          toast({ title: 'Batch failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' })
+                        } finally {
+                          setDismissing(false)
+                        }
+                      }}
+                      disabled={dismissing || batchRows.every(r => !r.id || r.qty <= 0)}
+                    >
+                      {dismissing ? 'Working...' : 'Submit Batch'}
+                    </Button>
+                  </div>
+                </div>
               </section>
 
               <section>

@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server"
 import { errorResponse, serverErrorResponse, successResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 import { NotificationService } from "@/lib/game-services/notification-service"
 
-export async function PATCH(req: NextRequest) {
+export const PATCH = withMetrics("PATCH /api/notifications/mark-all", async (req: NextRequest) => {
   try {
     const body = await req.json()
     const { playerId } = body
@@ -15,4 +16,4 @@ export async function PATCH(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})

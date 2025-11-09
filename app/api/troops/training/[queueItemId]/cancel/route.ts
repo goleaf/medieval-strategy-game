@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server"
 import { authenticateRequest } from "@/app/api/auth/middleware"
 import { errorResponse, serverErrorResponse, successResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 import { UnitSystemService } from "@/lib/game-services/unit-system-service"
 import { SitterPermissions } from "@/lib/utils/sitter-permissions"
 import { SitterDualService } from "@/lib/game-services/sitter-dual-service"
 import { type AccountActorType } from "@prisma/client"
 
-export async function POST(_req: NextRequest, context: { params: { queueItemId: string } }) {
+export const POST = withMetrics("POST /api/troops/training/[queueItemId]/cancel", async (_req: NextRequest, context: { params: { queueItemId: string } }) => {
   try {
     const auth = await authenticateRequest(_req)
     if (!auth?.playerId) {
@@ -64,4 +65,4 @@ export async function POST(_req: NextRequest, context: { params: { queueItemId: 
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})

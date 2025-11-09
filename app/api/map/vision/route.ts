@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 import { MapCoordinateService } from "@/lib/map-vision/coordinate-service"
 import { VisionAggregator } from "@/lib/map-vision/vision-aggregator"
 import type { MapScale } from "@/lib/map-vision/types"
@@ -8,7 +9,7 @@ const coordinateService = new MapCoordinateService()
 const aggregator = new VisionAggregator({ coordinateService })
 const SCALE_SET = new Set<MapScale>(["REGION", "PROVINCE", "WORLD"])
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/map/vision", async (req: NextRequest) => {
   try {
     const params = req.nextUrl.searchParams
     const gameWorldId = params.get("gameWorldId")
@@ -37,27 +38,34 @@ export async function GET(req: NextRequest) {
     const viewerPlayerId = params.get("viewerPlayerId") ?? undefined
     const viewerAllianceId = params.get("viewerAllianceId") ?? undefined
 
-    const tiles = await aggregator.queryTiles({
+    const { cache } = await import("@/lib/cache")
+    const key = `map:vision:${gameWorldId}:${center.x}|${center.y}:r${radius}:s${scale}:vp:${viewerPlayerId ?? '0'}:va:${viewerAllianceId ?? '0'}`
+    const tiles = await cache.wrap(key, 30, async () => aggregator.queryTiles({
       gameWorldId,
       viewerPlayerId,
       viewerAllianceId,
       center,
       radius,
       scale,
-    })
+    }))
 
-    return successResponse({
+    const etag = `W/"v-${tiles.length}-${radius}-${scale}"`
+    const ifNoneMatch = req.headers.get('if-none-match')
+    const body = {
       center,
       radius,
       scale,
       extent: coordinateService.extent,
       block: coordinateService.toBlockId(center),
       tiles,
-    })
+    }
+    const headers: Record<string, string> = { 'Cache-Control': 'public, max-age=30', ETag: etag }
+    if (ifNoneMatch === etag) return new Response(null, { status: 304, headers })
+    return new Response(JSON.stringify({ success: true, data: body }), { status: 200, headers })
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})
 
 function normalizeScale(raw: string | null): MapScale {
   if (!raw) return "REGION"

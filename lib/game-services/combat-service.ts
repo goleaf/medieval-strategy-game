@@ -963,6 +963,13 @@ export class CombatService {
         linkTarget: "/reports",
       })
     }
+
+    // Cache invalidation for affected villages (short-lived map caches rely on TTL)
+    try {
+      const { cache } = await import("@/lib/cache")
+      await cache.del(`village:${attack.fromVillageId}`)
+      if (attack.toVillageId) await cache.del(`village:${attack.toVillageId}`)
+    } catch {}
   }
 
   /**

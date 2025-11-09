@@ -1,7 +1,8 @@
 // Lightweight in-memory performance metrics for API routes.
 // For production, back this with Redis/Timeseries or export to your APM.
 
-import { trackError } from "@/lib/admin-utils"
+import { trackError, trackAction } from "@/lib/admin-utils"
+import { NextResponse } from "next/server"
 
 type RouteKey = string
 
@@ -26,6 +27,7 @@ function getOrCreate(label: RouteKey): RouteStats {
 
 export function startTimer(label: RouteKey) {
   const start = Date.now()
+  const traceId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   return function end(status?: number) {
     const ms = Date.now() - start
     const s = getOrCreate(label)
@@ -34,6 +36,9 @@ export function startTimer(label: RouteKey) {
     if (typeof status === "number" && status >= 400) s.errors += 1
     s.samples.push(ms)
     if (s.samples.length > s.maxSamples) s.samples.shift()
+    // Count this request as an action for ops monitoring
+    trackAction()
+    return { ms, traceId }
   }
 }
 
@@ -70,13 +75,52 @@ export function withMetrics<T extends (...args: any[]) => Promise<any>>(label: R
       const res = await handler(...args)
       // Prefer NextResponse.status if available; otherwise default to 200
       const status = typeof res?.status === "number" ? res.status : 200
-      end(status)
+      const { ms, traceId } = end(status)
+      try {
+        if (res && res.headers && typeof res.headers.set === "function") {
+          res.headers.set("X-Trace-Id", traceId)
+          res.headers.set("X-Response-Time", `${ms}ms`)
+          // Server-Timing for browser devtools
+          const existing = res.headers.get("Server-Timing")
+          const timing = `total;dur=${ms}`
+          res.headers.set("Server-Timing", existing ? `${existing}, ${timing}` : timing)
+        }
+        if (process.env.METRICS_PERSIST === "true") {
+          ;(async () => {
+            try {
+              const { prisma } = await import("@/lib/db")
+              await prisma.$executeRawUnsafe(
+                `CREATE TABLE IF NOT EXISTS ApiMetricSample (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  createdAt TEXT NOT NULL,
+                  route TEXT NOT NULL,
+                  durationMs INTEGER NOT NULL,
+                  status INTEGER NOT NULL,
+                  traceId TEXT
+                );`,
+              )
+              await prisma.$executeRawUnsafe(
+                `INSERT INTO ApiMetricSample (createdAt, route, durationMs, status, traceId) VALUES (?, ?, ?, ?, ?)`,
+                new Date().toISOString(),
+                label,
+                ms,
+                status,
+                traceId,
+              )
+            } catch (_err) {
+              // ignore
+            }
+          })()
+        }
+      } catch (_e) {
+        // ignore header errors
+      }
       return res
     } catch (err: any) {
       trackError(`API error: ${label}`, String(err?.message || err))
-      end(500)
+      const { ms, traceId } = end(500)
+      // We cannot set headers on thrown responses; swallow here
       throw err
     }
   }) as unknown as T
 }
-

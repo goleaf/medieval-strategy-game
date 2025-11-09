@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 
 import { fetchCombatReportList } from "@/lib/reports/queries"
+import { cache } from "@/lib/cache"
 import { errorResponse, successResponse } from "@/lib/utils/api-response"
 import { withMetrics } from "@/lib/utils/metrics"
 
@@ -18,7 +19,16 @@ export const GET = withMetrics("GET /api/reports", async (req: NextRequest) => {
   const missionParam = searchParams.get("mission")
   const search = searchParams.get("search")?.toLowerCase().trim()
 
-  let items = await fetchCombatReportList(playerId)
+  const keyBase = [`pid:${playerId}`]
+  const directionParam = searchParams.get("direction")
+  const missionParam = searchParams.get("mission")
+  const search = searchParams.get("search")?.toLowerCase().trim()
+
+  keyBase.push(`dir:${directionParam ?? "all"}`)
+  keyBase.push(`mis:${missionParam ?? "all"}`)
+  keyBase.push(`q:${search ?? ""}`)
+
+  let items = await cache.wrap(`reports:list:${keyBase.join('|')}`, 30, async () => fetchCombatReportList(playerId))
 
   if (directionParam && DIRECTIONS.has(directionParam)) {
     items = items.filter((item) => item.direction === directionParam)
@@ -48,5 +58,11 @@ export const GET = withMetrics("GET /api/reports", async (req: NextRequest) => {
     })
   }
 
-  return successResponse(items)
+  const etag = `W/"rl-${items.length}-${items[0]?.createdAt ?? "0"}"`
+  const inm = req.headers.get('if-none-match')
+  if (inm === etag) return new Response(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'public, max-age=30' } })
+  return new Response(JSON.stringify({ success: true, data: items }), {
+    status: 200,
+    headers: { ETag: etag, 'Cache-Control': 'public, max-age=30' },
+  })
 })

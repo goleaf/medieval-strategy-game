@@ -3,6 +3,7 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { mapPrismaMovement } from "@/lib/rally-point/prisma-repository"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 import type { MovementStatus, MovementMission } from "@/lib/rally-point"
 import { Prisma, RallyPointMission, RallyPointMovementStatus } from "@prisma/client"
 
@@ -23,7 +24,7 @@ const missionMap: Partial<Record<MovementMission, RallyPointMission>> = {
   return: RallyPointMission.RETURN,
 }
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/rally-point/movements", async (req: NextRequest) => {
   try {
     const { searchParams } = new URL(req.url)
     const villageId = searchParams.get("villageId")
@@ -61,4 +62,4 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
+})

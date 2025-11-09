@@ -12,9 +12,20 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   if (!playerId) {
     return errorResponse("playerId is required", 400)
   }
-  const report = await fetchCombatReportDetail(params.reportId, playerId)
+  const { cache } = await import("@/lib/cache")
+  const key = `report:${params.reportId}:pid:${playerId}`
+  const report = await cache.wrap(key, 365 * 24 * 60 * 60, async () => fetchCombatReportDetail(params.reportId, playerId))
   if (!report) {
     return notFoundResponse()
   }
-  return successResponse(report)
+  const body = JSON.stringify(report)
+  const etag = `W/"rep-${params.reportId}-${body.length}"`
+  const inm = req.headers.get("if-none-match")
+  if (inm === etag) {
+    return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": "public, max-age=31536000" } })
+  }
+  return new Response(JSON.stringify({ success: true, data: report }), {
+    status: 200,
+    headers: { ETag: etag, "Cache-Control": "public, max-age=31536000" },
+  })
 }

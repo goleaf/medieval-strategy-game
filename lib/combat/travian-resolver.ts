@@ -108,6 +108,7 @@ export interface BattleRoundSummary {
   round: number
   attackerStrength: number
   defenderStrength: number
+  casualtyRatio: number
   attackerLossRate: number
   defenderLossRate: number
   attackerCasualties: number
@@ -635,11 +636,10 @@ export function resolveBattle(input: ResolveBattleInput): BattleReport {
     const attackerStronger = attackerStrength >= defenderStrength
     const strongerStrength = attackerStronger ? attackerStrength : defenderStrength
     const weakerStrength = attackerStronger ? Math.max(defenderStrength, 1e-6) : Math.max(attackerStrength, 1e-6)
-    const ratioForLosses = Math.max(strongerStrength / weakerStrength, 1)
-    const shapedRatio = Math.pow(ratioForLosses, config.curvature_k ?? 1)
+    const casualtyRatio = Math.max(strongerStrength / weakerStrength, 1)
 
-    let weakerLossRate = clamp(roundsPolicy.base * shapedRatio, roundsPolicy.min, 1)
-    let strongerLossRate = clamp(roundsPolicy.base / shapedRatio, roundsPolicy.min, 1)
+    let weakerLossRate = clamp(roundsPolicy.base * casualtyRatio, roundsPolicy.min, 1)
+    let strongerLossRate = clamp(roundsPolicy.base * (1 / casualtyRatio), roundsPolicy.min, 1)
 
     const weakerVariance = 1 + (rng.next() * 0.2 - 0.1)
     const strongerVariance = 1 + (rng.next() * 0.2 - 0.1)
@@ -657,6 +657,7 @@ export function resolveBattle(input: ResolveBattleInput): BattleReport {
       round,
       attackerStrength,
       defenderStrength,
+      casualtyRatio,
       attackerLossRate,
       defenderLossRate,
       attackerCasualties: attackerCasualties.totalLost,

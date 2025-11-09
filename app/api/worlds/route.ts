@@ -1,8 +1,9 @@
 import { type NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { successResponse, serverErrorResponse } from "@/lib/utils/api-response"
+import { withMetrics } from "@/lib/utils/metrics"
 
-export async function GET(req: NextRequest) {
+export const GET = withMetrics("GET /api/worlds", async (req: NextRequest) => {
   try {
     const url = new URL(req.url)
     const includeInactive = url.searchParams.get("includeInactive") === "true"
@@ -38,5 +39,4 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return serverErrorResponse(error)
   }
-}
-
+})

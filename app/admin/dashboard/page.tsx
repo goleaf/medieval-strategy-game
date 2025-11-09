@@ -11,8 +11,11 @@ import { NpcMerchantAdmin } from "@/components/admin/npc-merchant-admin"
 import { CancelStats } from "@/components/admin/cancel-stats"
 import { GameWorldManager } from "@/components/admin/game-world-manager"
 import { SpeedConfiguration } from "@/components/admin/speed-configuration"
+import { PerfBarChart } from "@/components/admin/perf-bar-chart"
+import { useRouter } from "next/navigation"
 
 export default function AdminDashboard() {
+  const router = useRouter()
   const [stats, setStats] = useState<any>(null)
   const [players, setPlayers] = useState<any[]>([])
   const [worldConfig, setWorldConfig] = useState<any>(null)
@@ -29,6 +32,8 @@ export default function AdminDashboard() {
   const [moderation, setModeration] = useState<any>(null)
   const [exportData, setExportData] = useState<any>(null)
   const [errorLogs, setErrorLogs] = useState<any[]>([])
+  const [perf, setPerf] = useState<{ metrics: Record<string, any>; timestamp: string } | null>(null)
+  const [feedbackItems, setFeedbackItems] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState("stats")
   const [loading, setLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -169,6 +174,22 @@ export default function AdminDashboard() {
         const data = await res.json()
         if (data.success && data.data) {
           setExportData(data.data)
+        }
+      } else if (tab === "performance") {
+        const res = await fetch('/api/admin/perf', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}` }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setPerf(data.data)
+        }
+      } else if (tab === "feedback") {
+        const res = await fetch('/api/admin/feedback', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken') || ''}` }
+        })
+        const data = await res.json()
+        if (data.success && data.data) {
+          setFeedbackItems(data.data.feedback || [])
         }
       } else if (tab === "errors") {
         const res = await fetch("/api/admin/stats")
@@ -639,6 +660,18 @@ export default function AdminDashboard() {
               Data Export
             </Button>
             <Button
+              onClick={() => switchTab('performance')}
+              variant={activeTab === 'performance' ? 'default' : 'ghost'}
+            >
+              Performance
+            </Button>
+            <Button
+              onClick={() => switchTab('feedback')}
+              variant={activeTab === 'feedback' ? 'default' : 'ghost'}
+            >
+              Feedback
+            </Button>
+            <Button
               onClick={() => switchTab('errors')}
               variant={activeTab === 'errors' ? 'default' : 'ghost'}
             >
@@ -687,6 +720,91 @@ export default function AdminDashboard() {
                       ["Game Status", stats.gameStatus || "Unknown"],
                       ["World Speed", stats.worldSpeed?.toString() || "1"],
                     ]}
+                  />
+
+                  {/* Actions per minute (last 30m) */}
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-sm">Actions per minute (last 30m)</h3>
+                    {stats.actionSeries ? (
+                      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-24 border border-border rounded bg-card">
+                        {
+                          (() => {
+                            const data = stats.actionSeries as Array<{ minute: number; count: number }>
+                            const max = Math.max(1, ...data.map((d: any) => d.count))
+                            const step = 100 / Math.max(1, data.length - 1)
+                            const points = data.map((d: any, idx: number) => {
+                              const x = idx * step
+                              const y = 40 - (d.count / max) * 35 - 2
+                              return `${x},${y}`
+                            }).join(" ")
+                            return <polyline points={points} fill="none" stroke="#3b82f6" strokeWidth="1.5" />
+                          })()
+                        }
+                      </svg>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No action data yet.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'performance' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold">API Performance</h2>
+                    <Link href="/admin/performance"><Button variant="outline">Open Full Page</Button></Link>
+                  </div>
+                  {perf ? (
+                    <>
+                      <PerfBarChart data={Object.entries(perf.metrics).map(([route, m]) => ({
+                        route,
+                        count: m.count,
+                        errors: m.errors,
+                        errorRate: m.errorRate,
+                        lastMs: m.lastMs,
+                        avgMs: m.avgMs,
+                        p50: m.p50,
+                        p95: m.p95,
+                        p99: m.p99,
+                      }))} onSelectRoute={(r) => router.push(`/admin/performance/explorer?route=${encodeURIComponent(r)}`)} />
+                      <TextTable
+                        headers={["Route", "Count", "Errors", "Error Rate", "p50", "p95", "p99", "Avg"]}
+                        rows={Object.entries(perf.metrics).map(([route, m]: any) => [
+                          route,
+                          String(m.count || 0),
+                          String(m.errors || 0),
+                          ((m.errorRate || 0) * 100).toFixed(1) + "%",
+                          `${Math.round(m.p50 || 0)} ms`,
+                          `${Math.round(m.p95 || 0)} ms`,
+                          `${Math.round(m.p99 || 0)} ms`,
+                          `${Math.round(m.avgMs || 0)} ms`,
+                        ])}
+                      />
+                      <p className="text-xs text-muted-foreground">Last updated: {new Date(perf.timestamp).toLocaleString()}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm">No metrics recorded yet. Hit some endpoints to populate data.</p>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'feedback' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold">Player Feedback</h2>
+                    <Link href="/admin/feedback"><Button variant="outline">Open Full Page</Button></Link>
+                  </div>
+                  <TextTable
+                    headers={["ID", "Created", "Player", "Category", "Severity", "Summary", "Status"]}
+                    rows={feedbackItems.map((f: any) => [
+                      String(f.id),
+                      new Date(f.createdAt).toLocaleString(),
+                      f.playerId || "-",
+                      f.category,
+                      f.severity,
+                      f.summary,
+                      f.status,
+                    ])}
                   />
                 </div>
               )}
@@ -1964,19 +2082,40 @@ export default function AdminDashboard() {
                     Recent system errors and issues
                   </p>
 
+                  {/* Error rate by minute (last 30m) */}
+                  {stats?.errorSeries && (
+                    <div className="w-full h-48">
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full border border-border rounded bg-card">
+                        {
+                          (() => {
+                            const data = stats.errorSeries as Array<{ minute: number; count: number }>
+                            const max = Math.max(1, ...data.map((d: any) => d.count))
+                            const step = 100 / Math.max(1, data.length - 1)
+                            const points = data.map((d: any, idx: number) => {
+                              const x = idx * step
+                              const y = 100 - (d.count / max) * 90 - 5
+                              return `${x},${y}`
+                            }).join(" ")
+                            return <polyline points={points} fill="none" stroke="#ef4444" strokeWidth="1.5" />
+                          })()
+                        }
+                      </svg>
+                    </div>
+                  )}
+
                   {errorLogs && errorLogs.length > 0 ? (
                     <div className="space-y-2 max-h-96 overflow-y-auto">
                       {errorLogs.map((error: any, index: number) => (
                         <div key={index} className="border border-border rounded p-3">
                           <div className="flex justify-between items-start mb-2">
                             <span className="text-sm font-mono text-red-600">{error.timestamp || 'Unknown time'}</span>
-                            <span className="text-xs text-muted-foreground">{error.level || 'ERROR'}</span>
+                            <span className="text-xs text-muted-foreground">ERROR</span>
                           </div>
                           <div className="text-sm">{error.message || 'No message'}</div>
-                          {error.stack && (
+                          {error.error && (
                             <details className="mt-2">
                               <summary className="text-xs cursor-pointer text-muted-foreground">Stack trace</summary>
-                              <pre className="text-xs mt-1 p-2 bg-muted rounded overflow-x-auto">{error.stack}</pre>
+                              <pre className="text-xs mt-1 p-2 bg-muted rounded overflow-x-auto">{error.error}</pre>
                             </details>
                           )}
                         </div>

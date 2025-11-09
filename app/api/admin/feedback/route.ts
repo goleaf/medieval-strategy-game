@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
       { status: 401, headers: { "Content-Type": "application/json" } },
     )
   }
-  return NextResponse.json({ success: true, data: { feedback: listFeedback() } })
+  const data = await listFeedback()
+  return NextResponse.json({ success: true, data: { feedback: data } })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -27,8 +28,7 @@ export async function PATCH(req: NextRequest) {
   if (!id || !["open", "triaged", "resolved"].includes(status)) {
     return NextResponse.json({ success: false, error: "Invalid id or status" }, { status: 400 })
   }
-  const updated = updateFeedbackStatus(id, status as any)
+  const updated = await updateFeedbackStatus(id, status as any)
   if (!updated) return NextResponse.json({ success: false, error: "Not found" }, { status: 404 })
   return NextResponse.json({ success: true, data: { feedback: updated } })
 }
-

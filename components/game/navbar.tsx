@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
+import { FeedbackForm } from "@/components/game/feedback-form"
 import type { Village, Building } from "@prisma/client"
 import { CentralVillageOverview } from "./central-village-overview"
 import { SitterLogin } from "./sitter-login"
@@ -438,6 +439,7 @@ export function Navbar({ villages, currentVillageId, onVillageChange, notificati
           >
             🔔 {notificationCount > 0 && <span className="font-bold">({notificationCount})</span>}
           </Link>
+          <FeedbackForm />
         </div>
       </div>
 
