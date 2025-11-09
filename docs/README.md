@@ -21,6 +21,7 @@ docs/
 │   └── tribal-wars-world-types.md  # Presets + switchboard checklist + admin UI link
 ├── features/              # Game features
 │   ├── beginner-protection.md
+│   ├── new-player-experience.md   # Tutorial quests, advisors, mentor program
 │   ├── resource-system.md
 │   ├── market-trading.md       # Marketplace & merchant trading spec with printable logistics checklists
 │   ├── subsystem-effects.md
@@ -30,9 +31,12 @@ docs/
 │   ├── tribal-wars-endgames.md   # Domination, Rune Wars, and Relics reference
 │   ├── tribal-wars-endgame-checklist.md  # Printable configuration worksheet
 │   ├── ui-ux-tools.md
+│   ├── world-map.md        # Coordinate grammar, continents, UI layers, APIs
 ├── api/                   # API documentation (future)
 └── development/           # Development guides (future)
     ├── map-vision.md      # Vision backend notes
+    ├── performance-architecture.md  # Caching, DB, asset, and scaling strategy
+    ├── security-hardening.md  # Input validation, anti-cheat, and session controls
     └── reserved-names.md
 ```
 

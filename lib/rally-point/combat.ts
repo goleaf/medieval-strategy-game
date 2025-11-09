@@ -98,6 +98,7 @@ export class SimpleCombatResolver implements CombatResolver {
       const tech = getTechLevel(unitId, techLevels)
       stacks.push({
         unitId,
+        unitType: unitId,
         role: stats.role,
         count,
         attack: stats.attack,
@@ -121,6 +122,7 @@ export class SimpleCombatResolver implements CombatResolver {
       meta.set(unitId, { ...stack })
       armyStacks.push({
         unitId,
+        unitType: stack.unitTypeId,
         role: stats.role,
         count: stack.count,
         attack: stats.attack,

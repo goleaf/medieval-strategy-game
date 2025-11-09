@@ -31,6 +31,7 @@ export interface UnitDefinition {
   attack: number
   defInf: number
   defCav: number
+  defArch?: number
   speedTilesPerHour: number
   carry: number
   upkeepCropPerHour: number
@@ -41,6 +42,7 @@ export interface UnitDefinition {
   researchReq: RequirementMap
   loyaltyHit?: LoyaltyHitConfig
   defAdminMult?: number
+  worldFeatureFlags?: string[]
 }
 
 export interface ArmyStack {
@@ -50,6 +52,7 @@ export interface ArmyStack {
   attack: number
   defInf: number
   defCav: number
+  defArch?: number
   carry: number
   smithyAttackLevel?: number
   smithyDefenseLevel?: number
@@ -91,7 +94,7 @@ export interface TroopSystemConfig {
   }
   training: {
     queues: Record<string, UnitRole[]>
-    costPolicy: "deduct_on_queue" | "deduct_on_finish"
+    costPolicy: "deduct_on_queue" | "deduct_on_finish" | "deduct_on_start"
     starvationPolicy: "oldest_first" | "highest_upkeep_first"
   }
   missions: {
@@ -126,6 +129,7 @@ export interface TroopSystemConfig {
     loyaltyHit: LoyaltyHitConfig
     blockedFloor: number
     captureFloor: number
+    captureCeiling?: number
   }
   loot: {
     fallbackPriority: Array<keyof UnitCosts>

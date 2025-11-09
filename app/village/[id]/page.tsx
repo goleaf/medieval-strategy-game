@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Home, Hammer, Shield, Eye } from "lucide-react"
-import { ResourceDisplay } from "@/components/game/resource-display"
+import { ResourceDisplay, type ResourceLedgerSnapshot } from "@/components/game/resource-display"
 import { BuildingQueue } from "@/components/game/building-queue"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,7 @@ type VillageWithRelations = {
   ironProduction: number
   goldProduction: number
   foodProduction: number
+  resourceLedgers: ResourceLedgerSnapshot[]
   buildings: Array<{
     id: string
     type: string
@@ -47,6 +48,36 @@ type VillageWithRelations = {
   troops: Array<{ id: string; type: string; quantity: number }>
   population: number
   loyalty: number
+}
+
+function legacyResourceLedgers(village: VillageWithRelations): ResourceLedgerSnapshot[] {
+  const timestamp = new Date().toISOString()
+  return [
+    {
+      resourceType: "WOOD",
+      currentAmount: village.wood,
+      productionPerHour: village.woodProduction,
+      netProductionPerHour: village.woodProduction,
+      storageCapacity: 0,
+      lastTickAt: timestamp,
+    },
+    {
+      resourceType: "CLAY",
+      currentAmount: village.stone,
+      productionPerHour: village.stoneProduction,
+      netProductionPerHour: village.stoneProduction,
+      storageCapacity: 0,
+      lastTickAt: timestamp,
+    },
+    {
+      resourceType: "IRON",
+      currentAmount: village.iron,
+      productionPerHour: village.ironProduction,
+      netProductionPerHour: village.ironProduction,
+      storageCapacity: 0,
+      lastTickAt: timestamp,
+    },
+  ]
 }
 
 export default function VillageDetailPage() {
@@ -98,6 +129,11 @@ export default function VillageDetailPage() {
     )
   }
 
+  const ledgersToShow =
+    village.resourceLedgers && village.resourceLedgers.length > 0
+      ? village.resourceLedgers
+      : legacyResourceLedgers(village)
+
   return (
     <div
       x-data={`{
@@ -142,17 +178,8 @@ export default function VillageDetailPage() {
           <section>
             <h2 className="text-lg font-bold mb-2">Resources</h2>
             <ResourceDisplay
-              wood={village.wood}
-              stone={village.stone}
-              iron={village.iron}
-              gold={village.gold}
-              food={village.food}
-              woodProduction={village.woodProduction}
-              stoneProduction={village.stoneProduction}
-              ironProduction={village.ironProduction}
-              goldProduction={village.goldProduction}
-              foodProduction={village.foodProduction}
-              showProduction
+              ledgers={ledgersToShow}
+              showCrop={false}
             />
           </section>
 

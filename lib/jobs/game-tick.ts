@@ -94,6 +94,11 @@ export async function processGameTick() {
       await TroopService.completeTroopTraining(production.id)
     }
 
+    const modernTrainingStarted = await UnitSystemService.startDueTraining(now)
+    if (modernTrainingStarted > 0) {
+      console.log(`Started ${modernTrainingStarted} unit-system training jobs`)
+    }
+
     const modernTrainingCompleted = await UnitSystemService.completeFinishedTraining(now)
     if (modernTrainingCompleted > 0) {
       console.log(`Completed ${modernTrainingCompleted} unit-system training jobs`)

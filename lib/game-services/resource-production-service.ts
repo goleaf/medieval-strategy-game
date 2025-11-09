@@ -7,6 +7,7 @@ import {
   getHeroBonuses,
   partitionModifiers,
 } from "@/lib/game-services/resource-production-helpers"
+import { CapacityService, type CapacitySummary } from "@/lib/game-services/capacity-service"
 import type { Prisma, Troop, TroopBalance } from "@prisma/client"
 
 const BASELINE_PRODUCTION_PER_HOUR = 2
@@ -65,6 +66,8 @@ export class ResourceProductionService {
     let effectiveConsumptionPerHour = baseCropConsumptionPerHour * Math.max(0, 1 - consumptionReduction)
 
     await prisma.$transaction(async (tx) => {
+      const capacitySummary = await CapacityService.getVillageCapacitySummary(village.id, tx)
+      const ledgerCapacities = this.mapLedgerCapacities(capacitySummary.totals)
       const now = new Date()
 
       for (const ledger of village.resourceLedgers) {
@@ -92,10 +95,8 @@ export class ResourceProductionService {
           amountDelta = netPerHour * tickHours
         }
 
-        const newAmount = Math.max(
-          0,
-          Math.min(ledger.storageCapacity, Math.floor(ledger.currentAmount + amountDelta)),
-        )
+        const capacity = ledgerCapacities[ledger.resourceType] ?? ledger.storageCapacity
+        const newAmount = Math.max(0, Math.min(capacity, Math.floor(ledger.currentAmount + amountDelta)))
 
         await tx.villageResourceLedger.update({
           where: { id: ledger.id },
@@ -103,6 +104,7 @@ export class ResourceProductionService {
             currentAmount: newAmount,
             productionPerHour: Math.max(0, Math.floor(grossPerHour)),
             netProductionPerHour: Math.floor(netPerHour),
+            storageCapacity: capacity,
             lastTickAt: now,
           },
         })
@@ -113,6 +115,15 @@ export class ResourceProductionService {
         data: { lastTickAt: now },
       })
     })
+  }
+
+  private static mapLedgerCapacities(totals: CapacitySummary["totals"]) {
+    return {
+      WOOD: totals.wood ?? 0,
+      CLAY: totals.stone ?? totals.clay ?? 0,
+      IRON: totals.iron ?? 0,
+      CROP: totals.food ?? totals.crop ?? 0,
+    } satisfies Record<(typeof RESOURCE_ENUMS)[number], number>
   }
 
   private static async bootstrapVillageResources(villageId: string) {

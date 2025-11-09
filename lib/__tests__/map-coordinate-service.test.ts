@@ -3,7 +3,7 @@ import { MapCoordinateService } from "@/lib/map-vision/coordinate-service"
 
 describe("MapCoordinateService", () => {
   it("parses canonical coordinates", () => {
-    const service = new MapCoordinateService()
+    const service = new MapCoordinateService({ minX: -50, minY: -50 })
     expect(service.parseCoordinate("10|5")).toEqual({ x: 10, y: 5 })
     expect(service.parseCoordinate("( -12 | 40 )")).toEqual({ x: -12, y: 40 })
   })
@@ -26,10 +26,27 @@ describe("MapCoordinateService", () => {
     expect(distance).toBe(1)
   })
 
-  it("returns block ids using K notation", () => {
-    const service = new MapCoordinateService({ minX: -400, maxX: 400, minY: -400, maxY: 400, blockSize: 100 })
-    expect(service.toBlockId({ x: 0, y: 0 })).toBe("K0404")
-    expect(service.toBlockId({ x: -400, y: -400 })).toBe("K0000")
+  it("returns block ids using 100x100 continent notation", () => {
+    const service = new MapCoordinateService({ minX: 0, maxX: 999, minY: 0, maxY: 999, blockSize: 100 })
+    expect(service.toBlockId({ x: 0, y: 0 })).toBe("K00")
+    expect(service.toBlockId({ x: 450, y: 575 })).toBe("K45")
+  })
+
+  it("converts block ids back to coordinate ranges", () => {
+    const service = new MapCoordinateService({ minX: 0, maxX: 999, minY: 0, maxY: 999, blockSize: 100 })
+    expect(service.blockIdToRange("K45")).toEqual({ minX: 400, maxX: 499, minY: 500, maxY: 599 })
+  })
+
+  it("enumerates intersecting blocks for a range", () => {
+    const service = new MapCoordinateService({ minX: 0, maxX: 999, minY: 0, maxY: 999, blockSize: 100 })
+    const blocks = service.getBlocksForRange({ minX: 90, maxX: 210, minY: 90, maxY: 210 })
+    expect(blocks).toEqual(["K00", "K01", "K10", "K11"])
+  })
+
+  it("formats coordinates with leading zeros", () => {
+    const service = new MapCoordinateService({ minX: 0, maxX: 999, minY: 0, maxY: 999 })
+    expect(service.formatCoordinate({ x: 4, y: 58 })).toBe("004|058")
+    expect(service.formatCoordinate({ x: 999, y: 0 })).toBe("999|000")
   })
 
   it("returns bounding ranges respecting planar edges", () => {

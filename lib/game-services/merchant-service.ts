@@ -12,6 +12,8 @@ const SUBSYSTEM_EFFECTS = getSubsystemEffectsConfig()
 const TEUTON_MERCHANT_CAPACITY = SUBSYSTEM_EFFECTS.teuton_raid_focus?.merchant_capacity ?? 1000
 const TEUTON_MERCHANT_SPEED = SUBSYSTEM_EFFECTS.teuton_raid_focus?.merchant_tiles_per_hour ?? 12
 
+const PREMIUM_CAPACITY_BONUS = 0.25
+
 const MERCHANT_CONFIG: Record<GameTribe, { capacity: number; tilesPerHour: number }> = {
   ROMANS: { capacity: 500, tilesPerHour: 16 },
   TEUTONS: { capacity: TEUTON_MERCHANT_CAPACITY, tilesPerHour: TEUTON_MERCHANT_SPEED },
@@ -19,6 +21,17 @@ const MERCHANT_CONFIG: Record<GameTribe, { capacity: number; tilesPerHour: numbe
   HUNS: { capacity: 800, tilesPerHour: 18 },
   EGYPTIANS: { capacity: 900, tilesPerHour: 14 },
   SPARTANS: { capacity: 600, tilesPerHour: 17 },
+}
+
+type MembershipSnapshot = {
+  hasGoldClubMembership: boolean
+  goldClubExpiresAt: Date | null
+}
+
+const hasActiveGoldClubMembership = (membership?: MembershipSnapshot | null) => {
+  if (!membership?.hasGoldClubMembership) return false
+  if (!membership.goldClubExpiresAt) return true
+  return membership.goldClubExpiresAt > new Date()
 }
 
 export type MerchantSnapshot = {
@@ -29,6 +42,9 @@ export type MerchantSnapshot = {
   reservedMerchants: number
   availableMerchants: number
   capacityPerMerchant: number
+  baseCapacityPerMerchant: number
+  capacityBonusPercentage: number
+  premiumActive: boolean
   tilesPerHour: number
   tribe: GameTribe
 }
@@ -52,6 +68,8 @@ export class MerchantService {
           player: {
             select: {
               gameTribe: true,
+              hasGoldClubMembership: true,
+              goldClubExpiresAt: true,
             },
           },
         },
@@ -72,6 +90,12 @@ export class MerchantService {
     const busyMerchants = state?.merchantsBusy ?? 0
     const reservedMerchants = state?.merchantsReserved ?? 0
     const availableMerchants = Math.max(0, totalMerchants - busyMerchants - reservedMerchants)
+    const premiumActive = hasActiveGoldClubMembership(village.player as MembershipSnapshot | undefined)
+    const capacityBonusPercentage = premiumActive ? PREMIUM_CAPACITY_BONUS * 100 : 0
+    const baseCapacityPerMerchant = config.capacity
+    const capacityPerMerchant = Math.round(
+      baseCapacityPerMerchant * (1 + (premiumActive ? PREMIUM_CAPACITY_BONUS : 0)),
+    )
 
     return {
       villageId,
@@ -80,7 +104,10 @@ export class MerchantService {
       busyMerchants,
       reservedMerchants,
       availableMerchants,
-      capacityPerMerchant: config.capacity,
+      capacityPerMerchant,
+      baseCapacityPerMerchant,
+      capacityBonusPercentage,
+      premiumActive,
       tilesPerHour: config.tilesPerHour,
       tribe,
     }

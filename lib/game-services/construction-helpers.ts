@@ -1,28 +1,13 @@
 import type { BuildingType, ResourceType } from "@prisma/client"
 import type { ConstructionEntityKey } from "@/lib/config/construction"
+import { BUILDING_BLUEPRINT_LOOKUP } from "@/lib/config/building-blueprint-map"
 
-// Keep this lookup in sync with the blueprint definitions in `lib/config/construction.ts` so cost/time
-// calculations stay aligned with the design brief for each structure.
-const BUILDING_BLUEPRINT_MAP: Partial<Record<BuildingType, ConstructionEntityKey>> = {
-  HEADQUARTER: "main_building",
-  BARRACKS: "barracks",
-  WAREHOUSE: "warehouse",
-  GRANARY: "granary",
-  ACADEMY: "academy",
-  RESIDENCE: "residence",
-  SNOB: "residence",
-  CITY: "main_building",
-  SMITHY: "smithy",
-  STABLES: "stable",
-  WORKSHOP: "workshop",
-  MARKETPLACE: "market",
-  RALLY_POINT: "rally_point",
-  WALL: "wall",
-  FARM: "farm",
-  CRANNY: "hiding_place",
-  WATCHTOWER: "watchtower",
-  TEMPLE: "church",
-}
+const BUILDING_BLUEPRINT_MAP: Partial<Record<BuildingType, ConstructionEntityKey>> = Object.entries(
+  BUILDING_BLUEPRINT_LOOKUP,
+).reduce((acc, [type, blueprint]) => {
+  acc[type as BuildingType] = blueprint
+  return acc
+}, {} as Partial<Record<BuildingType, ConstructionEntityKey>>)
 
 const RESOURCE_BLUEPRINT_MAP: Record<ResourceType, ConstructionEntityKey> = {
   WOOD: "wood_field",

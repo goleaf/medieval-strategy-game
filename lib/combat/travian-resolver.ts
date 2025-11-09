@@ -11,6 +11,7 @@ type RoundingMode = "bankers"
 
 export interface UnitStackInput {
   unitId: string
+  unitType?: string
   role: UnitRole
   count: number
   attack: number
@@ -51,6 +52,10 @@ export interface CombatEnvironment {
   nightActive?: boolean
   attackerModifiers?: BonusModifier[]
   defenderModifiers?: BonusModifier[]
+  paladinBonuses?: {
+    attacker?: { attack?: number; defense?: number }
+    defender?: { attack?: number; defense?: number }
+  }
   luck?: LuckOverride
   seed?: string | number | bigint
   seedComponents?: Array<string | number | bigint>
@@ -72,6 +77,15 @@ export interface CombatConfig {
   night: { enabled: boolean; def_mult: number }
   walls: Record<string, { def_pct_per_level: number }>
   rounding: { mode: RoundingMode; loser_min_loss: number; winner_min_loss: number }
+  rounds?: {
+    max_rounds: number
+    base_loss_rate: number
+    min_loss_rate: number
+  }
+  paladin?: {
+    attack_bonus: number
+    defense_bonus: number
+  }
 }
 
 export interface UnitOutcome {
@@ -90,13 +104,38 @@ export interface ArmyOutcome {
   units: UnitOutcome[]
 }
 
+export interface BattleRoundSummary {
+  round: number
+  attackerStrength: number
+  defenderStrength: number
+  attackerLossRate: number
+  defenderLossRate: number
+  attackerCasualties: number
+  defenderCasualties: number
+  composition: "infantry" | "cavalry" | "mixed"
+}
+
+export interface PreCombatSummary {
+  wallBefore: number
+  wallAfter: number
+  ramAttempts: number
+  wallDrop: number
+  wallMultiplier: number
+  moraleMultiplier: number
+  paladinAttackMultiplier: number
+  paladinDefenseMultiplier: number
+}
+
 export interface BattleReport {
   attackerWon: boolean
+  outcome: "attacker_victory" | "defender_victory" | "mutual_destruction"
   mission: Mission
   ratio: number
   lossRates: { attacker: number; defender: number }
   attacker: ArmyOutcome
   defender: ArmyOutcome
+  rounds: BattleRoundSummary[]
+  preCombat?: PreCombatSummary
   aggregates: {
     attacker: { inf: number; cav: number; total: number }
     defender: {
@@ -127,6 +166,8 @@ export interface BattleReport {
     attackerBonuses: number
     defenderBonuses: number
     raidFactor: number
+    paladinAttack: number
+    paladinDefense: number
   }
   luck: { attacker: number; defender: number; seed: string; range: number }
   configVersion?: string
@@ -238,6 +279,221 @@ function productOfModifiers(mods: BonusModifier[] | undefined): number {
   return mods.reduce((acc, mod) => acc * mod.multiplier, 1)
 }
 
+interface RuntimeStack {
+  unit: UnitStackInput
+  attackPerUnit: number
+  defInfPerUnit: number
+  defCavPerUnit: number
+  role: UnitRole
+  count: number
+  outcome: UnitOutcome
+}
+
+interface RuntimeWeights {
+  wInf: number
+  wCav: number
+  composition: "infantry" | "cavalry" | "mixed"
+}
+
+interface CasualtyResult {
+  totalLost: number
+}
+
+interface RamPreCombatResult {
+  attempts: number
+  drop: number
+  wallBefore: number
+  wallAfter: number
+}
+
+function initializeRuntimeArmy(army: ArmyInput, config: CombatConfig): RuntimeStack[] {
+  return army.stacks
+    .filter((stack) => stack.count > 0)
+    .map((stack) => {
+      const attackMultiplier = smithyMultiplier(stack.smithyAttackLevel ?? 0, config.smithy.attack_pct_per_level)
+      const defenseMultiplier = smithyMultiplier(stack.smithyDefenseLevel ?? 0, config.smithy.defense_pct_per_level)
+      return {
+        unit: stack,
+        attackPerUnit: stack.attack * attackMultiplier,
+        defInfPerUnit: stack.defInf * defenseMultiplier,
+        defCavPerUnit: stack.defCav * defenseMultiplier,
+        role: stack.role,
+        count: stack.count,
+        outcome: {
+          unitId: stack.unitId,
+          role: stack.role,
+          initial: stack.count,
+          casualties: 0,
+          survivors: stack.count,
+        },
+      }
+    })
+}
+
+function totalUnits(stacks: RuntimeStack[]): number {
+  return stacks.reduce((sum, stack) => sum + stack.count, 0)
+}
+
+function computeRuntimeWeights(stacks: RuntimeStack[]): RuntimeWeights {
+  let infPower = 0
+  let cavPower = 0
+  for (const stack of stacks) {
+    if (stack.count <= 0) continue
+    const contribution = stack.count * stack.attackPerUnit
+    if (stack.role === "cav") {
+      cavPower += contribution
+    } else if (stack.role === "inf") {
+      infPower += contribution
+    } else {
+      infPower += contribution / 2
+      cavPower += contribution / 2
+    }
+  }
+  const total = infPower + cavPower
+  let wInf = 0.5
+  let wCav = 0.5
+  if (total > 0) {
+    wInf = infPower / total
+    wCav = cavPower / total
+  }
+  let composition: "infantry" | "cavalry" | "mixed" = "mixed"
+  if (wInf >= 0.6) {
+    composition = "infantry"
+  } else if (wCav >= 0.6) {
+    composition = "cavalry"
+  }
+  return { wInf, wCav, composition }
+}
+
+function computeRuntimeAttackPower(stacks: RuntimeStack[]): number {
+  return stacks.reduce((sum, stack) => sum + stack.count * stack.attackPerUnit, 0)
+}
+
+function computeRuntimeDefensePower(stacks: RuntimeStack[], weights: { wInf: number; wCav: number }): number {
+  return stacks.reduce((sum, stack) => {
+    const perUnit = stack.defInfPerUnit * weights.wInf + stack.defCavPerUnit * weights.wCav
+    return sum + stack.count * perUnit
+  }, 0)
+}
+
+function applyCasualtyRate(stacks: RuntimeStack[], lossRate: number, rng: Xorshift128Plus): CasualtyResult {
+  const total = totalUnits(stacks)
+  if (total <= 0 || lossRate <= 0) {
+    return { totalLost: 0 }
+  }
+  const clampedRate = clamp(lossRate, 0, 1)
+  const targetLosses = clamp(Math.round(total * clampedRate), 0, total)
+  if (targetLosses <= 0) return { totalLost: 0 }
+
+  const allocations = stacks.map((stack) => {
+    const share = stack.count > 0 ? (stack.count / total) * targetLosses : 0
+    const baseLoss = Math.min(stack.count, Math.floor(share))
+    return {
+      stack,
+      baseLoss,
+      fraction: share - Math.floor(share),
+    }
+  })
+
+  let allocated = allocations.reduce((sum, entry) => sum + entry.baseLoss, 0)
+  let remaining = targetLosses - allocated
+  while (remaining > 0) {
+    const candidates = allocations
+      .filter((entry) => entry.stack.count - entry.baseLoss > 0)
+      .sort((a, b) => {
+        if (b.fraction !== a.fraction) return b.fraction - a.fraction
+        return rng.next() - 0.5
+      })
+    if (candidates.length === 0) break
+    for (const entry of candidates) {
+      if (remaining <= 0) break
+      if (entry.stack.count - entry.baseLoss <= 0) continue
+      entry.baseLoss += 1
+      remaining -= 1
+    }
+  }
+
+  let totalLost = 0
+  for (const entry of allocations) {
+    const losses = Math.min(entry.stack.count, entry.baseLoss)
+    if (losses <= 0) continue
+    entry.stack.count -= losses
+    entry.stack.outcome.casualties += losses
+    entry.stack.outcome.survivors = entry.stack.count
+    totalLost += losses
+  }
+
+  return { totalLost }
+}
+
+function summarizeRuntimeArmy(stacks: RuntimeStack[], label: string): ArmyOutcome {
+  const units = stacks.map((stack) => ({ ...stack.outcome }))
+  const totalInitial = units.reduce((sum, unit) => sum + unit.initial, 0)
+  const totalCasualties = units.reduce((sum, unit) => sum + unit.casualties, 0)
+  const totalSurvivors = units.reduce((sum, unit) => sum + unit.survivors, 0)
+  return {
+    label,
+    totalInitial,
+    totalCasualties,
+    totalSurvivors,
+    units,
+  }
+}
+
+function detectPaladinPresence(army: ArmyInput): boolean {
+  return army.stacks.some((stack) => {
+    if (stack.count <= 0) return false
+    const candidate = (stack.unitType ?? stack.unitId ?? "").toLowerCase()
+    return candidate.includes("paladin")
+  })
+}
+
+function resolvePaladinMultipliers(
+  army: ArmyInput,
+  config: CombatConfig,
+  envBonus?: { attack?: number; defense?: number },
+): { attack: number; defense: number } {
+  const hasPaladin = detectPaladinPresence(army)
+  const attackBonus = envBonus?.attack ?? (hasPaladin ? config.paladin?.attack_bonus ?? 0 : 0)
+  const defenseBonus = envBonus?.defense ?? (hasPaladin ? config.paladin?.defense_bonus ?? 0 : 0)
+  return {
+    attack: attackBonus ? 1 + attackBonus : 1,
+    defense: defenseBonus ? 1 + defenseBonus : 1,
+  }
+}
+
+function processPreCombatRams(
+  stacks: RuntimeStack[],
+  wallLevel: number,
+  rng: Xorshift128Plus,
+): RamPreCombatResult {
+  if (wallLevel <= 0) {
+    return { attempts: 0, drop: 0, wallBefore: 0, wallAfter: 0 }
+  }
+  let drop = 0
+  let attempts = 0
+  const targetDrops = wallLevel
+  for (const stack of stacks) {
+    if (stack.role !== "ram" || stack.count <= 0) continue
+    for (let i = 0; i < stack.count; i += 1) {
+      if (drop >= targetDrops) break
+      attempts += 1
+      if (rng.next() < 0.02) {
+        drop += 1
+        if (drop >= targetDrops) break
+      }
+    }
+    if (drop >= targetDrops) break
+  }
+  const wallAfter = Math.max(0, wallLevel - drop)
+  return {
+    attempts,
+    drop,
+    wallBefore: wallLevel,
+    wallAfter,
+  }
+}
+
 class Xorshift128Plus {
   private state0: bigint
   private state1: bigint
@@ -322,181 +578,144 @@ function drawLuck(range: number, rng: Xorshift128Plus): { attacker: number; defe
   return { attacker: swing, defender: -swing }
 }
 
-function bankersRound(value: number): number {
-  const floor = Math.floor(value)
-  const diff = value - floor
-  if (diff > 0.5) return floor + 1
-  if (diff < 0.5) return floor
-  return floor % 2 === 0 ? floor : floor + 1
-}
-
-interface RoundedLoss {
-  unit: UnitStackInput
-  rawLoss: number
-  rounded: number
-  fraction: number
-}
-
-function roundLosses(
-  army: ArmyInput,
-  lossRate: number,
-  rounding: { mode: RoundingMode; loserMin: number; winnerMin: number },
-  isLoser: boolean,
-): UnitOutcome[] {
-  const outcomes: RoundedLoss[] = []
-  let sumRaw = 0
-  for (const stack of army.stacks) {
-    if (stack.count <= 0) continue
-    const raw = stack.count * lossRate
-    const rounded = rounding.mode === "bankers" ? bankersRound(raw) : Math.round(raw)
-    outcomes.push({
-      unit: stack,
-      rawLoss: raw,
-      rounded,
-      fraction: raw - Math.floor(raw),
-    })
-    sumRaw += raw
-  }
-
-  const target = rounding.mode === "bankers" ? bankersRound(sumRaw) : Math.round(sumRaw)
-  let current = outcomes.reduce((acc, item) => acc + item.rounded, 0)
-  let diff = target - current
-
-  if (diff !== 0) {
-    const adjustOrder = outcomes
-      .slice()
-      .sort((a, b) => (diff > 0 ? b.fraction - a.fraction : a.fraction - b.fraction))
-    for (const entry of adjustOrder) {
-      if (diff === 0) break
-      const limit = entry.unit.count
-      if (diff > 0 && entry.rounded < limit) {
-        entry.rounded += 1
-        diff -= 1
-      } else if (diff < 0 && entry.rounded > 0) {
-        entry.rounded -= 1
-        diff += 1
-      }
-    }
-  }
-
-  const minLoss = isLoser ? rounding.loserMin : rounding.winnerMin
-  const unitOutcomes: UnitOutcome[] = []
-  for (const entry of outcomes) {
-    const forced = minLoss > 0 ? Math.max(entry.rounded, Math.min(entry.unit.count, Math.ceil(minLoss))) : entry.rounded
-    const casualties = Math.min(entry.unit.count, forced)
-    unitOutcomes.push({
-      unitId: entry.unit.unitId,
-      role: entry.unit.role,
-      initial: entry.unit.count,
-      casualties,
-      survivors: entry.unit.count - casualties,
-    })
-  }
-  return unitOutcomes
-}
-
-function summarizeArmy(outcomes: UnitOutcome[], label: string): ArmyOutcome {
-  const totalInitial = outcomes.reduce((sum, unit) => sum + unit.initial, 0)
-  const totalCasualties = outcomes.reduce((sum, unit) => sum + unit.casualties, 0)
-  return {
-    label,
-    totalInitial,
-    totalCasualties,
-    totalSurvivors: totalInitial - totalCasualties,
-    units: outcomes,
-  }
-}
-
 export function resolveBattle(input: ResolveBattleInput): BattleReport {
   const config = mergeConfig(DEFAULT_CONFIG, input.configOverrides)
   const { attacker, defender, environment } = input
   const mission = environment.mission
 
-  const attackAgg = aggregateAttack(attacker, config)
-  const weights = computeWeights(attackAgg)
-  const defenseAgg = aggregateDefense(defender, weights, config)
+  const attackerRuntime = initializeRuntimeArmy(attacker, config)
+  const defenderRuntime = initializeRuntimeArmy(defender, config)
 
-  const wallMult = wallMultiplier(environment.wallType, environment.wallLevel, config)
-  // Delegate morale calculations to the shared helper so other systems can reuse it.
+  const attackAgg = aggregateAttack(attacker, config)
+  const initialWeights = computeWeights(attackAgg)
+  const defenseAgg = aggregateDefense(defender, initialWeights, config)
+
   const moraleMult = calculateMoraleMultiplier(environment, config)
   const nightMult = config.night.enabled && environment.nightActive ? config.night.def_mult : 1
   const attackBonus = productOfModifiers(environment.attackerModifiers)
   const defenseBonus = productOfModifiers(environment.defenderModifiers)
-
-  const attackBase = attackAgg.total
-  const attackAfterBonuses = attackBase * attackBonus
-  const attackAfterMorale = attackAfterBonuses * moraleMult
-  const defenseAfterWall = defenseAgg.weighted * wallMult
-  const defenseAfterNight = defenseAfterWall * nightMult
-  const defenseFinal = defenseAfterNight * defenseBonus
+  const paladinAttack = resolvePaladinMultipliers(attacker, config, environment.paladinBonuses?.attacker)
+  const paladinDefense = resolvePaladinMultipliers(defender, config, environment.paladinBonuses?.defender)
 
   const rngSeed = deriveSeed(environment.luck, environment.seed, environment.seedComponents)
   const rng = new Xorshift128Plus(rngSeed)
   const luckRange = environment.luck?.range ?? config.luck.range
   const luck = drawLuck(luckRange, rng)
+  const attackerLuckMult = 1 + luck.attacker
+  const defenderLuckMult = 1 + luck.defender
 
-  const attackerStrength = attackAfterMorale * (1 + luck.attacker)
-  const defenderStrength = defenseFinal * (1 + luck.defender)
-
-  let attackerLossRate = 0
-  let defenderLossRate = 0
-  let ratio = 0
-
-  if (attackerStrength <= 0 && defenderStrength <= 0) {
-    attackerLossRate = 1
-    defenderLossRate = 0
-    ratio = 0
-  } else if (attackerStrength <= 0) {
-    attackerLossRate = 1
-    defenderLossRate = 0
-    ratio = 0
-  } else if (defenderStrength <= 0) {
-    attackerLossRate = 0
-    defenderLossRate = 1
-    ratio = Number.POSITIVE_INFINITY
-  } else {
-    ratio = attackerStrength / defenderStrength
-    const k = config.curvature_k
-    if (ratio > 1) {
-      defenderLossRate = 1
-      attackerLossRate = Math.min(1, Math.pow(defenderStrength / attackerStrength, k))
-    } else {
-      attackerLossRate = 1
-      defenderLossRate = Math.min(1, Math.pow(attackerStrength / defenderStrength, k))
-    }
-  }
+  const startingWallLevel = Math.max(0, environment.wallLevel ?? 0)
+  const ramResult = processPreCombatRams(attackerRuntime, startingWallLevel, rng)
+  const effectiveWallLevel = ramResult.wallAfter
+  const wallMult = wallMultiplier(environment.wallType, effectiveWallLevel, config)
 
   const raidFactor = mission === "raid" ? config.raid_lethality_factor : 1
-  attackerLossRate = clamp(attackerLossRate * raidFactor, 0, 1)
-  defenderLossRate = clamp(defenderLossRate * raidFactor, 0, 1)
-
-  const rounding = {
-    mode: config.rounding.mode,
-    loserMin: config.rounding.loser_min_loss,
-    winnerMin: config.rounding.winner_min_loss,
+  const roundsPolicy = {
+    max: config.rounds?.max_rounds ?? 12,
+    base: config.rounds?.base_loss_rate ?? 0.35,
+    min: config.rounds?.min_loss_rate ?? 0.01,
   }
 
-  const defenderAlive = defenderStrength > 0
-  const attackerAlive = attackerStrength > 0
-  const attackerIsLoser = defenderAlive ? ratio <= 1 : !attackerAlive
-  const defenderIsLoser = defenderStrength <= 0 ? attackerAlive : ratio > 1
+  const rounds: BattleRoundSummary[] = []
 
-  const attackerOutcomes = roundLosses(attacker, attackerLossRate, rounding, attackerIsLoser)
+  let round = 1
+  while (round <= roundsPolicy.max && totalUnits(attackerRuntime) > 0 && totalUnits(defenderRuntime) > 0) {
+    const weights = computeRuntimeWeights(attackerRuntime)
+    const attackerBaseStrength = computeRuntimeAttackPower(attackerRuntime)
+    const defenderBaseStrength = computeRuntimeDefensePower(defenderRuntime, weights)
+    const attackerStrength =
+      attackerBaseStrength * attackBonus * paladinAttack.attack * moraleMult * attackerLuckMult
+    const defenderStrength =
+      defenderBaseStrength * defenseBonus * paladinDefense.defense * wallMult * nightMult * defenderLuckMult
 
-  const defenderOutcomes = roundLosses(defender, defenderLossRate, rounding, defenderIsLoser)
+    if (attackerStrength <= 0 && defenderStrength <= 0) {
+      break
+    }
 
-  const attackerWon = defenderStrength <= 0 ? attackerStrength > 0 : ratio > 1
+    const attackerStronger = attackerStrength >= defenderStrength
+    const strongerStrength = attackerStronger ? attackerStrength : defenderStrength
+    const weakerStrength = attackerStronger ? Math.max(defenderStrength, 1e-6) : Math.max(attackerStrength, 1e-6)
+    const ratioForLosses = Math.max(strongerStrength / weakerStrength, 1)
+    const shapedRatio = Math.pow(ratioForLosses, config.curvature_k ?? 1)
+
+    let weakerLossRate = clamp(roundsPolicy.base * shapedRatio, roundsPolicy.min, 1)
+    let strongerLossRate = clamp(roundsPolicy.base / shapedRatio, roundsPolicy.min, 1)
+
+    const weakerVariance = 1 + (rng.next() * 0.2 - 0.1)
+    const strongerVariance = 1 + (rng.next() * 0.2 - 0.1)
+
+    weakerLossRate = clamp(weakerLossRate * weakerVariance * raidFactor, roundsPolicy.min, 1)
+    strongerLossRate = clamp(strongerLossRate * strongerVariance * raidFactor, roundsPolicy.min, 1)
+
+    const attackerLossRate = attackerStronger ? strongerLossRate : weakerLossRate
+    const defenderLossRate = attackerStronger ? weakerLossRate : strongerLossRate
+
+    const attackerCasualties = applyCasualtyRate(attackerRuntime, attackerLossRate, rng)
+    const defenderCasualties = applyCasualtyRate(defenderRuntime, defenderLossRate, rng)
+
+    rounds.push({
+      round,
+      attackerStrength,
+      defenderStrength,
+      attackerLossRate,
+      defenderLossRate,
+      attackerCasualties: attackerCasualties.totalLost,
+      defenderCasualties: defenderCasualties.totalLost,
+      composition: weights.composition,
+    })
+
+    round += 1
+  }
+
+  const attackerOutcome = summarizeRuntimeArmy(attackerRuntime, attacker.label ?? "attacker")
+  const defenderOutcome = summarizeRuntimeArmy(defenderRuntime, defender.label ?? "defender")
+
+  const attackerAlive = attackerOutcome.totalSurvivors > 0
+  const defenderAlive = defenderOutcome.totalSurvivors > 0
+  let outcome: "attacker_victory" | "defender_victory" | "mutual_destruction" = "defender_victory"
+  if (attackerAlive && !defenderAlive) {
+    outcome = "attacker_victory"
+  } else if (!attackerAlive && defenderAlive) {
+    outcome = "defender_victory"
+  } else if (!attackerAlive && !defenderAlive) {
+    outcome = "mutual_destruction"
+  }
+  const attackerWon = outcome === "attacker_victory"
+
+  const attackBase = attackAgg.total
+  const attackAfterBonuses = attackBase * attackBonus * paladinAttack.attack
+  const attackAfterMorale = attackAfterBonuses * moraleMult
+  const attackFinal = attackAfterMorale * attackerLuckMult
+
+  const defenseWeighted = defenseAgg.weighted
+  const defenseAfterWall = defenseWeighted * wallMult
+  const defenseAfterNight = defenseAfterWall * nightMult
+  const defenseAfterBonuses = defenseAfterNight * defenseBonus * paladinDefense.defense
+  const defenseFinal = defenseAfterBonuses * defenderLuckMult
+  const ratio = defenseFinal <= 0 ? Number.POSITIVE_INFINITY : attackFinal / defenseFinal
 
   return {
     attackerWon,
+    outcome,
     mission,
     ratio,
     lossRates: {
-      attacker: attackerLossRate,
-      defender: defenderLossRate,
+      attacker: attackerOutcome.totalInitial === 0 ? 0 : attackerOutcome.totalCasualties / attackerOutcome.totalInitial,
+      defender: defenderOutcome.totalInitial === 0 ? 0 : defenderOutcome.totalCasualties / defenderOutcome.totalInitial,
     },
-    attacker: summarizeArmy(attackerOutcomes, attacker.label ?? "attacker"),
-    defender: summarizeArmy(defenderOutcomes, defender.label ?? "defender"),
+    attacker: attackerOutcome,
+    defender: defenderOutcome,
+    rounds,
+    preCombat: {
+      wallBefore: ramResult.wallBefore,
+      wallAfter: ramResult.wallAfter,
+      ramAttempts: ramResult.attempts,
+      wallDrop: ramResult.drop,
+      wallMultiplier: wallMult,
+      moraleMultiplier: moraleMult,
+      paladinAttackMultiplier: paladinAttack.attack,
+      paladinDefenseMultiplier: paladinDefense.defense,
+    },
     aggregates: {
       attacker: attackAgg,
       defender: defenseAgg,
@@ -505,14 +724,14 @@ export function resolveBattle(input: ResolveBattleInput): BattleReport {
       base: attackBase,
       postBonuses: attackAfterBonuses,
       postMorale: attackAfterMorale,
-      final: attackerStrength,
+      final: attackFinal,
     },
     defenseBreakdown: {
       weighted: defenseAgg.weighted,
       postWall: defenseAfterWall,
       postNight: defenseAfterNight,
-      postBonuses: defenseFinal,
-      final: defenderStrength,
+      postBonuses: defenseAfterBonuses,
+      final: defenseFinal,
     },
     multipliers: {
       wall: wallMult,
@@ -521,6 +740,8 @@ export function resolveBattle(input: ResolveBattleInput): BattleReport {
       attackerBonuses: attackBonus,
       defenderBonuses: defenseBonus,
       raidFactor,
+      paladinAttack: paladinAttack.attack,
+      paladinDefense: paladinDefense.defense,
     },
     luck: {
       attacker: luck.attacker,

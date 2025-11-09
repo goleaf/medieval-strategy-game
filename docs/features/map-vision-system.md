@@ -26,7 +26,7 @@
 **Diagram description**: Imagine concentric layers—central Tile DB feeding both Map Service and Vision Aggregator; Recon Service writes burst/trail events into Vision Aggregator and Contact Log; Client layers subscribe via GraphQL/REST endpoints for map tiles, overlays, bookmarks, and contacts. Alliance sharing is modeled as a union operator executed inside the Vision Aggregator before responses leave the backend.
 
 ### 3. Coordinate Grammar & World Topology (§1)
-1. **Grid & Axes**: Square discrete grid. Default extent −400…400 on both axes (801×801 tiles). Adopt **+x east, +y south**; clarify in world metadata to avoid confusion. Optional: support +y north but must remain consistent per world.
+1. **Grid & Axes**: Square discrete grid. Default extent `000…999` on both axes (1000×1000 tiles) with +x east and +y south; clarify in world metadata to avoid confusion. Optional: support +y north but must remain consistent per world. Continents are fixed 100×100 blocks labeled `K00…K99`, where `Kxy` maps to columns (x) and rows (y); e.g., `K45` spans `400|500`–`499|599`.
 2. **Notation**: Canonical tile `(x|y)` (no spaces). Ranges `(-50..50 | -50..50)` for queries. Continents/blocks (e.g., `K55`) define K×K macro tiles (default 100×100) for diplomatic planning.
 3. **Tile Types & Tags**: Empty terrains, oases (with resource bonuses + owner), villages (owner, tribe, population, wall, capital flag, hero presence), specials (artifacts, World Wonders, grey-zone). Terrain cosmetics optional but reserved for future modifiers (§5.3, §7.3).
 4. **Distance & Travel**: Euclidean distance in tiles; travel time `distance / speed / world_speed`. Straight-line paths; implement route sampling for contact detection. Terrain penalties optional; stored as modifiers on tile edges.
@@ -118,7 +118,7 @@
 4. Stealth mission causing partial contacts when signature rolls fail.
 5. Recon vs counter-scout path retained but burst denied when defeated.
 6. Alliance sharing disabled for a member; verify personal view only.
-7. Toroidal world patrol from +400 to −400 wraps seamlessly.
+7. Toroidal world patrol from `999|250` to `000|250` wraps seamlessly.
 8. Truce world allows recon lighting/contacts while combat resolution paused.
 
 ### 16. Player-Facing Clarity (§15)

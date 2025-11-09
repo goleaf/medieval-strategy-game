@@ -15,7 +15,7 @@ type IntervalSchedule = {
   everyMinutes: number
 }
 
-type TradeRouteSchedule = FixedTimesSchedule | IntervalSchedule
+export type TradeRouteSchedule = FixedTimesSchedule | IntervalSchedule
 
 type CreateTradeRouteParams = {
   sourceVillageId: string
@@ -32,6 +32,7 @@ type CreateTradeRouteParams = {
   priority?: number
   startsAt?: Date | null
   endsAt?: Date | null
+  createdByPlayerId?: string | null
 }
 
 export class TradeRouteService {
@@ -51,6 +52,7 @@ export class TradeRouteService {
         priority: params.priority ?? 0,
         startsAt: params.startsAt ?? null,
         endsAt: params.endsAt ?? null,
+        createdByPlayerId: params.createdByPlayerId ?? null,
       },
     })
 

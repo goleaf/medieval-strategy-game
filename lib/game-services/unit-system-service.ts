@@ -1,10 +1,13 @@
 import { prisma } from "@/lib/db"
-import { BuildingType, TrainingBuilding, TrainingStatus } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
+import { BuildingType, TrainingBuilding, TrainingStatus, StorageLedgerReason } from "@prisma/client"
 
 import { getTroopSystemConfig, requireUnitDefinition } from "@/lib/troop-system/config"
 import { enqueueTraining, type TrainingQueueItem as TrainingPlanItem } from "@/lib/troop-system/training"
 import type { UnitCosts, UnitDefinition, TroopSystemConfig } from "@/lib/troop-system/types"
 import { adjustHomeUnitCount } from "@/lib/game-services/unit-ledger"
+import { StorageService } from "@/lib/game-services/storage-service"
+import { BuildingService } from "@/lib/game-services/building-service"
 
 interface TrainUnitsInput {
   villageId: string
@@ -57,7 +60,39 @@ function convertCostToVillageResources(cost: UnitCosts) {
     wood: cost.wood,
     stone: cost.clay,
     iron: cost.iron,
+    gold: 0,
     food: cost.crop,
+  }
+}
+
+type BuildingSnapshot = { type: BuildingType; level: number }
+type QueueVillageContext = {
+  id: string
+  buildings: BuildingSnapshot[]
+}
+
+type TrainingQueueRow = {
+  id: string
+  villageId: string
+  building: TrainingBuilding
+  status: TrainingStatus
+  startAt: Date
+  finishAt: Date
+  totalDurationSeconds: number
+  populationCost: number
+  costWood: number
+  costClay: number
+  costIron: number
+  costCrop: number
+}
+
+function bundleFromJobCosts(job: Pick<TrainingQueueRow, "costWood" | "costClay" | "costIron" | "costCrop">) {
+  return {
+    wood: job.costWood,
+    stone: job.costClay,
+    iron: job.costIron,
+    food: job.costCrop,
+    gold: 0,
   }
 }
 
@@ -91,6 +126,7 @@ export class UnitSystemService {
         attack: definition.attack,
         defInf: definition.defInf,
         defCav: definition.defCav,
+        defArch: definition.defArch ?? 0,
         speedTilesPerHour: definition.speedTilesPerHour,
         carry: definition.carry,
         upkeepCropPerHour: definition.upkeepCropPerHour,
@@ -109,6 +145,7 @@ export class UnitSystemService {
         attack: definition.attack,
         defInf: definition.defInf,
         defCav: definition.defCav,
+        defArch: definition.defArch ?? 0,
         speedTilesPerHour: definition.speedTilesPerHour,
         carry: definition.carry,
         upkeepCropPerHour: definition.upkeepCropPerHour,
@@ -122,6 +159,161 @@ export class UnitSystemService {
         researchReqJson: definition.researchReq,
       },
     })
+  }
+
+  private static async loadVillageContext(
+    tx: Prisma.TransactionClient,
+    village: QueueVillageContext | string,
+  ): Promise<QueueVillageContext> {
+    if (typeof village !== "string") {
+      return village
+    }
+    const buildings = await tx.building.findMany({
+      where: { villageId: village },
+      select: { type: true, level: true },
+    })
+    return { id: village, buildings }
+  }
+
+  private static async hasPopulationCapacity(
+    tx: Prisma.TransactionClient,
+    village: QueueVillageContext,
+    populationCost: number,
+  ): Promise<boolean> {
+    const limit = BuildingService.calculatePopulationLimit(village.buildings)
+    const unitStacks = await tx.unitStack.findMany({
+      where: { villageId: village.id },
+      select: { count: true, unitType: { select: { popCost: true } } },
+    })
+    const usedPopulation = unitStacks.reduce((sum, stack) => sum + stack.count * stack.unitType.popCost, 0)
+    const reservedPopulation = await tx.trainingQueueItem.aggregate({
+      where: { villageId: village.id, status: TrainingStatus.TRAINING },
+      _sum: { populationCost: true },
+    })
+    const nextTotal = usedPopulation + (reservedPopulation._sum.populationCost ?? 0) + populationCost
+    return nextTotal <= limit
+  }
+
+  private static async normalizeWaitingQueue(
+    tx: Prisma.TransactionClient,
+    villageId: string,
+    building: TrainingBuilding,
+    referenceTime: Date = new Date(),
+  ): Promise<void> {
+    const activeJob = await tx.trainingQueueItem.findFirst({
+      where: { villageId, building, status: TrainingStatus.TRAINING },
+      orderBy: { startAt: "asc" },
+      select: { finishAt: true },
+    })
+
+    let cursor = activeJob?.finishAt ?? referenceTime
+    if (cursor.getTime() < referenceTime.getTime()) {
+      cursor = referenceTime
+    }
+
+    const waitingJobs = await tx.trainingQueueItem.findMany({
+      where: { villageId, building, status: TrainingStatus.WAITING },
+      orderBy: { startAt: "asc" },
+      select: { id: true, totalDurationSeconds: true, startAt: true, finishAt: true },
+    })
+
+    for (const job of waitingJobs) {
+      const startAt = cursor
+      const finishAt = new Date(startAt.getTime() + job.totalDurationSeconds * 1000)
+      if (job.startAt.getTime() !== startAt.getTime() || job.finishAt.getTime() !== finishAt.getTime()) {
+        await tx.trainingQueueItem.update({
+          where: { id: job.id },
+          data: { startAt, finishAt },
+        })
+      }
+      cursor = finishAt
+    }
+  }
+
+  private static async startTrainingJob(
+    tx: Prisma.TransactionClient,
+    job: TrainingQueueRow,
+    referenceTime: Date,
+    village: QueueVillageContext,
+  ): Promise<Date | null> {
+    const effectiveStart = referenceTime.getTime() > job.startAt.getTime() ? referenceTime : job.startAt
+    const finishAt = new Date(effectiveStart.getTime() + job.totalDurationSeconds * 1000)
+
+    const hasCapacity = await this.hasPopulationCapacity(tx, village, job.populationCost)
+    if (!hasCapacity) {
+      return null
+    }
+
+    try {
+      await StorageService.deductResources(job.villageId, bundleFromJobCosts(job), StorageLedgerReason.TRAINING_COST, {
+        client: tx,
+      })
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("lacks")) {
+        return null
+      }
+      throw error
+    }
+
+    await tx.trainingQueueItem.update({
+      where: { id: job.id },
+      data: {
+        status: TrainingStatus.TRAINING,
+        startAt: effectiveStart,
+        finishAt,
+        updatedAt: referenceTime,
+      },
+    })
+
+    return finishAt
+  }
+
+  private static async tryStartQueuedTraining(
+    tx: Prisma.TransactionClient,
+    village: QueueVillageContext | string,
+    building: TrainingBuilding,
+    referenceTime: Date = new Date(),
+  ): Promise<boolean> {
+    const context = await this.loadVillageContext(tx, village)
+    const activeJob = await tx.trainingQueueItem.findFirst({
+      where: { villageId: context.id, building, status: TrainingStatus.TRAINING },
+      select: { id: true },
+    })
+
+    if (activeJob) {
+      return false
+    }
+
+    const nextJob = await tx.trainingQueueItem.findFirst({
+      where: { villageId: context.id, building, status: TrainingStatus.WAITING },
+      orderBy: { startAt: "asc" },
+      select: {
+        id: true,
+        villageId: true,
+        building: true,
+        status: true,
+        startAt: true,
+        finishAt: true,
+        totalDurationSeconds: true,
+        populationCost: true,
+        costWood: true,
+        costClay: true,
+        costIron: true,
+        costCrop: true,
+      },
+    })
+
+    if (!nextJob || nextJob.startAt > referenceTime) {
+      return false
+    }
+
+    const finishAt = await this.startTrainingJob(tx, nextJob as TrainingQueueRow, referenceTime, context)
+    if (!finishAt) {
+      return false
+    }
+
+    await this.normalizeWaitingQueue(tx, context.id, building, finishAt)
+    return true
   }
 
   private static assertBuildingRequirements(
@@ -153,6 +345,13 @@ export class UnitSystemService {
       const village = await tx.village.findUnique({
         where: { id: input.villageId },
         include: {
+          player: {
+            select: {
+              gameWorld: {
+                select: { speed: true },
+              },
+            },
+          },
           buildings: true,
           trainingQueueItems: {
             where: {
@@ -184,33 +383,18 @@ export class UnitSystemService {
         throw new Error(`${trainingStructureType} required to train ${input.unitTypeId}`)
       }
 
-      const { order, totalCost } = enqueueTraining({
+      const serverSpeed = village.player?.gameWorld?.speed ?? 1
+
+      const { order, totalCost, unitDurationSeconds, totalDurationSeconds } = enqueueTraining({
         unitType: input.unitTypeId,
         count: input.count,
         buildingType: TRAINING_BUILDING_TO_KEY[trainingBuilding],
         buildingLevel: trainingStructure.level,
         existingQueue,
+        serverSpeedOverride: serverSpeed,
       })
 
-      const resourceCost = convertCostToVillageResources(totalCost)
-      if (
-        village.wood < resourceCost.wood ||
-        village.stone < resourceCost.stone ||
-        village.iron < resourceCost.iron ||
-        village.food < resourceCost.food
-      ) {
-        throw new Error("Insufficient resources for training")
-      }
-
-      await tx.village.update({
-        where: { id: village.id },
-        data: {
-          wood: village.wood - resourceCost.wood,
-          stone: village.stone - resourceCost.stone,
-          iron: village.iron - resourceCost.iron,
-          food: village.food - resourceCost.food,
-        },
-      })
+      const populationCost = definition.popCost * input.count
 
       const createdQueueItem = await tx.trainingQueueItem.create({
         data: {
@@ -220,10 +404,21 @@ export class UnitSystemService {
           count: order.count,
           startAt: order.startAt,
           finishAt: order.finishAt,
+          buildingLevel: trainingStructure.level,
+          unitDurationSeconds,
+          totalDurationSeconds,
+          costWood: totalCost.wood,
+          costClay: totalCost.clay,
+          costIron: totalCost.iron,
+          costCrop: totalCost.crop,
+          populationCost,
+          worldSpeedApplied: serverSpeed,
           status: TrainingStatus.WAITING,
         },
         include: { unitType: true },
       })
+
+      await this.tryStartQueuedTraining(tx, { id: village.id, buildings: village.buildings }, trainingBuilding, new Date())
 
       return createdQueueItem
     })
@@ -231,10 +426,105 @@ export class UnitSystemService {
     return queueItem
   }
 
+  static async startDueTraining(referenceTime: Date = new Date()): Promise<number> {
+    const dueItems = await prisma.trainingQueueItem.findMany({
+      where: {
+        status: TrainingStatus.WAITING,
+        startAt: { lte: referenceTime },
+      },
+      select: {
+        villageId: true,
+        building: true,
+      },
+    })
+
+    const processedKeys = new Set<string>()
+    let started = 0
+
+    for (const item of dueItems) {
+      const key = `${item.villageId}:${item.building}`
+      if (processedKeys.has(key)) {
+        continue
+      }
+      processedKeys.add(key)
+
+      const didStart = await prisma.$transaction((tx) =>
+        this.tryStartQueuedTraining(tx, item.villageId, item.building, referenceTime),
+      )
+      if (didStart) {
+        started += 1
+      }
+    }
+
+    return started
+  }
+
+  static async cancelTrainingJob(queueItemId: string) {
+    const now = new Date()
+
+    return prisma.$transaction(async (tx) => {
+      const job = await tx.trainingQueueItem.findUnique({
+        where: { id: queueItemId },
+      })
+
+      if (!job) {
+        throw new Error("Training queue item not found")
+      }
+
+      if (job.status === TrainingStatus.DONE || job.status === TrainingStatus.CANCELLED) {
+        throw new Error("Training queue item already resolved")
+      }
+
+      if (job.status === TrainingStatus.WAITING) {
+        await tx.trainingQueueItem.update({
+          where: { id: job.id },
+          data: { status: TrainingStatus.CANCELLED, cancelledAt: now, updatedAt: now },
+        })
+        await this.normalizeWaitingQueue(tx, job.villageId, job.building, now)
+        await this.tryStartQueuedTraining(tx, job.villageId, job.building, now)
+        return { refundedResources: null, queueItemId, villageId: job.villageId, unitTypeId: job.unitTypeId }
+      }
+
+      if (!job.startAt || !job.finishAt) {
+        throw new Error("Training job missing timing metadata")
+      }
+
+      const totalMs = job.finishAt.getTime() - job.startAt.getTime()
+      const elapsedMs = now.getTime() - job.startAt.getTime()
+      const progress = totalMs <= 0 ? 1 : elapsedMs / totalMs
+
+      if (progress > 0.1) {
+        throw new Error("Training can only be cancelled within the first 10% of progress")
+      }
+
+      const refundBundle = {
+        wood: Math.floor(job.costWood * 0.9),
+        stone: Math.floor(job.costClay * 0.9),
+        iron: Math.floor(job.costIron * 0.9),
+        food: Math.floor(job.costCrop * 0.9),
+        gold: 0,
+      }
+
+      await StorageService.addResources(job.villageId, refundBundle, StorageLedgerReason.TRAINING_REFUND, {
+        client: tx,
+      })
+
+      await tx.trainingQueueItem.update({
+        where: { id: job.id },
+        data: { status: TrainingStatus.CANCELLED, cancelledAt: now, updatedAt: now },
+      })
+
+      await this.normalizeWaitingQueue(tx, job.villageId, job.building, now)
+      await this.tryStartQueuedTraining(tx, job.villageId, job.building, now)
+
+      return { refundedResources: refundBundle, queueItemId, villageId: job.villageId, unitTypeId: job.unitTypeId }
+    })
+  }
+
   static async completeFinishedTraining(referenceTime: Date = new Date()): Promise<number> {
     const dueItems = await prisma.trainingQueueItem.findMany({
       where: {
-        status: { in: [TrainingStatus.WAITING, TrainingStatus.TRAINING] },
+        status: TrainingStatus.TRAINING,
         finishAt: { lte: referenceTime },
       },
       include: {
@@ -264,6 +554,8 @@ export class UnitSystemService {
           where: { id: job.id },
           data: { status: TrainingStatus.DONE, updatedAt: referenceTime },
         })
+
+        await this.tryStartQueuedTraining(tx, job.villageId, job.building, referenceTime)
       })
       processed += 1
     }

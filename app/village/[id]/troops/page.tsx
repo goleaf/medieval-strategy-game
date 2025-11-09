@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Home } from "lucide-react"
@@ -9,6 +9,9 @@ import { RallyPoint } from "@/components/game/rally-point"
 import { TextTable } from "@/components/game/text-table"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TrainingQueuePanel } from "@/components/game/training-queue-panel"
+import { useToast } from "@/components/ui/use-toast"
+import type { TrainingBuilding, TrainingStatus } from "@prisma/client"
 // Types inferred from API responses
 type VillageWithTroops = {
   id: string
@@ -16,6 +19,25 @@ type VillageWithTroops = {
   isCapital: boolean
   troopEvasionEnabled: boolean
   troops: Array<{ id: string; type: string; quantity: number; attack: number; defense: number; speed: number }>
+  trainingQueueItems: TrainingQueueItem[]
+}
+
+function formatUnitLabel(job: TrainingQueueItem): string {
+  if (job.unitType?.displayName) {
+    return job.unitType.displayName
+  }
+  return job.unitTypeId
+}
+
+type TrainingQueueItem = {
+  id: string
+  building: TrainingBuilding
+  count: number
+  startAt: string
+  finishAt: string
+  status: TrainingStatus
+  unitTypeId: string
+  unitType: { id: string; displayName?: string | null } | null
 }
 
 export default function TroopsPage() {
@@ -25,6 +47,9 @@ export default function TroopsPage() {
   const [playerTribe, setPlayerTribe] = useState<string>("TEUTONS")
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [hasGoldClub, setHasGoldClub] = useState(false)
+  const previousQueueRef = useRef<Map<string, TrainingQueueItem>>(new Map())
+  const cancelledJobIdsRef = useRef<Set<string>>(new Set())
+  const { toast } = useToast()
 
   const fetchVillage = useCallback(async () => {
     try {
@@ -50,6 +75,9 @@ export default function TroopsPage() {
       const data = await res.json()
       if (data.success && data.data) {
         const found = data.data.find((v: any) => v.id === villageId)
+        if (found) {
+          found.trainingQueueItems = found.trainingQueueItems ?? []
+        }
         setVillage(found || null)
       }
     } catch (error) {
@@ -70,6 +98,54 @@ export default function TroopsPage() {
       }
     }
   }, [fetchVillage])
+
+  useEffect(() => {
+    if (!village?.trainingQueueItems) {
+      previousQueueRef.current = new Map()
+      return
+    }
+
+    const nextMap = new Map(village.trainingQueueItems.map((job) => [job.id, job]))
+    for (const [jobId, job] of previousQueueRef.current) {
+      if (!nextMap.has(jobId)) {
+        if (cancelledJobIdsRef.current.has(jobId)) {
+          cancelledJobIdsRef.current.delete(jobId)
+          continue
+        }
+        toast({
+          title: "Training complete",
+          description: `${job.count.toLocaleString()} ${formatUnitLabel(job)} ready for deployment.`,
+        })
+      }
+    }
+    previousQueueRef.current = nextMap
+  }, [village?.trainingQueueItems, toast])
+
+  const handleCancelTraining = useCallback(
+    async (queueItemId: string) => {
+      cancelledJobIdsRef.current.add(queueItemId)
+      try {
+        const response = await fetch(`/api/troops/training/${queueItemId}/cancel`, { method: "POST" })
+        const payload = await response.json()
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || "Failed to cancel training")
+        }
+        toast({
+          title: "Training cancelled",
+          description: "Batch removed from the queue.",
+        })
+        await fetchVillage()
+      } catch (error) {
+        cancelledJobIdsRef.current.delete(queueItemId)
+        toast({
+          title: "Unable to cancel training",
+          description: error instanceof Error ? error.message : "Unknown error",
+          variant: "destructive",
+        })
+      }
+    },
+    [fetchVillage, toast],
+  )
 
   if (!village) {
     return (
@@ -143,7 +219,12 @@ export default function TroopsPage() {
               </section>
 
               <section>
-                <h2 className="text-lg font-bold mb-2">Train Troops</h2>
+                <h2 className="text-lg font-bold mb-2">Training Queue</h2>
+                <TrainingQueuePanel queue={village.trainingQueueItems ?? []} onCancel={handleCancelTraining} />
+              </section>
+
+              <section>
+                <h2 className="text-lg font-bold mb-2">Queue New Batches</h2>
                 <TroopTrainer
                   villageId={villageId}
                   tribe={playerTribe as any}

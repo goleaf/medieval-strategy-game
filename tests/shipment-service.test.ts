@@ -7,6 +7,8 @@ const prismaModule = vi.hoisted(() => {
   const txModels = {
     shipment: {
       create: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
     },
     village: {
       findMany: vi.fn(),
@@ -34,6 +36,8 @@ const { txModels, prismaMock } = prismaModule
 describe("ShipmentService", () => {
   beforeEach(() => {
     txModels.shipment.create.mockReset()
+    txModels.shipment.findUnique.mockReset()
+    txModels.shipment.update.mockReset()
     txModels.village.findMany.mockReset()
     txModels.villageDistanceCache.findUnique.mockReset()
     txModels.villageDistanceCache.create.mockReset()
@@ -93,5 +97,40 @@ describe("ShipmentService", () => {
     expect(txModels.shipment.create).toHaveBeenCalled()
     expect(shipment.arriveAt.getTime()).toBeGreaterThan(shipment.departAt.getTime())
     expect(txModels.villageDistanceCache.create).toHaveBeenCalled()
+  })
+
+  it("cancels active shipments before arrival", async () => {
+    const now = new Date("2025-01-01T00:10:00Z")
+    vi.setSystemTime(now)
+
+    const baseShipment = {
+      id: "shipment-cancel",
+      sourceVillageId: "source",
+      targetVillageId: "target",
+      sourceVillage: { playerId: "player-1" },
+      merchantsUsed: 2,
+      departAt: new Date(now.getTime() - 5 * 60 * 1000),
+      arriveAt: new Date(now.getTime() + 5 * 60 * 1000),
+      returnAt: new Date(now.getTime() + 10 * 60 * 1000),
+      status: "EN_ROUTE" as const,
+      cancelledAt: null,
+      deliveredAt: null,
+    }
+
+    txModels.shipment.findUnique.mockResolvedValue(baseShipment)
+    txModels.shipment.update.mockImplementation(async ({ data }) => ({
+      ...baseShipment,
+      ...data,
+    }))
+
+    try {
+      const updated = await ShipmentService.cancelShipment("shipment-cancel", "player-1")
+
+      expect(txModels.shipment.update).toHaveBeenCalled()
+      expect(updated.status).toBe("CANCELLED")
+      expect(updated.returnAt.getTime()).toBe(now.getTime() + 5 * 60 * 1000)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

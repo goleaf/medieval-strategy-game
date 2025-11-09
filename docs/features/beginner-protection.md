@@ -2,29 +2,41 @@
 
 ## Overview
 
-Beginner Protection is a safety mechanism that gives new players time to learn the game and build up their villages without being attacked by other players. This feature is based on the Travian: Legends beginner protection system.
+Beginner Protection shields new accounts while they learn the game loop. The protection window now ends at the **earlier** of:
+
+- A configurable duration (3–7 days depending on world settings).
+- A configurable points threshold (default range 1,000–5,000).
+
+This lets fast learners graduate early while still preventing predatory attacks against true beginners.
 
 ## How It Works
 
-### Protection Duration
+### Protection Duration & Exit Conditions
 
-The duration of beginner protection depends on the game world's speed setting:
+| World Speed | Base Duration | Optional Extension | Point Threshold (exit as soon as reached) |
+| --- | --- | --- | --- |
+| x1 | 7 days | +3 days (once) | 5,000 points |
+| x2 | 5 days | +3 days | 4,000 points |
+| x3 | 4 days | +2 days | 3,000 points |
+| x5 | 3 days | +2 days | 2,000 points |
+| x10 | 3 days | +1 day | 1,000 points |
 
-- **x1 speed**: 5 days + 3-day extension (8 days total)
-- **x2 speed**: 3 days + 3-day extension (6 days total)
-- **x3 speed**: 3 days + 3-day extension (6 days total)
-- **x5 speed**: 2 days + 2-day extension (4 days total)
-- **x10 speed**: 1 day + 1-day extension (2 days total)
+World configs can override any of the values above per environment. Protection always ends immediately when:
+- The player exceeds the configured points threshold.
+- The player initiates an attack against a **non-protected** player (barbarian/Natar targets remain allowed).
+- The optional extension expires.
 
 ### Protection Benefits
 
-While under beginner protection, players:
+While protected, players:
 
-1. **Cannot be attacked** by other players
-2. **Cannot attack** other players (except Natars and unoccupied oases)
-3. **Cannot send resources** in marketplace trades
-4. **Limited trade acceptance**: Can only accept trades that are 1:1 or better
-5. **Safe resource receiving**: Can receive resources from unprotected players
+1. **Cannot be attacked** or noble-converted by other players (Natar/barbarian attacks still apply).
+2. **Can only attack** barbarians, Natars, and unoccupied oases. Attempting to hit a protected or non-protected player shows a warning that confirms early removal.
+3. **Cannot attack other protected players**; UI clarifies this when selecting targets.
+4. **Exit protection early** if they attack a non-protected player (explicit confirmation required).
+5. **Cannot send outgoing resources** to other players (to prevent boosting) but may accept fair offers.
+6. **Safe resource receiving**: Can receive shipments from unprotected players, subject to market ratio guardrails.
+7. **Visible status indicator** appears on profile, village header, rally point, and world map tooltip.
 
 ### Extension Option
 
@@ -50,16 +62,18 @@ model Player {
 
 Located in `lib/game-services/protection-service.ts`, this service handles:
 
-- **Initialization**: Sets protection duration based on world speed
-- **Status checking**: Determines if a player/village is protected
-- **Extension logic**: Allows one-time protection extension
-- **Time calculations**: Handles world speed-based durations
+- **Initialization**: Sets protection duration/thresholds based on world speed config.
+- **Status checking**: Determines if a player or village is protected.
+- **Extension logic**: Allows one-time protection extension.
+- **Threshold enforcement**: Ends protection when point cap breached or restricted attack initiated.
+- **Time calculations**: Handles world speed-based durations + UI countdown data.
 
 Key methods:
-- `initializeProtection(playerId)`: Sets up protection for new players
-- `isPlayerProtected(playerId)`: Checks if player has active protection
-- `extendProtection(playerId)`: Extends protection (once only)
-- `canExtendProtection(playerId)`: Checks if extension is available
+- `initializeProtection(playerId)` — Sets up protection for new players.
+- `isPlayerProtected(playerId)` — Checks if player has active protection.
+- `extendProtection(playerId)` — Extends protection (once only).
+- `canExtendProtection(playerId)` — Checks if extension is available.
+- `shouldDropProtection(playerId, targetPlayerId)` — Determines if an action should end protection early.
 
 ### API Endpoints
 
@@ -75,9 +89,9 @@ Key methods:
 #### Attack Launch API
 
 **POST** `/api/attacks/launch`
-- Validates protection rules for attackers and defenders
-- Protected players can only attack Natars and unoccupied oases
-- Protected villages cannot be attacked (except by Natars)
+- Validates protection rules for attackers and defenders.
+- Protected players can only attack barbarians/Natars/unoccupied oases; hitting a normal player forces a confirmation step and drops protection.
+- Protected villages cannot be attacked or noble-converted (except by Natars).
 
 #### Marketplace API
 
@@ -93,30 +107,30 @@ Key methods:
 
 #### ProtectionStatus Component
 
-Displays current protection status and extension options.
+Displays current protection status, point progress, and extension options.
 
 ```tsx
 <ProtectionStatus playerId={playerId} />
 ```
 
 Features:
-- Shows protection time remaining
-- Extension button (when available)
-- Protection benefits explanation
-- Visual status indicators
+- Timer showing remaining duration plus point progress bar (e.g., “3,500 / 5,000 points”).
+- Extension button (when available).
+- Visible badge indicating “Protected” across profile, village header, rally point, and minimap pins.
+- Tooltip clarifying what actions will end protection.
 
 #### ProtectionInfobox Component
 
-Shows notifications for protection expiration and extension offers.
+Shows notifications for protection expiration, early-exit warnings, and tutorial prompts.
 
 ```tsx
 <ProtectionInfobox playerId={playerId} />
 ```
 
 Features:
-- Expiration warnings (last 6 hours)
-- Extension offers (last 24 hours)
-- Dismissible notifications
+- Expiration warnings (last 6 hours) plus “extend now” CTAs.
+- Early removal warnings when queueing an attack on a non-protected player or starting noble research.
+- Tutorial callouts linking to beginner quests while protection is active.
 
 ### Game Logic Integration
 
@@ -171,12 +185,13 @@ if (success) {
 
 ### World Speed Settings
 
-Protection duration is configured in the `GameWorld` model:
+Protection duration + thresholds are configured in the `GameWorld` model:
 
 ```prisma
 model GameWorld {
   speed Int @default(1) // 1, 2, 3, 5, 10
   beginnerProtectionDays Int @default(5)
+  beginnerProtectionPointThreshold Int @default(5000)
 }
 ```
 
@@ -187,6 +202,8 @@ Protection can be globally enabled/disabled via `WorldConfig`:
 ```prisma
 model WorldConfig {
   beginnerProtectionEnabled Boolean @default(true)
+  beginnerProtectionMaxDays Int @default(7)
+  beginnerProtectionMinDays Int @default(3)
 }
 ```
 
@@ -262,4 +279,3 @@ Potential improvements:
 - Premium protection extensions
 - Protection trading between players
 - Advanced protection analytics
-

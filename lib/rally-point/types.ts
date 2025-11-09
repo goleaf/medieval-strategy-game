@@ -28,6 +28,7 @@ export interface UnitStats {
   defense?: number
   defInf?: number
   defCav?: number
+  defArch?: number
   siege?: "ram" | "catapult"
   isAdministrator?: boolean
 }

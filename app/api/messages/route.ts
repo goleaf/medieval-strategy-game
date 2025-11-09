@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
     const messages = await prisma.message.findMany({
       where,
       include: {
-        sender: { select: { playerName: true } },
-        recipient: { select: { playerName: true } },
+        sender: { select: { id: true, playerName: true } },
+        recipient: { select: { id: true, playerName: true } },
         village: { select: { name: true, x: true, y: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -71,8 +71,8 @@ export async function POST(req: NextRequest) {
         content: validated.content,
       },
       include: {
-        sender: { select: { playerName: true } },
-        recipient: { select: { playerName: true } },
+        sender: { select: { id: true, playerName: true } },
+        recipient: { select: { id: true, playerName: true } },
         village: { select: { name: true, x: true, y: true } },
       },
     })
@@ -104,8 +104,8 @@ async function handlePlayerMessage(validated: any) {
       content: validated.content,
     },
     include: {
-      sender: { select: { playerName: true } },
-      recipient: { select: { playerName: true } },
+        sender: { select: { id: true, playerName: true } },
+        recipient: { select: { id: true, playerName: true } },
     },
   })
 

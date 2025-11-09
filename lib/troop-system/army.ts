@@ -26,6 +26,7 @@ export function buildArmyComposition(input: BuildArmyInput): ArmyComposition {
         attack: definition.attack,
         defInf: definition.defInf,
         defCav: definition.defCav,
+        defArch: definition.defArch,
         carry: definition.carry,
         smithyAttackLevel: stack.tech?.attackLevel,
         smithyDefenseLevel: stack.tech?.defenseLevel,

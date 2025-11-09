@@ -6,6 +6,7 @@ import { getBlueprintKeyForBuilding, mapBlueprintCost, type ResourceCost } from 
 import { BUILDING_BONUSES, LEGACY_BUILDING_COSTS, LEGACY_BUILDING_TIMES } from "./building-data"
 import { CONSTRUCTION_CONFIG, getLevelData, getMainBuildingMultiplier, getQueuePreset } from "@/lib/config/construction"
 import { getSubsystemEffectsConfig } from "@/lib/config/subsystem-effects"
+import { NotificationService } from "./notification-service"
 import type {
   BuildQueueTask,
   BuildTaskStatus,
@@ -22,6 +23,11 @@ type QueueLimits = {
   parallelInnerSlots: number
 }
 
+type QueueLimitOptions = {
+  tribe?: GameTribe | null
+  membership?: { hasGoldClubMembership: boolean; goldClubExpiresAt: Date | null } | null
+}
+
 type UpgradeComputation = {
   cost: ResourceCost
   baseTimeSeconds: number
@@ -31,6 +37,30 @@ type UpgradeComputation = {
 }
 
 const SUBSYSTEM_EFFECTS = getSubsystemEffectsConfig()
+const PREMIUM_QUEUE_KEY = "premium_plus"
+
+const PREREQUISITE_ALIAS: Partial<Record<string, BuildingType>> = {
+  main_building: "HEADQUARTER",
+  headquarter: "HEADQUARTER",
+  smithy: "SMITHY",
+  market: "MARKETPLACE",
+  barracks: "BARRACKS",
+  stable: "STABLES",
+  wall: "WALL",
+  warehouse: "WAREHOUSE",
+  granary: "GRANARY",
+  academy: "ACADEMY",
+}
+
+const EXPENSIVE_BUILDING_THRESHOLD = 50000
+
+const hasActiveGoldClubMembership = (
+  player?: { hasGoldClubMembership: boolean; goldClubExpiresAt: Date | null } | null,
+): boolean => {
+  if (!player?.hasGoldClubMembership) return false
+  if (!player.goldClubExpiresAt) return true
+  return player.goldClubExpiresAt > new Date()
+}
 
 export function getBuildingBonuses(buildingType: BuildingType, level: number = 1) {
   const baseBonuses = BUILDING_BONUSES[buildingType] || {};
@@ -165,7 +195,10 @@ export class BuildingService {
     return 100 + farmLevel * 50
   }
 
-  private static async getQueueLimitsForVillage(villageId: string, tribe?: GameTribe | null): Promise<QueueLimits> {
+  private static async getQueueLimitsForVillage(
+    villageId: string,
+    options?: QueueLimitOptions,
+  ): Promise<QueueLimits> {
     const override = await prisma.villageQueueLimit.findUnique({ where: { villageId } })
     if (override) {
       return {
@@ -174,19 +207,32 @@ export class BuildingService {
         parallelInnerSlots: override.parallelInnerSlots,
       }
     }
-    const base = { ...getQueuePreset() }
+    let effectiveTribe = options?.tribe ?? null
+    let membership = options?.membership ?? null
+
+    if (!effectiveTribe || !membership) {
+      const owner = await prisma.village.findUnique({
+        where: { id: villageId },
+        select: {
+          player: {
+            select: {
+              gameTribe: true,
+              hasGoldClubMembership: true,
+              goldClubExpiresAt: true,
+            },
+          },
+        },
+      })
+
+      effectiveTribe = effectiveTribe ?? owner?.player?.gameTribe ?? null
+      membership = membership ?? owner?.player ?? null
+    }
+
+    const presetKey = hasActiveGoldClubMembership(membership) ? PREMIUM_QUEUE_KEY : undefined
+    const base = { ...getQueuePreset(presetKey) }
     const romanCfg = SUBSYSTEM_EFFECTS.roman_build_queue
     if (!romanCfg) {
       return base
-    }
-
-    let effectiveTribe = tribe ?? null
-    if (!effectiveTribe) {
-      const owner = await prisma.village.findUnique({
-        where: { id: villageId },
-        select: { player: { select: { gameTribe: true } } },
-      })
-      effectiveTribe = owner?.player?.gameTribe ?? null
     }
 
     return this.applyQueueModifiers(base, effectiveTribe)
@@ -215,6 +261,45 @@ export class BuildingService {
     }
 
     return base
+  }
+
+  private static formatBuildingName(type: BuildingType): string {
+    const blueprintKey = getBlueprintKeyForBuilding(type)
+    if (blueprintKey) {
+      const blueprint = CONSTRUCTION_CONFIG.buildingBlueprints[blueprintKey]
+      if (blueprint?.displayName) return blueprint.displayName
+    }
+
+    return type
+      .toLowerCase()
+      .split("_")
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(" ")
+  }
+
+  private static validateBlueprintPrerequisites(
+    blueprintKey: string | null,
+    villageBuildings: Array<{ type: BuildingType; level: number }>,
+  ) {
+    if (!blueprintKey) return
+    const blueprint = CONSTRUCTION_CONFIG.buildingBlueprints[blueprintKey]
+    if (!blueprint) return
+
+    const missing: string[] = []
+    for (const [rawKey, requirement] of Object.entries(blueprint.prerequisites ?? {})) {
+      if (!requirement || requirement <= 0) continue
+      const normalized = rawKey.toLowerCase()
+      const dependencyType = PREREQUISITE_ALIAS[normalized]
+      if (!dependencyType) continue
+      const match = villageBuildings.find((b) => b.type === dependencyType)
+      if (!match || match.level < requirement) {
+        missing.push(`${this.formatBuildingName(dependencyType)} level ${requirement}`)
+      }
+    }
+
+    if (missing.length > 0) {
+      throw new Error(`Prerequisites not met: ${missing.join(", ")}`)
+    }
   }
 
   private static usesParallelSlots(limits: QueueLimits): boolean {
@@ -301,21 +386,28 @@ export class BuildingService {
     }
   }
 
-  private static async startTask(task: BuildQueueTask): Promise<void> {
-    if (!task.buildingId) return
+  private static async startTask(task: BuildQueueTask): Promise<boolean> {
+    if (!task.buildingId) return false
     const building = await prisma.building.findUnique({
       where: { id: task.buildingId },
       include: {
         village: {
           include: {
-            player: { include: { gameWorld: true } },
+            player: {
+              select: {
+                gameWorld: { select: { speed: true } },
+                gameTribe: true,
+                hasGoldClubMembership: true,
+                goldClubExpiresAt: true,
+              },
+            },
             buildings: { select: { id: true, type: true, level: true } },
           },
         },
       },
     })
 
-    if (!building || !building.village) return
+    if (!building || !building.village) return false
 
     const mainBuilding = building.village.buildings.find((b) => b.type === "HEADQUARTER")
     const mainBuildingLevel = mainBuilding?.level ?? 1
@@ -327,6 +419,30 @@ export class BuildingService {
       mainBuildingLevel,
       serverSpeed,
     )
+    const village = building.village
+
+    const hasResources =
+      village.wood >= upgrade.cost.wood &&
+      village.stone >= upgrade.cost.stone &&
+      village.iron >= upgrade.cost.iron &&
+      village.gold >= upgrade.cost.gold &&
+      village.food >= upgrade.cost.food
+
+    if (!hasResources) {
+      return false
+    }
+
+    await prisma.village.update({
+      where: { id: village.id },
+      data: {
+        wood: { decrement: upgrade.cost.wood },
+        stone: { decrement: upgrade.cost.stone },
+        iron: { decrement: upgrade.cost.iron },
+        gold: { decrement: upgrade.cost.gold },
+        food: { decrement: upgrade.cost.food },
+      },
+    })
+
     const now = new Date()
     const finishesAt = new Date(now.getTime() + upgrade.effectiveTimeSeconds * 1000)
 
@@ -351,8 +467,15 @@ export class BuildingService {
         isBuilding: true,
         completionAt: finishesAt,
         queuePosition: task.position,
+        constructionCostWood: upgrade.cost.wood,
+        constructionCostStone: upgrade.cost.stone,
+        constructionCostIron: upgrade.cost.iron,
+        constructionCostGold: upgrade.cost.gold,
+        constructionCostFood: upgrade.cost.food,
       },
     })
+
+    return true
   }
 
   private static async startNextTasks(villageId: string): Promise<void> {
@@ -365,7 +488,8 @@ export class BuildingService {
         orderBy: { position: "asc" },
       })
       if (next) {
-        await this.startTask(next)
+        const started = await this.startTask(next)
+        if (!started) return
       }
       return
     }
@@ -380,7 +504,8 @@ export class BuildingService {
           orderBy: { position: "asc" },
         })
         if (!next) break
-        await this.startTask(next)
+        const started = await this.startTask(next)
+        if (!started) break
         active += 1
       }
     }
@@ -388,7 +513,7 @@ export class BuildingService {
 
   /**
    * Upgrade building - adds to construction queue
-   * Costs are deducted at enqueue
+   * Costs are deducted when the task actually starts building
    */
   static async upgradeBuilding(buildingId: string): Promise<void> {
     const building = await prisma.building.findUnique({
@@ -424,13 +549,15 @@ export class BuildingService {
       }
     }
 
-    const limits = await this.getQueueLimitsForVillage(building.villageId, building.village.player?.gameTribe ?? null)
-    const waitingCount = await prisma.buildQueueTask.count({
-      where: { villageId: building.villageId, status: BuildTaskStatus.WAITING },
+    const limits = await this.getQueueLimitsForVillage(building.villageId, {
+      tribe: building.village.player?.gameTribe ?? null,
+      membership: building.village.player
+        ? {
+            hasGoldClubMembership: building.village.player.hasGoldClubMembership,
+            goldClubExpiresAt: building.village.player.goldClubExpiresAt,
+          }
+        : null,
     })
-    if (waitingCount >= limits.maxWaiting) {
-      throw new Error(`Construction queue is full (max waiting ${limits.maxWaiting})`)
-    }
 
     const village = building.village
     const mainBuilding = village.buildings.find((b) => b.type === "HEADQUARTER")
@@ -445,6 +572,8 @@ export class BuildingService {
       serverSpeed,
     )
 
+    this.validateBlueprintPrerequisites(upgrade.blueprintKey ?? null, village.buildings)
+
     const hasResources =
       village.wood >= upgrade.cost.wood &&
       village.stone >= upgrade.cost.stone &&
@@ -455,19 +584,15 @@ export class BuildingService {
       throw new Error("Insufficient resources")
     }
 
-    // Deduct costs immediately
-    await prisma.village.update({
-      where: { id: village.id },
-      data: {
-        wood: { decrement: upgrade.cost.wood },
-        stone: { decrement: upgrade.cost.stone },
-        iron: { decrement: upgrade.cost.iron },
-        gold: { decrement: upgrade.cost.gold },
-        food: { decrement: upgrade.cost.food },
-      },
-    })
-
     const canStart = await this.canStartTask(building.villageId, upgrade.category, limits)
+    if (!canStart) {
+      const waitingCount = await prisma.buildQueueTask.count({
+        where: { villageId: building.villageId, status: BuildTaskStatus.WAITING },
+      })
+      if (waitingCount >= limits.maxWaiting) {
+        throw new Error(`Construction queue is full (max waiting ${limits.maxWaiting})`)
+      }
+    }
     const lastTask = await prisma.buildQueueTask.findFirst({
       where: { villageId: building.villageId },
       orderBy: { position: "desc" },
@@ -475,9 +600,6 @@ export class BuildingService {
     })
     const position = (lastTask?.position ?? 0) + 1
     const now = new Date()
-    const finishesAt = canStart
-      ? new Date(now.getTime() + upgrade.effectiveTimeSeconds * 1000)
-      : null
 
     await prisma.buildQueueTask.create({
       data: {
@@ -487,14 +609,14 @@ export class BuildingService {
         category: upgrade.category,
         fromLevel: building.level,
         toLevel: targetLevel,
-        status: canStart ? BuildTaskStatus.BUILDING : BuildTaskStatus.WAITING,
+        status: BuildTaskStatus.WAITING,
         queuedAt: now,
-        startedAt: canStart ? now : null,
-        finishesAt,
+        startedAt: null,
+        finishesAt: null,
         position,
         speedSnapshot: {
           baseTimeSeconds: upgrade.baseTimeSeconds,
-          effectiveTimeSeconds: canStart ? upgrade.effectiveTimeSeconds : null,
+          effectiveTimeSeconds: null,
           serverSpeed,
           mainBuildingLevel,
         },
@@ -507,19 +629,17 @@ export class BuildingService {
       where: { id: buildingId },
       data: {
         isBuilding: true,
-        completionAt: finishesAt,
+        completionAt: null,
         queuePosition: position,
-        constructionCostWood: upgrade.cost.wood,
-        constructionCostStone: upgrade.cost.stone,
-        constructionCostIron: upgrade.cost.iron,
-        constructionCostGold: upgrade.cost.gold,
-        constructionCostFood: upgrade.cost.food,
+        constructionCostWood: 0,
+        constructionCostStone: 0,
+        constructionCostIron: 0,
+        constructionCostGold: 0,
+        constructionCostFood: 0,
       },
     })
 
-    if (!canStart) {
-      await this.startNextTasks(building.villageId)
-    }
+    await this.startNextTasks(building.villageId)
   }
 
   /**
@@ -553,54 +673,28 @@ export class BuildingService {
 
     const task = building.queueTasks[0]
 
-    let refund = {
-      wood: 0,
-      stone: 0,
-      iron: 0,
-      gold: 0,
-      food: 0,
+    let refundMultiplier = 0
+    if (task.status === BuildTaskStatus.BUILDING) {
+      const totalSeconds =
+        (task.speedSnapshot as any)?.effectiveTimeSeconds ??
+        (task.startedAt && task.finishesAt
+          ? (new Date(task.finishesAt).getTime() - new Date(task.startedAt).getTime()) / 1000
+          : null)
+      const elapsedSeconds = task.startedAt
+        ? Math.max(0, (Date.now() - new Date(task.startedAt).getTime()) / 1000)
+        : 0
+      const progress = totalSeconds && totalSeconds > 0 ? elapsedSeconds / totalSeconds : 0
+      if (progress <= 0.1) {
+        refundMultiplier = 0.9
+      }
     }
 
-    // Calculate refund based on Travian system
-    if (task.status === BuildTaskStatus.WAITING) {
-      // Level 1 upgrade - full refund
-      refund = {
-        wood: building.constructionCostWood,
-        stone: building.constructionCostStone,
-        iron: building.constructionCostIron,
-        gold: building.constructionCostGold,
-        food: building.constructionCostFood,
-      }
-    } else {
-      // Higher level upgrade - refund difference between new and current level costs
-      const currentLevelCost = this.getBuildingCosts(building.type as BuildingType)
-      const newLevelCost = LEGACY_BUILDING_COSTS[building.type as BuildingType] || currentLevelCost
-
-      // Apply level scaling to both costs
-      const currentLevelScaled = {
-        wood: Math.floor(currentLevelCost.wood * Math.pow(1.2, building.level - 1)),
-        stone: Math.floor(currentLevelCost.stone * Math.pow(1.2, building.level - 1)),
-        iron: Math.floor(currentLevelCost.iron * Math.pow(1.2, building.level - 1)),
-        gold: Math.floor(currentLevelCost.gold * Math.pow(1.2, building.level - 1)),
-        food: Math.floor(currentLevelCost.food * Math.pow(1.2, building.level - 1)),
-      }
-
-      const newLevelScaled = {
-        wood: Math.floor(newLevelCost.wood * Math.pow(1.2, building.level)),
-        stone: Math.floor(newLevelCost.stone * Math.pow(1.2, building.level)),
-        iron: Math.floor(newLevelCost.iron * Math.pow(1.2, building.level)),
-        gold: Math.floor(newLevelCost.gold * Math.pow(1.2, building.level)),
-        food: Math.floor(newLevelCost.food * Math.pow(1.2, building.level)),
-      }
-
-      // Refund is the difference between invested cost and current level cost
-      refund = {
-        wood: Math.max(0, building.constructionCostWood - currentLevelScaled.wood),
-        stone: Math.max(0, building.constructionCostStone - currentLevelScaled.stone),
-        iron: Math.max(0, building.constructionCostIron - currentLevelScaled.iron),
-        gold: Math.max(0, building.constructionCostGold - currentLevelScaled.gold),
-        food: Math.max(0, building.constructionCostFood - currentLevelScaled.food),
-      }
+    const refund = {
+      wood: Math.floor(building.constructionCostWood * refundMultiplier),
+      stone: Math.floor(building.constructionCostStone * refundMultiplier),
+      iron: Math.floor(building.constructionCostIron * refundMultiplier),
+      gold: Math.floor(building.constructionCostGold * refundMultiplier),
+      food: Math.floor(building.constructionCostFood * refundMultiplier),
     }
 
     // Refund resources
@@ -659,11 +753,21 @@ export class BuildingService {
       orderBy: { startedAt: "desc" },
     })
 
+    const totalCost =
+      (building.constructionCostWood ?? 0) +
+      (building.constructionCostStone ?? 0) +
+      (building.constructionCostIron ?? 0) +
+      (building.constructionCostGold ?? 0) +
+      (building.constructionCostFood ?? 0)
+    const nextLevel = building.level + 1
+    const notificationType =
+      totalCost >= EXPENSIVE_BUILDING_THRESHOLD ? "EXPENSIVE_BUILDING_COMPLETE" : "MINOR_BUILDING_COMPLETE"
+
     // Complete the building
     await prisma.building.update({
       where: { id: buildingId },
       data: {
-        level: building.level + 1,
+        level: nextLevel,
         isBuilding: false,
         completionAt: null,
         queuePosition: null,
@@ -724,6 +828,25 @@ export class BuildingService {
     await CulturePointService.recalculateVillageContribution(building.villageId)
     await this.startNextTasks(building.villageId)
     await updateTaskProgress(building.village.playerId, building.villageId)
+
+    try {
+      await NotificationService.emit({
+        playerId: building.village.playerId,
+        type: notificationType,
+        title: `${building.type} level ${nextLevel} ready`,
+        message: `${building.village.name} finished building ${building.type} level ${nextLevel}.`,
+        metadata: {
+          villageId: building.villageId,
+          buildingId,
+          buildingType: building.type,
+          level: nextLevel,
+          totalCost,
+        },
+        actionUrl: `/village/${building.villageId}/buildings`,
+      })
+    } catch (error) {
+      console.error("Failed to send building completion notification:", error)
+    }
   }
 
   static getBuildingCosts(type: BuildingType) {

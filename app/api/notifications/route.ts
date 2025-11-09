@@ -1,6 +1,7 @@
-import { prisma } from "@/lib/db"
 import { type NextRequest } from "next/server"
-import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
+import { errorResponse, serverErrorResponse, successResponse } from "@/lib/utils/api-response"
+import { NotificationService } from "@/lib/game-services/notification-service"
+import { NOTIFICATION_PRIORITY_ORDER, NOTIFICATION_TYPE_IDS } from "@/lib/config/notification-types"
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,29 +10,32 @@ export async function GET(req: NextRequest) {
       return errorResponse("Player ID required", 400)
     }
 
-    // Fetch system messages and convert to notifications
-    const messages = await prisma.message.findMany({
-      where: {
-        recipientId: playerId,
-        type: { in: ["SYSTEM", "BATTLE_REPORT", "SCOUT_REPORT"] },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50,
+    const priority = req.nextUrl.searchParams.get("priority")
+    const type = req.nextUrl.searchParams.get("type")
+    const includeRead = req.nextUrl.searchParams.get("includeRead") === "true"
+    const includeMuted = req.nextUrl.searchParams.get("includeMuted") === "true"
+    const limit = req.nextUrl.searchParams.get("limit")
+
+    const normalizedPriority =
+      priority && NOTIFICATION_PRIORITY_ORDER.includes(priority as (typeof NOTIFICATION_PRIORITY_ORDER)[number])
+        ? (priority as (typeof NOTIFICATION_PRIORITY_ORDER)[number])
+        : "ALL"
+
+    const normalizedType =
+      type && NOTIFICATION_TYPE_IDS.includes(type as (typeof NOTIFICATION_TYPE_IDS)[number])
+        ? (type as (typeof NOTIFICATION_TYPE_IDS)[number])
+        : "ALL"
+
+    const feed = await NotificationService.getFeed(playerId, {
+      priority: normalizedPriority,
+      type: normalizedType,
+      includeRead,
+      includeMuted,
+      limit: limit ? Number(limit) : undefined,
     })
 
-    const notifications = messages.map((msg) => ({
-      id: msg.id,
-      type: msg.type === "ATTACK_RESULT" || msg.type === "ATTACK_INCOMING" ? "BATTLE" : msg.type === "SCOUT_RESULT" || msg.type === "SCOUT_DETECTED" ? "SCOUT" : "SYSTEM",
-      title: msg.subject || "System Notification",
-      message: msg.content,
-      createdAt: msg.createdAt.toISOString(),
-      read: msg.isRead,
-      link: msg.type === "ATTACK_RESULT" ? `/attacks` : msg.type === "SCOUT_RESULT" ? `/attacks` : undefined,
-    }))
-
-    return successResponse(notifications)
+    return successResponse(feed)
   } catch (error) {
     return serverErrorResponse(error)
   }
 }
-

@@ -78,4 +78,25 @@ describe("MerchantService", () => {
     expect(snapshot.busyMerchants).toBe(2)
     expect(snapshot.availableMerchants).toBeGreaterThanOrEqual(0)
   })
+
+  it("applies premium capacity bonus when Gold Club is active", async () => {
+    sharedModels.building.findUnique.mockResolvedValue({ level: 5 })
+    sharedModels.village.findUnique.mockResolvedValue({
+      player: {
+        gameTribe: "ROMANS",
+        hasGoldClubMembership: true,
+        goldClubExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    })
+    sharedModels.merchantState.findUnique.mockResolvedValue({
+      merchantsBusy: 0,
+      merchantsReserved: 0,
+    })
+
+    const snapshot = await MerchantService.getSnapshot("village-premium")
+
+    expect(snapshot.premiumActive).toBe(true)
+    expect(snapshot.capacityPerMerchant).toBe(625) // 25% boost over 500 base
+    expect(snapshot.capacityBonusPercentage).toBeCloseTo(25)
+  })
 })

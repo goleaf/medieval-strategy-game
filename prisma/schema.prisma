@@ -90,6 +90,60 @@ enum ContactStackBand {
   LARGE
 }
 
+// ============================================================================
+// PLAYER SOCIAL ENUMS
+// ============================================================================
+
+enum ProfileVisibility {
+  PUBLIC
+  TRIBE_ONLY
+  PRIVATE
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  BLOCKED
+}
+
+enum ContactStance {
+  ALLY
+  ENEMY
+  FARM
+  TRADE
+  NEUTRAL
+}
+
+enum EndorsementStatus {
+  PENDING
+  PUBLISHED
+  REVOKED
+}
+
+enum MentorshipStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  DECLINED
+}
+
+enum SocialActivityVisibility {
+  PUBLIC
+  FRIENDS
+  PRIVATE
+}
+
+enum SocialActivityType {
+  CONQUEST
+  DEFENSE
+  ACHIEVEMENT
+  EXPANSION
+  ECONOMY
+  SOCIAL
+}
+
 enum ContactSourceClass {
   PASSIVE
   ACTIVE
@@ -234,15 +288,205 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   lastActiveAt DateTime @default(now())
+  emailVerifiedAt     DateTime?
+  failedLoginAttempts Int      @default(0)
+  lockoutExpiresAt    DateTime?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  lastSecurityAlertAt DateTime?
 
   // Relations
   players Player[]
   admin   Admin?
+  securityQuestions       SecurityQuestion[]
+  emailVerificationTokens EmailVerificationToken[]
+  sessions                UserSession[]
+  trustedDevices          TrustedDevice[]
+  twoFactorSettings       TwoFactorSettings?
+  passwordResetRequests   PasswordResetRequest[]
+  recoveryRequests        AccountRecoveryRequest[]
+  loginAttempts           LoginAttempt[]
+  twoFactorChallenges     TwoFactorChallenge[]
 
   @@index([email])
   @@index([username])
   @@index([lastActiveAt]) // For online user queries
   @@index([createdAt]) // For user registration analytics
+}
+
+model SecurityQuestion {
+  id          String   @id @default(cuid())
+  userId      String
+  questionKey String
+  answerHash  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryRequests AccountRecoveryRequest[]
+
+  @@unique([userId, questionKey])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model CaptchaChallenge {
+  id         String   @id @default(cuid())
+  question   String
+  answerHash String
+  ipAddress  String?
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  id            String   @id @default(cuid())
+  userId        String?
+  identifier    String
+  ipAddress     String?
+  userAgent     String?
+  success       Boolean
+  failureReason String?
+  createdAt     DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  sessionLabel String?
+  userAgent    String?
+  ipAddress    String?
+  isTrusted    Boolean  @default(false)
+  lastSeenAt   DateTime @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model TrustedDevice {
+  id              String   @id @default(cuid())
+  userId          String
+  deviceTokenHash String   @unique
+  label           String?
+  ipAddress       String?
+  userAgent       String?
+  expiresAt       DateTime
+  lastUsedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model TwoFactorSettings {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  totpSecret           String?
+  totpEnabled          Boolean  @default(false)
+  smsEnabled           Boolean  @default(false)
+  smsPhoneNumber       String?
+  backupCodes          Json?
+  lastBackupCodesAt    DateTime?
+  pendingTotpSecret    String?
+  pendingTotpCreatedAt DateTime?
+  pendingSmsPhoneNumber String?
+  pendingSmsCodeHash    String?
+  pendingSmsExpiresAt   DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TwoFactorChallenge {
+  id         String   @id @default(cuid())
+  userId     String
+  method     String?
+  attempts   Int      @default(0)
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+  context    Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetRequest {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
+enum AccountRecoveryStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+model AccountRecoveryRequest {
+  id                     String                @id @default(cuid())
+  userId                 String?
+  email                  String
+  reason                 String
+  proof                  Json?
+  securityQuestionId     String?
+  securityQuestionPassed Boolean               @default(false)
+  verifiedOwnership      Boolean               @default(false)
+  status                 AccountRecoveryStatus @default(OPEN)
+  resolutionNotes        String?
+  resolvedAt             DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  user             User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  securityQuestion SecurityQuestion? @relation(fields: [securityQuestionId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([status])
 }
 
 // ============================================================================
@@ -263,6 +507,14 @@ model Player {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   lastActiveAt DateTime @default(now())
+  profileHeadline   String?
+  profileBio        String?
+  countryCode       String?
+  preferredLanguage String?
+  profileVisibility ProfileVisibility @default(PUBLIC)
+  allowFriendRequests Boolean @default(true)
+  allowMentorship     Boolean @default(true)
+  socialFeedOptIn     Boolean @default(false)
 
   // Player Stats
   totalPoints     Int @default(0)
@@ -270,6 +522,9 @@ model Player {
   wavesSurvived   Int @default(0)
   troopsKilled    Int @default(0)
   troopsLost      Int @default(0)
+  odAttacking     Int @default(0)
+  odDefending     Int @default(0)
+  odSupporting    Int @default(0)
   culturePoints   Int @default(0)
   cpTotal         Int @default(0)
   villagesAllowed Int @default(1)
@@ -282,6 +537,11 @@ model Player {
   beginnerProtectionUntil DateTime? // When beginner protection expires
   hasGoldClubMembership   Boolean   @default(false)
   goldClubExpiresAt       DateTime?
+  premiumPoints           Int       @default(0)
+  tribeRole               TribeRole?
+  tribePermissions        Json?
+  tribeJoinedAt           DateTime?
+  tribeRejoinAvailableAt  DateTime?
 
   // Relations
   villages            Village[]            @relation("VillageOwner")
@@ -290,7 +550,10 @@ model Player {
   tribeId             String?
   tribe               Tribe?               @relation("TribeMembers", fields: [tribeId], references: [id])
   leadingTribe        Tribe?               @relation("TribeLeader")
-  tribeInvites        TribeInvite[]
+  tribeInvites        TribeInvite[]        @relation("TribeInviteRecipient")
+  tribeInvitesSent    TribeInvite[]        @relation("TribeInviteSender")
+  tribeApplications   TribeApplication[]   @relation("TribeApplicationAuthor")
+  tribeApplicationReviews TribeApplication[] @relation("TribeApplicationReviewer")
   messages            Message[]
   receivedMessages    Message[]            @relation("MessageRecipient")
   marketOrders        MarketOrder[]
@@ -300,6 +563,8 @@ model Player {
   quicklinks          PlayerQuicklink[]
   culturePointAccount AccountCulturePoint?
   attackPresets       AttackPreset[]
+  notifications       PlayerNotification[]
+  notificationPreferences NotificationPreference?
   controllingRegions  Region[]
   rallyPointMovements RallyPointMovement[]
   garrisonStacks      GarrisonStack[]
@@ -317,6 +582,24 @@ model Player {
   contactLogEntries    ContactLogEntry[]        @relation("ContactLogViewerPlayer")
   relics               Relic[]
   relicPlacements      RelicPlacement[]         @relation("RelicPlacementOwner")
+  badges               PlayerBadge[]
+  friendshipsInitiated PlayerFriendship[]       @relation("FriendshipRequester")
+  friendshipsReceived  PlayerFriendship[]       @relation("FriendshipAddressee")
+  contactNotes         PlayerContactNote[]      @relation("ContactNoteOwner")
+  contactNotesAboutMe  PlayerContactNote[]      @relation("ContactNoteTarget")
+  blocksInitiated      PlayerBlock[]            @relation("PlayerBlocks")
+  blockedBy            PlayerBlock[]            @relation("BlockedByPlayers")
+  endorsementsGiven    PlayerEndorsement[]      @relation("EndorsementEndorser")
+  endorsementsReceived PlayerEndorsement[]      @relation("EndorsementTarget")
+  mentorshipsMentored  PlayerMentorship[]       @relation("MentorshipMentor")
+  mentorshipsLearning  PlayerMentorship[]       @relation("MentorshipMentee")
+  socialActivities     PlayerSocialActivity[]   @relation("SocialActivityOwner")
+  socialFeedEvents     PlayerSocialActivity[]   @relation("SocialActivityActor")
+  emailNotificationSetting EmailNotificationSetting?
+  emailNotificationEvents   EmailNotificationEvent[]
+  emailNotificationDeliveries EmailNotificationDelivery[]
+  tradeRoutesCreated   TradeRoute[]
+  resourceReservations ResourceReservation[]
 
   @@index([userId])
   @@index([gameWorldId])
@@ -327,6 +610,132 @@ model Player {
   @@index([beginnerProtectionUntil]) // For protection expiration checks
   @@index([isDeleted, lastActiveAt]) // For active player queries
   @@index([tribeId, isDeleted]) // For tribe member queries
+}
+
+// ============================================================================
+// PLAYER SOCIAL GRAPH
+// ============================================================================
+
+model PlayerBadge {
+  id        String   @id @default(cuid())
+  playerId  String
+  badgeKey  String
+  title     String
+  description String?
+  icon      String?
+  category  String?
+  tier      Int      @default(1)
+  awardedAt DateTime @default(now())
+  metadata  Json?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, badgeKey])
+  @@index([playerId])
+  @@index([category])
+}
+
+model PlayerFriendship {
+  id           String           @id @default(cuid())
+  requesterId  String
+  addresseeId  String
+  status       FriendshipStatus @default(PENDING)
+  requestedAt  DateTime         @default(now())
+  respondedAt  DateTime?
+  lastInteractionAt DateTime?
+  note         String?
+  metadata     Json?
+
+  requester Player @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee Player @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
+}
+
+model PlayerContactNote {
+  id        String        @id @default(cuid())
+  ownerId   String
+  targetId  String
+  stance    ContactStance @default(NEUTRAL)
+  note      String
+  tags      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner  Player @relation("ContactNoteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  target Player @relation("ContactNoteTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, targetId])
+}
+
+model PlayerBlock {
+  id               String   @id @default(cuid())
+  playerId         String
+  blockedPlayerId  String
+  reason           String?
+  createdAt        DateTime @default(now())
+  expiresAt        DateTime?
+
+  player  Player @relation("PlayerBlocks", fields: [playerId], references: [id], onDelete: Cascade)
+  blocked Player @relation("BlockedByPlayers", fields: [blockedPlayerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, blockedPlayerId])
+  @@index([blockedPlayerId])
+}
+
+model PlayerEndorsement {
+  id         String             @id @default(cuid())
+  endorserId String
+  targetId   String
+  status     EndorsementStatus  @default(PENDING)
+  message    String?
+  strength   Int                @default(1)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  endorser Player @relation("EndorsementEndorser", fields: [endorserId], references: [id], onDelete: Cascade)
+  target   Player @relation("EndorsementTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([endorserId, targetId])
+  @@index([targetId, status])
+}
+
+model PlayerMentorship {
+  id          String           @id @default(cuid())
+  mentorId    String
+  menteeId    String
+  status      MentorshipStatus @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  mentorBonusGranted Int @default(0)
+  menteeBonusGranted Int @default(0)
+  notes       Json?
+
+  mentor Player @relation("MentorshipMentor", fields: [mentorId], references: [id], onDelete: Cascade)
+  mentee Player @relation("MentorshipMentee", fields: [menteeId], references: [id], onDelete: Cascade)
+
+  @@unique([mentorId, menteeId])
+  @@index([menteeId, status])
+  @@index([mentorId, status])
+}
+
+model PlayerSocialActivity {
+  id          String                    @id @default(cuid())
+  playerId    String
+  actorId     String?
+  activityType SocialActivityType
+  visibility  SocialActivityVisibility  @default(PUBLIC)
+  summary     String
+  payload     Json?
+  createdAt   DateTime @default(now())
+
+  player Player @relation("SocialActivityOwner", fields: [playerId], references: [id], onDelete: Cascade)
+  actor  Player? @relation("SocialActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([playerId, createdAt])
+  @@index([actorId])
 }
 
 // ============================================================================
@@ -789,6 +1198,11 @@ model Village {
   gold       Int @default(200)
   food       Int @default(2000)
   population Int @default(100)
+  woodFractional  Float @default(0)
+  stoneFractional Float @default(0)
+  ironFractional  Float @default(0)
+  goldFractional  Float @default(0)
+  foodFractional  Float @default(0)
 
   // Production Rates (per game tick)
   woodProduction       Int   @default(10)
@@ -803,6 +1217,8 @@ model Village {
   maxLoyalty          Int       @default(100)
   loyaltyUpdatedAt    DateTime  @default(now())
   lastLoyaltyAttackAt DateTime?
+  warehouseFullNotifiedAt DateTime?
+  granaryFullNotifiedAt   DateTime?
 
   // Expansion graph
   expansionSlotsUsed    Int       @default(0)
@@ -863,6 +1279,7 @@ model Village {
   queueLimit          VillageQueueLimit?
   runeVillage         EndgameRuneVillage?
   relicPlacements     RelicPlacement[]
+  resourceReservations ResourceReservation[]
 
   @@unique([x, y])
   @@index([playerId])
@@ -1001,6 +1418,46 @@ model CulturePointThreshold {
   cpRequired    Int
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// ============================================================================
+// REAL-TIME EVENT PROCESSING
+// ============================================================================
+
+enum EventQueueType {
+  RESOURCE_TICK
+  TROOP_MOVEMENT
+  BUILDING_COMPLETION
+  LOYALTY_TICK
+  NOTIFICATION
+}
+
+enum EventQueueStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model EventQueueItem {
+  id         String           @id @default(cuid())
+  type       EventQueueType
+  status     EventQueueStatus @default(PENDING)
+  scheduledAt DateTime
+  priority   Int              @default(0)
+  dedupeKey  String?          @unique
+  payload    Json?
+  attempts   Int              @default(0)
+  lastError  String?
+  processedAt DateTime?
+  lockedAt   DateTime?
+  lockedBy   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([type, status, scheduledAt])
+  @@map("events_queue")
 }
 
 // ============================================================================
@@ -1299,6 +1756,7 @@ model UnitType {
   attack            Int
   defInf            Int
   defCav            Int
+  defArch           Int       @default(0)
   speedTilesPerHour Float
   carry             Int
   upkeepCropPerHour Float
@@ -1357,13 +1815,25 @@ model TrainingQueueItem {
   unitType   UnitType         @relation(fields: [unitTypeId], references: [id], onDelete: Cascade)
   building   TrainingBuilding
   count      Int
+  queuedAt   DateTime         @default(now())
   startAt    DateTime
   finishAt   DateTime
+  unitDurationSeconds   Float   @default(0)
+  totalDurationSeconds  Float   @default(0)
+  buildingLevel         Int     @default(1)
+  costWood              Int     @default(0)
+  costClay              Int     @default(0)
+  costIron              Int     @default(0)
+  costCrop              Int     @default(0)
+  populationCost        Int     @default(0)
+  worldSpeedApplied     Float   @default(1)
+  cancelledAt DateTime?
   status     TrainingStatus   @default(WAITING)
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
   @@index([villageId, status, finishAt])
+  @@index([villageId, building, status])
   @@index([unitTypeId])
 }
 
@@ -1801,6 +2271,7 @@ model Tribe {
   tag         String  @unique
   description String?
   motd        String? // Message of the day
+  profileBody String?
 
   leaderId String @unique
   leader   Player @relation("TribeLeader", fields: [leaderId], references: [id], onDelete: Restrict)
@@ -1811,6 +2282,10 @@ model Tribe {
 
   // Settings
   joinPolicy JoinPolicy @default(INVITE_ONLY)
+  memberDefaultPermissions Json @default("[]")
+  diplomacySettings        Json? @default("{}")
+  forumSettings            Json? @default("{}")
+  settings                 Json? @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1818,12 +2293,16 @@ model Tribe {
   // Relations
   members            Player[]      @relation("TribeMembers")
   invites            TribeInvite[]
+  applications       TribeApplication[]
   treatiesAsPrimary  TribeTreaty[] @relation("PrimaryTribeTreaty")
   treatiesAsSecondary TribeTreaty[] @relation("SecondaryTribeTreaty")
   attacks            War[]         @relation("AttackerTribe")
   defenses           War[]         @relation("DefenderTribe")
+  leadingEndgameStates EndgameState[]
+  controllingRuneVillages EndgameRuneVillage[]
 
   @@index([name])
+  @@index([tag])
   @@index([leaderId])
   @@index([totalPoints]) // For tribe ranking queries
   @@index([memberCount]) // For tribe size filtering
@@ -1837,6 +2316,24 @@ enum JoinPolicy {
   APPLICATION
 }
 
+enum TribeRole {
+  FOUNDER
+  CO_FOUNDER
+  OFFICER
+  MEMBER
+}
+
+enum TribePermission {
+  INVITE_MEMBER
+  REMOVE_MEMBER
+  EDIT_DIPLOMACY
+  MODERATE_FORUM
+  SEND_MASS_MAIL
+  EDIT_PROFILE
+  VIEW_APPLICATIONS
+  MANAGE_PERMISSIONS
+}
+
 model TribeInvite {
   id String @id @default(cuid())
 
@@ -1844,9 +2341,12 @@ model TribeInvite {
   tribe   Tribe  @relation(fields: [tribeId], references: [id], onDelete: Cascade)
 
   playerId String
-  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player   Player @relation("TribeInviteRecipient", fields: [playerId], references: [id], onDelete: Cascade)
+  invitedById String?
+  invitedBy   Player? @relation("TribeInviteSender", fields: [invitedById], references: [id], onDelete: SetNull)
 
   status InviteStatus @default(PENDING)
+  message String?
 
   createdAt DateTime @default(now())
   expiresAt DateTime
@@ -1854,9 +2354,43 @@ model TribeInvite {
   @@unique([tribeId, playerId])
   @@index([tribeId])
   @@index([playerId])
+  @@index([invitedById])
   @@index([status]) // For invite status filtering
   @@index([expiresAt]) // For expired invite cleanup
   @@index([status, expiresAt]) // For active invites by expiration
+}
+
+enum TribeApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+model TribeApplication {
+  id String @id @default(cuid())
+
+  tribeId String
+  tribe   Tribe  @relation(fields: [tribeId], references: [id], onDelete: Cascade)
+
+  playerId String
+  player   Player @relation("TribeApplicationAuthor", fields: [playerId], references: [id], onDelete: Cascade)
+
+  message String?
+  status  TribeApplicationStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   Player? @relation("TribeApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+  reviewResponse String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tribeId])
+  @@index([playerId])
+  @@index([status])
+  @@index([reviewedById])
+  @@unique([tribeId, playerId])
 }
 
 enum InviteStatus {
@@ -2677,6 +3211,7 @@ model Shipment {
 
   deliveredAt DateTime?
   returnedAt  DateTime?
+  cancelledAt DateTime?
 
   createdBy ShipmentCreatedBy @default(PLAYER)
   status    ShipmentStatus    @default(SCHEDULED)
@@ -2715,6 +3250,8 @@ model TradeRoute {
   lastRunAt          DateTime?
   startsAt           DateTime?
   endsAt             DateTime?
+  createdByPlayerId  String?
+  createdByPlayer    Player?          @relation(fields: [createdByPlayerId], references: [id], onDelete: SetNull)
 
   logs TradeRouteLog[]
 
@@ -2724,6 +3261,7 @@ model TradeRoute {
   @@index([sourceVillageId])
   @@index([targetVillageId])
   @@index([status, nextRunAt])
+  @@index([createdByPlayerId])
 }
 
 model TradeRouteLog {
@@ -2738,6 +3276,34 @@ model TradeRouteLog {
   executedAt DateTime @default(now())
 
   @@index([tradeRouteId, executedAt])
+}
+
+model ResourceReservation {
+  id String @id @default(cuid())
+
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  villageId String
+  village   Village @relation(fields: [villageId], references: [id], onDelete: Cascade)
+
+  label String
+  wood  Int @default(0)
+  stone Int @default(0)
+  iron  Int @default(0)
+  gold  Int @default(0)
+  food  Int @default(0)
+
+  reservedAt DateTime @default(now())
+  expiresAt  DateTime?
+  fulfilledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId])
+  @@index([villageId])
+  @@index([playerId, villageId])
 }
 
 model VillageDistanceCache {
@@ -2821,6 +3387,8 @@ enum StorageLedgerReason {
   NPC_CONVERT
   ADMIN
   OTHER
+  TRAINING_COST
+  TRAINING_REFUND
 }
 
 // ============================================================================
@@ -2848,6 +3416,7 @@ model Message {
   isRead Boolean @default(false)
 
   createdAt DateTime @default(now())
+  emailNotificationEvents EmailNotificationEvent[]
 
   @@index([villageId])
   @@index([senderId])
@@ -2867,6 +3436,105 @@ enum MessageType {
   SYSTEM
   ALLIANCE_ATTACK
   PLAYER
+  BUILDING_COMPLETE
+  TRAINING_COMPLETE
+  TRIBE_BROADCAST
+  LOYALTY_ALERT
+  CONQUEST_REPORT
+  DAILY_SUMMARY
+}
+
+enum NotificationPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum PlayerNotificationType {
+  NOBLE_ATTACK_INCOMING
+  LOYALTY_LOW
+  VILLAGE_CONQUEST
+  TRIBE_WAR_DECLARED
+  ATTACK_INCOMING
+  TRIBE_SUPPORT_REQUEST
+  EXPENSIVE_BUILDING_COMPLETE
+  NOBLE_TRAINING_COMPLETE
+  TROOP_TRAINING_COMPLETE
+  RESOURCE_STORAGE_NEARLY_FULL
+  TRADE_CONVOY_ARRIVING
+  ATTACK_REPORT_READY
+  TRIBE_LEADERSHIP_MESSAGE
+  TROOPS_RETURNING
+  SMALL_TRADE_COMPLETE
+  MINOR_BUILDING_COMPLETE
+  GAME_UPDATE
+}
+
+enum NotificationEmailFrequency {
+  daily_summary
+  critical_only
+  disabled
+}
+
+model PlayerNotification {
+  id String @id @default(cuid())
+
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  type     PlayerNotificationType
+  priority NotificationPriority
+
+  title   String
+  message String
+  actionUrl String?
+  metadata Json?
+  channels Json?
+  sourceId String?
+  muted   Boolean @default(false)
+
+  requiresAcknowledgement Boolean @default(false)
+  acknowledgedAt          DateTime?
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+  dismissedAt DateTime?
+  expiresAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId, isRead])
+  @@index([playerId, priority, isRead])
+  @@index([playerId, createdAt])
+  @@index([playerId, type, sourceId])
+}
+
+model NotificationPreference {
+  id String @id @default(cuid())
+
+  playerId String @unique
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  importanceThreshold NotificationPriority       @default(MEDIUM)
+  desktopEnabled      Boolean                    @default(false)
+  mobilePushEnabled   Boolean                    @default(true)
+  emailFrequency      NotificationEmailFrequency @default(disabled)
+
+  quietHoursEnabled Boolean @default(false)
+  quietHoursStart   Int?
+  quietHoursEnd     Int?
+  suppressNonCriticalDuringQuietHours Boolean @default(true)
+
+  typeSettings       Json @default("{}")
+  soundProfiles      Json @default("{}")
+  channelPreferences Json?
+
+  lastDigestAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ============================================================================
@@ -2968,6 +3636,137 @@ enum NotificationSeverity {
   warning
   error
   critical
+}
+
+// ============================================================================
+// EMAIL NOTIFICATION SETTINGS
+// ============================================================================
+
+model EmailNotificationSetting {
+  id       String @id @default(cuid())
+  playerId String @unique
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  email                 String
+  emailVerifiedAt       DateTime?
+  verificationTokenHash String?
+  verificationSentAt    DateTime?
+  verificationExpiresAt DateTime?
+  unsubscribeTokenHash  String?
+  unsubscribedAt        DateTime?
+
+  deliverySchedule EmailDeliverySchedule @default(IMMEDIATE)
+  language         EmailLanguage         @default(EN)
+  preferences      Json                  @default("{}")
+  dailyDigestHour  Int                   @default(8)
+  lastDigestSentAt DateTime?
+
+  rateLimitWindowStart DateTime?
+  rateLimitCount       Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events    EmailNotificationEvent[]
+  deliveries EmailNotificationDelivery[]
+
+  @@index([playerId])
+  @@index([deliverySchedule])
+  @@index([language])
+}
+
+model EmailNotificationEvent {
+  id       String @id @default(cuid())
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  messageId String?
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  settingId String?
+  setting   EmailNotificationSetting? @relation(fields: [settingId], references: [id], onDelete: Cascade)
+
+  topic   EmailNotificationTopic
+  payload Json
+
+  linkTarget String?
+
+  status     EmailNotificationStatus @default(PENDING)
+  readyAt    DateTime                @default(now())
+  sentAt     DateTime?
+  attempt    Int                     @default(0)
+  error      String?
+  digestHash String?
+  forceSend  Boolean                 @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deliveries EmailNotificationDelivery[]
+
+  @@index([playerId, status, readyAt])
+  @@index([topic])
+  @@index([messageId])
+  @@index([settingId])
+}
+
+model EmailNotificationDelivery {
+  id String @id @default(cuid())
+
+  notificationId String?
+  notification   EmailNotificationEvent? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  settingId String?
+  setting   EmailNotificationSetting? @relation(fields: [settingId], references: [id], onDelete: Cascade)
+
+  toAddress String
+  subject   String
+  topic     EmailNotificationTopic
+
+  status EmailDeliveryStatus @default(SENT)
+  error  String?
+
+  sentAt DateTime @default(now())
+
+  @@index([playerId, sentAt])
+  @@index([topic, sentAt])
+  @@index([settingId])
+}
+
+enum EmailDeliverySchedule {
+  IMMEDIATE
+  HOURLY
+  DAILY
+}
+
+enum EmailNotificationTopic {
+  ATTACK_INCOMING
+  ATTACK_REPORT
+  CONQUEST_WARNING
+  CONQUEST_LOST
+  TRIBE_MESSAGE
+  TRAINING_COMPLETE
+  BUILDING_COMPLETE
+  DAILY_SUMMARY
+}
+
+enum EmailNotificationStatus {
+  PENDING
+  READY
+  SENT
+  SKIPPED
+  FAILED
+}
+
+enum EmailDeliveryStatus {
+  SENT
+  SKIPPED
+  FAILED
+}
+
+enum EmailLanguage {
+  EN
+  DE
 }
 
 // ============================================================================

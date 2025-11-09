@@ -3,6 +3,8 @@ import { MovementService } from "@/lib/game-services/movement-service"
 import { ProtectionService } from "@/lib/game-services/protection-service"
 import { CombatService } from "@/lib/game-services/combat-service"
 import { NightPolicyService, attackTypeToMission, formatWorldTime } from "@/lib/game-services/night-policy-service"
+import { NotificationService } from "@/lib/game-services/notification-service"
+import { EmailNotificationService } from "@/lib/notifications/email-notification-service"
 import { type NextRequest } from "next/server"
 import { attackLaunchSchema } from "@/lib/utils/validation"
 import {
@@ -12,7 +14,7 @@ import {
   notFoundResponse,
   handleValidationError,
 } from "@/lib/utils/api-response"
-import type { AttackType } from "@prisma/client"
+import type { AttackType, EmailNotificationTopic } from "@prisma/client"
 import { WorldRulesService } from "@/lib/game-rules/world-rules"
 import { getTroopSystemConfig } from "@/lib/troop-system/config"
 import { getRallyPointEngine } from "@/lib/rally-point/server"
@@ -252,6 +254,49 @@ export async function POST(req: NextRequest) {
         console.error("Failed to send alliance attack notifications:", error);
         // Don't fail the attack launch if notifications fail
       }
+    }
+
+    if (targetVillage?.playerId) {
+      NotificationService.emit({
+        playerId: targetVillage.playerId,
+        type: attackType === "CONQUEST" ? "NOBLE_ATTACK_INCOMING" : "ATTACK_INCOMING",
+        title: attackType === "CONQUEST" ? "Incoming noble attack" : "Incoming attack detected",
+        message: `${fromVillage.player.playerName} is sending troops from ${fromVillage.name} to ${targetVillage.name}. Landing ETA: ${attack.arrivalAt.toISOString()}`,
+        metadata: {
+          attackId: attack.id,
+          attackType,
+          fromVillageId: fromVillage.id,
+          toVillageId: targetVillage.id,
+          arrivalAt: attack.arrivalAt.toISOString(),
+        },
+        actionUrl: `/village/${targetVillage.id}/rally-point`,
+      }).catch((error) => {
+        console.error("Failed to enqueue player notification for attack launch:", error)
+      })
+
+      const unitCount = units.reduce((sum, unit) => sum + unit.quantity, 0)
+      await EmailNotificationService.queueEvent({
+        playerId: targetVillage.playerId,
+        topic: EmailNotificationTopic.ATTACK_INCOMING,
+        payload: {
+          attackId: attack.id,
+          attackType,
+          arrivalAt: attack.arrivalAt.toISOString(),
+          attacker: {
+            id: fromVillage.playerId,
+            name: fromVillage.player.playerName,
+            village: fromVillage.name,
+            coords: { x: fromVillage.x, y: fromVillage.y },
+          },
+          defender: {
+            id: targetVillage.playerId,
+            village: targetVillage.name,
+            coords: { x: targetVillage.x, y: targetVillage.y },
+          },
+          unitCount,
+        },
+        linkTarget: `/village/${targetVillage.id}/rally-point`,
+      })
     }
 
     return successResponse(attack, 201)

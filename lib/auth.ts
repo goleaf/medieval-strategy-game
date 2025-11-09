@@ -1,29 +1,72 @@
 import jwt from "jsonwebtoken"
+import { SECURITY_CONFIG } from "@/lib/config/security"
+import { SessionService, type CreateSessionOptions } from "@/lib/security/session-service"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production"
 
+export type AuthTokenPayload = {
+  userId: string
+  sessionId?: string
+  isSitter?: boolean
+  sitterFor?: string
+  isDual?: boolean
+  dualFor?: string
+  playerId?: string
+}
+
+export async function createSessionToken(
+  userId: string,
+  options: CreateSessionOptions & { additionalPayload?: Record<string, unknown> } = {},
+) {
+  const session = await SessionService.createSession(userId, options)
+  const expiresIn = options.rememberMe
+    ? `${SECURITY_CONFIG.session.rememberLifetimeDays}d`
+    : `${SECURITY_CONFIG.session.defaultLifetimeHours}h`
+
+  const token = jwt.sign(
+    {
+      userId,
+      sessionId: session.id,
+      ...(options.additionalPayload || {}),
+    },
+    JWT_SECRET,
+    { expiresIn },
+  )
+
+  return { token, session }
+}
+
 export async function verifyAuth(token: string) {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string }
-    return decoded
-  } catch {
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthTokenPayload
+    if (decoded.isSitter || decoded.isDual) {
+      return decoded
+    }
+
+    if (!decoded.sessionId) {
+      return null
+    }
+
+    const session = await SessionService.validateSession(decoded.sessionId)
+    if (!session) {
+      return null
+    }
+
+    return { ...decoded, session }
+  } catch (error) {
     return null
   }
 }
 
-export function generateToken(userId: string) {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "7d" })
-}
-
 export async function getAuthUser(req: Request) {
   const authHeader = req.headers.get("authorization")
-  if (!authHeader?.startsWith("Bearer ")) return null
-
+  if (!authHeader?.startsWith("Bearer ")) {
+    return null
+  }
   const token = authHeader.slice(7)
   return verifyAuth(token)
 }
 
-// NextAuth.js compatibility exports
 export const authOptions = {
   providers: [],
   secret: JWT_SECRET,
@@ -39,12 +82,12 @@ export const authOptions = {
         session.userId = token.userId
       }
       return session
-    }
-  }
+    },
+  },
 }
 
 export const auth = {
   verifyAuth,
-  generateToken,
-  getAuthUser
+  createSessionToken,
+  getAuthUser,
 }

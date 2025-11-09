@@ -59,7 +59,11 @@ export function VillageCreation({ playerId, onVillageCreated, existingVillagesCo
 
       if (tribesResponse.ok) {
         const tribesData = await tribesResponse.json();
-        setTribes(tribesData.tribes || []);
+        if (tribesData.success && tribesData.data) {
+          setTribes(tribesData.data.tribes || []);
+        } else {
+          setTribes([]);
+        }
       }
     } catch (error) {
       console.error("Failed to load data:", error);

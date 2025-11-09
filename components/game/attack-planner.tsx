@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Swords, Target, Users, X, ArrowRight, ArrowLeft, Bookmark, Trash2, RefreshCw, BookmarkCheck } from "lucide-react"
 import type { AttackType, Troop } from "@prisma/client"
 import { TextTable } from "./text-table"
@@ -16,14 +16,22 @@ interface AttackPlannerProps {
   playerId?: string | null
   playerHasGoldClub?: boolean
   onLaunchAttack: (toX: number, toY: number, selection: Record<string, number>, type: AttackType) => Promise<void>
+  prefillTarget?: { x?: number | null; y?: number | null }
 }
 
 type Mode = "inactive" | "coordinates" | "troops"
 
-export function AttackPlanner({ villageId, troops, playerId, playerHasGoldClub = false, onLaunchAttack }: AttackPlannerProps) {
-  const [mode, setMode] = useState<Mode>('inactive')
-  const [targetX, setTargetX] = useState('')
-  const [targetY, setTargetY] = useState('')
+export function AttackPlanner({
+  villageId,
+  troops,
+  playerId,
+  playerHasGoldClub = false,
+  onLaunchAttack,
+  prefillTarget,
+}: AttackPlannerProps) {
+  const [mode, setMode] = useState<Mode>("inactive")
+  const [targetX, setTargetX] = useState(prefillTarget?.x != null ? String(prefillTarget.x) : "")
+  const [targetY, setTargetY] = useState(prefillTarget?.y != null ? String(prefillTarget.y) : "")
   const [attackType, setAttackType] = useState<AttackType>('RAID')
   const [troopSelection, setTroopSelection] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(false)
@@ -43,6 +51,17 @@ export function AttackPlanner({ villageId, troops, playerId, playerHasGoldClub =
     mission: AttackPresetMission.ATTACK,
   })
   const [presetActionError, setPresetActionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (prefillTarget?.x != null) {
+      setTargetX(String(prefillTarget.x))
+      setMode("coordinates")
+    }
+    if (prefillTarget?.y != null) {
+      setTargetY(String(prefillTarget.y))
+      setMode("coordinates")
+    }
+  }, [prefillTarget?.x, prefillTarget?.y])
 
   const handleTroopChange = (troopId: string, value: number) => {
     setTroopSelection(prev => {

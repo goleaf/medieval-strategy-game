@@ -35,7 +35,7 @@ describe("CrannyService", () => {
     })
 
     const protection = await CrannyService.calculateTotalProtection("village-gaul")
-    expect(protection.wood).toBe(900) // (200 + 400) * 1.5
+    expect(protection.wood).toBe(450) // (100 + 200) * 1.5
     expect(prismaMock.crannyProtectionCurve.findMany).toHaveBeenCalled()
   })
 
@@ -49,7 +49,7 @@ describe("CrannyService", () => {
     })
 
     const protection = await CrannyService.calculateTotalProtection("village-roman", "TEUTONS")
-    expect(protection.wood).toBe(120) // (200 + 400) * 0.2
+    expect(protection.wood).toBe(60) // (100 + 200) reduced by 80%
   })
 
   it("provides base vs adjusted protection breakdown", async () => {
@@ -59,8 +59,8 @@ describe("CrannyService", () => {
     })
 
     const breakdown = await CrannyService.getProtectionBreakdown("village-gaul")
-    expect(breakdown.base.wood).toBe(200)
-    expect(breakdown.adjusted.wood).toBe(300)
+    expect(breakdown.base.wood).toBe(100)
+    expect(breakdown.adjusted.wood).toBe(150)
     expect(breakdown.defenderTribe).toBe("GAULS")
     expect(breakdown.crannyCount).toBe(1)
   })

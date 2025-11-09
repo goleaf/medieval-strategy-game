@@ -2,7 +2,8 @@ import { prisma } from "@/lib/db"
 import { BuildingService } from "@/lib/game-services/building-service"
 import { TroopService } from "@/lib/game-services/troop-service"
 import { UnitSystemService } from "@/lib/game-services/unit-system-service"
-import { TrainingStatus } from "@prisma/client"
+import { StorageService } from "@/lib/game-services/storage-service"
+import { TrainingStatus, StorageLedgerReason } from "@prisma/client"
 import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
 
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
         },
         trainingQueueItems: {
           where: { status: { in: [TrainingStatus.WAITING, TrainingStatus.TRAINING] } },
+          orderBy: { startAt: "asc" },
         },
       },
     })
@@ -119,9 +121,35 @@ export async function POST(req: NextRequest) {
     if (activeModernTraining > 0) {
       try {
         const now = new Date()
-        await prisma.trainingQueueItem.updateMany({
-          where: { id: { in: village.trainingQueueItems.map((item) => item.id) } },
-          data: { finishAt: now },
+        await prisma.$transaction(async (tx) => {
+          for (const job of village.trainingQueueItems) {
+            if (job.status === TrainingStatus.WAITING) {
+              const bundle = {
+                wood: job.costWood,
+                stone: job.costClay,
+                iron: job.costIron,
+                food: job.costCrop,
+                gold: 0,
+              }
+              await StorageService.deductResources(village.id, bundle, StorageLedgerReason.TRAINING_COST, {
+                client: tx,
+              })
+              const adjustedStart = new Date(now.getTime() - job.totalDurationSeconds * 1000)
+              await tx.trainingQueueItem.update({
+                where: { id: job.id },
+                data: {
+                  status: TrainingStatus.TRAINING,
+                  startAt: adjustedStart,
+                  finishAt: now,
+                },
+              })
+            } else {
+              await tx.trainingQueueItem.update({
+                where: { id: job.id },
+                data: { finishAt: now },
+              })
+            }
+          }
         })
         completedModernTraining = await UnitSystemService.completeFinishedTraining(now)
       } catch (error) {

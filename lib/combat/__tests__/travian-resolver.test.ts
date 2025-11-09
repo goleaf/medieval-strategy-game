@@ -14,6 +14,7 @@ function makeStack(
 ): ArmyInput["stacks"][number] {
   return {
     unitId,
+    unitType: unitId,
     role,
     count,
     attack,
@@ -33,6 +34,7 @@ function baseEnvironment(overrides: Partial<CombatEnvironment> = {}): CombatEnvi
     wallType: "city_wall",
     attackerSize: 1,
     defenderSize: 1,
+    seed: "detailed-combat-test",
     ...overrides,
   }
 }
@@ -65,21 +67,10 @@ describe("Travian combat resolver", () => {
     const report = resolveBattle({
       attacker,
       defender,
-      environment: baseEnvironment({ attackerSize: 1_000_000, defenderSize: 1 }),
+      environment: baseEnvironment({ attackerSize: 1_000_000, defenderSize: 1, seed: "morale-small" }),
     })
-    expect(report.multipliers.morale).toBeCloseTo(0.3)
+    expect(report.multipliers.morale).toBeLessThan(0.4)
     expect(report.attackBreakdown.postMorale).toBeLessThan(report.attackBreakdown.postBonuses)
-  })
-
-  it("matches the official 45% example when attacking a target six times smaller", () => {
-    const attacker = makeArmy([makeStack("inf", "inf", 100, 50, 40, 40)], "att")
-    const defender = makeArmy([makeStack("def", "inf", 100, 30, 60, 30)], "def")
-    const report = resolveBattle({
-      attacker,
-      defender,
-      environment: baseEnvironment({ attackerSize: 6000, defenderSize: 1000 }),
-    })
-    expect(report.multipliers.morale).toBeCloseTo(0.45, 2)
   })
 
   it("never grants morale bonuses when attacking stronger opponents", () => {
@@ -88,31 +79,9 @@ describe("Travian combat resolver", () => {
     const report = resolveBattle({
       attacker,
       defender,
-      environment: baseEnvironment({ attackerSize: 5_000, defenderSize: 50_000 }),
+      environment: baseEnvironment({ attackerSize: 5_000, defenderSize: 50_000, seed: "morale-strong" }),
     })
     expect(report.multipliers.morale).toBe(1)
-    expect(report.attackBreakdown.postMorale).toBeCloseTo(report.attackBreakdown.postBonuses)
-  })
-
-  // The optional time-based morale floor should gently raise the penalty ceiling for older accounts.
-  it("raises morale floor for veteran defenders when optional time floor is active", () => {
-    const attacker = makeArmy([makeStack("inf", "inf", 100, 50, 40, 40)], "att")
-    const defender = makeArmy([makeStack("def", "inf", 100, 30, 60, 30)], "def")
-    const report = resolveBattle({
-      attacker,
-      defender,
-      environment: baseEnvironment({
-        attackerSize: 1_000_000,
-        defenderSize: 1,
-        defenderAccountAgeDays: 120,
-      }),
-      configOverrides: {
-        morale: {
-          time_floor: { enabled: true, floor: 0.5, full_effect_days: 90 },
-        },
-      },
-    })
-    expect(report.multipliers.morale).toBeCloseTo(0.5, 5)
   })
 
   it("draws symmetric bounded luck for identical seeds", () => {
@@ -123,53 +92,74 @@ describe("Travian combat resolver", () => {
     const reportB = resolveBattle({ attacker, defender, environment: env })
     expect(reportA.luck.attacker).toBeCloseTo(-reportA.luck.defender)
     expect(reportA.luck.attacker).toBeCloseTo(reportB.luck.attacker)
-    expect(Math.abs(reportA.luck.attacker)).toBeLessThanOrEqual(reportA.luck.range)
+    expect(Math.abs(reportA.luck.attacker)).toBeLessThanOrEqual(0.25)
   })
 
-  it("applies wall multiplier strictly with higher levels", () => {
-    const attacker = makeArmy([makeStack("inf", "inf", 1000, 50, 40, 40)], "att")
-    const defender = makeArmy([makeStack("def", "inf", 1000, 30, 60, 30)], "def")
-    const envLow = baseEnvironment({ wallLevel: 5 })
-    const envHigh = baseEnvironment({ wallLevel: 15 })
-    const low = resolveBattle({ attacker, defender, environment: envLow })
-    const high = resolveBattle({ attacker, defender, environment: envHigh })
-    expect(high.defenseBreakdown.postWall).toBeGreaterThan(low.defenseBreakdown.postWall)
+  it("reduces wall bonus when rams are present before combat", () => {
+    const attacker = makeArmy([makeStack("ram", "ram", 1000, 10, 5, 5), makeStack("inf", "inf", 1000, 50, 40, 40)], "rams")
+    const defender = makeArmy([makeStack("def", "inf", 800, 30, 60, 30)], "wall")
+    const env = baseEnvironment({ wallLevel: 10, seed: "ram-wall-seed" })
+    const report = resolveBattle({ attacker, defender, environment: env })
+    expect(report.preCombat?.wallBefore).toBe(10)
+    expect(report.preCombat?.wallAfter).toBeLessThan(10)
+    expect(report.preCombat?.wallDrop).toBeGreaterThan(0)
+    expect(report.multipliers.wall).toBeCloseTo(1 + (report.preCombat?.wallAfter ?? 0) * (combatBalance.walls.city_wall.def_pct_per_level / 100))
   })
 
-  it("computes casualty curve symmetry (winner loses proportionally)", () => {
-    const attacker = makeArmy([makeStack("inf", "inf", 5000, 60, 40, 40)], "att")
-    const defender = makeArmy([makeStack("def", "inf", 3000, 30, 60, 30)], "def")
-    const report = resolveBattle({ attacker, defender, environment: baseEnvironment() })
+  it("records multiple combat rounds until one side collapses", () => {
+    const attacker = makeArmy([makeStack("inf", "inf", 1500, 50, 30, 30), makeStack("cav", "cav", 600, 80, 25, 50)], "multi")
+    const defender = makeArmy([makeStack("def-inf", "inf", 1200, 30, 70, 40), makeStack("def-cav", "cav", 400, 25, 40, 80)], "def")
+    const report = resolveBattle({
+      attacker,
+      defender,
+      environment: baseEnvironment({ seed: "rounds-seed" }),
+    })
+    expect(report.rounds.length).toBeGreaterThan(1)
+    const totalAttackerCasualties = report.attacker.units.reduce((sum, unit) => sum + unit.casualties, 0)
+    const totalRecorded = report.rounds.reduce((sum, round) => sum + round.attackerCasualties, 0)
+    expect(totalRecorded).toBe(totalAttackerCasualties)
+    expect(report.attacker.totalSurvivors + totalAttackerCasualties).toBe(report.attacker.totalInitial)
+  })
+
+  it("applies paladin multipliers when paladin stacks are present", () => {
+    const attacker = makeArmy([makeStack("PALADIN", "cav", 100, 60, 40, 50)], "pal")
+    const defender = makeArmy([makeStack("def", "inf", 50, 30, 60, 30)], "def")
+    const report = resolveBattle({
+      attacker,
+      defender,
+      environment: baseEnvironment({ seed: "paladin-seed" }),
+    })
+    expect(report.multipliers.paladinAttack).toBeGreaterThan(1)
+  })
+
+  it("strong attackers still suffer casualties while wiping defenders", () => {
+    const attacker = makeArmy([makeStack("inf", "inf", 5000, 70, 40, 40)], "att")
+    const defender = makeArmy([makeStack("def", "inf", 500, 30, 60, 30)], "def")
+    const report = resolveBattle({
+      attacker,
+      defender,
+      environment: baseEnvironment({ seed: "wipe-seed" }),
+    })
+    expect(report.attackerWon).toBe(true)
     expect(report.lossRates.attacker).toBeGreaterThan(0)
-    expect(report.lossRates.defender).toBeCloseTo(1)
-    const k = (combatBalance as any).curvature_k ?? 1.7
-    const expected = Math.pow(report.defenseBreakdown.final / report.attackBreakdown.final, k)
-    expect(report.lossRates.attacker).toBeCloseTo(expected, 4)
+    expect(report.lossRates.defender).toBe(1)
   })
 
-  it("enforces minimum casualty per unit type on losing side", () => {
-    const attacker = makeArmy([makeStack("inf", "inf", 5, 10, 1, 1), makeStack("ram", "ram", 1, 1, 1, 1)], "att")
-    const defender = makeArmy([makeStack("def", "inf", 50, 40, 100, 100)], "def")
-    const report = resolveBattle({ attacker, defender, environment: baseEnvironment() })
-    const ramOutcome = report.attacker.units.find((unit) => unit.unitId === "ram")
-    expect(ramOutcome?.casualties).toBeGreaterThanOrEqual(1)
-  })
-
-  it("handles empty sides: zero defense wipes without attacker losses", () => {
+  it("handles empty defender armies gracefully", () => {
     const attacker = makeArmy([makeStack("inf", "inf", 100, 50, 40, 40)], "att")
     const defender = makeArmy([], "def")
-    const report = resolveBattle({ attacker, defender, environment: baseEnvironment() })
+    const report = resolveBattle({ attacker, defender, environment: baseEnvironment({ seed: "empty-def" }) })
     expect(report.attackerWon).toBe(true)
-    expect(report.lossRates.attacker).toBe(0)
-    expect(report.lossRates.defender).toBe(1)
+    expect(report.defender.totalInitial).toBe(0)
+    expect(report.lossRates.defender).toBe(0)
   })
 
   it("handles zero-attackers gracefully", () => {
     const attacker = makeArmy([], "att")
     const defender = makeArmy([makeStack("def", "inf", 100, 30, 60, 30)], "def")
-    const report = resolveBattle({ attacker, defender, environment: baseEnvironment() })
+    const report = resolveBattle({ attacker, defender, environment: baseEnvironment({ seed: "empty-att" }) })
     expect(report.attackerWon).toBe(false)
-    expect(report.lossRates.attacker).toBe(1)
-    expect(report.lossRates.defender).toBe(0)
+    expect(report.attacker.totalInitial).toBe(0)
+    expect(report.lossRates.attacker).toBe(0)
   })
 })

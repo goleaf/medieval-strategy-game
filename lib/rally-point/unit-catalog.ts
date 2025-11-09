@@ -16,6 +16,7 @@ export function buildUnitCatalog(): Record<string, UnitStats> {
       defense: definition.defInf,
       defInf: definition.defInf,
       defCav: definition.defCav,
+      defArch: definition.defArch,
       siege: role === "ram" ? "ram" : role === "catapult" ? "catapult" : undefined,
       isAdministrator: role === "admin",
     }

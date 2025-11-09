@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
-import { verify } from "jsonwebtoken"
+import { verifyAuth } from "@/lib/auth"
 import { ActivityTracker } from "@/lib/utils/activity-tracker"
 
 export async function authenticateRequest(req: NextRequest): Promise<{
@@ -10,6 +10,7 @@ export async function authenticateRequest(req: NextRequest): Promise<{
   sitterFor?: string;
   isDual?: boolean;
   dualFor?: string;
+  sessionId?: string;
 } | null> {
   try {
     const authHeader = req.headers.get("authorization")
@@ -18,8 +19,10 @@ export async function authenticateRequest(req: NextRequest): Promise<{
     }
 
     const token = authHeader.slice(7)
-    const decoded = verify(token, process.env.JWT_SECRET || "secret") as any
+    const decoded = await verifyAuth(token)
+    if (!decoded) return null
 
+    const sessionId = typeof decoded === "object" && "session" in decoded ? decoded.session?.id : (decoded as any).sessionId
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       include: { players: true },
@@ -33,16 +36,16 @@ export async function authenticateRequest(req: NextRequest): Promise<{
     let isDual = false
     let dualFor: string | undefined
 
-    if (decoded.isSitter && decoded.sitterFor) {
+    if ((decoded as any).isSitter && (decoded as any).sitterFor) {
       // This is a sitter session
       isSitter = true
-      sitterFor = decoded.sitterFor
-      playerId = decoded.playerId // The target player being sat
-    } else if (decoded.isDual && decoded.dualFor) {
+      sitterFor = (decoded as any).sitterFor
+      playerId = (decoded as any).playerId // The target player being sat
+    } else if ((decoded as any).isDual && (decoded as any).dualFor) {
       // This is a dual session
       isDual = true
-      dualFor = decoded.dualFor
-      playerId = decoded.playerId // The target player being dual-controlled
+      dualFor = (decoded as any).dualFor
+      playerId = (decoded as any).playerId // The target player being dual-controlled
     } else {
       // Regular user session
       playerId = user.players[0]?.id
@@ -61,6 +64,7 @@ export async function authenticateRequest(req: NextRequest): Promise<{
       sitterFor,
       isDual,
       dualFor,
+      sessionId,
     }
   } catch (error) {
     return null

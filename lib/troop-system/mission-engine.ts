@@ -149,6 +149,7 @@ function toResolverArmy(army: ArmyComposition): ResolverArmyInput {
     label: army.label,
     stacks: army.stacks.map((stack) => ({
       unitId: stack.unitType,
+      unitType: stack.unitType,
       role: stack.role,
       count: stack.count,
       attack: stack.attack,
@@ -210,8 +211,23 @@ function applyRamDamage(
   mission: CombatMission,
   wall: WallState | undefined,
   config: TroopSystemConfig,
+  battle?: BattleReport,
 ): RamResolution | undefined {
   if (!wall) return undefined
+  const preCombat = battle?.preCombat
+  if (preCombat && wall.level > 0 && preCombat.wallDrop > 0) {
+    const newLevel = Math.max(0, wall.level - preCombat.wallDrop)
+    const ramStacks = stacks.filter((stack) => stack.role === "ram")
+    const { count } = aggregateTechWeighted(ramStacks, (stack) => stack.smithyAttackLevel)
+    return {
+      before: { ...wall },
+      after: { ...wall, level: newLevel },
+      levelDrop: wall.level - newLevel,
+      survivors: count,
+      rawPower: preCombat.ramAttempts,
+      effectivePower: preCombat.wallDrop,
+    }
+  }
   const ramStacks = stacks.filter((stack) => stack.role === "ram")
   const { count, average } = aggregateTechWeighted(ramStacks, (stack) => stack.smithyAttackLevel)
   if (count <= 0) return undefined
@@ -260,29 +276,57 @@ function distributeShots(
   return [{ target: { ...targets[0] }, shots: totalShots }]
 }
 
+function createBattleRng(seedHex?: string): () => number {
+  let seed = 0x9e3779b9
+  if (seedHex) {
+    try {
+      seed = Number(BigInt(seedHex)) & 0xffffffff
+    } catch {
+      // Fallback to default seed when parsing fails
+    }
+  }
+  return () => {
+    seed |= 0
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 function applyCatapultDamage(
   stacks: SurvivorStackSummary[],
   siegeContext: SiegeContext | undefined,
   config: TroopSystemConfig,
+  battle?: BattleReport,
 ): CatapultResolution | undefined {
   if (!siegeContext?.targets || siegeContext.targets.length === 0) return undefined
+  if (battle && !battle.attackerWon) return undefined
   const catStacks = stacks.filter((stack) => stack.role === "catapult")
   const { count, average } = aggregateTechWeighted(catStacks, (stack) => stack.smithyAttackLevel)
   if (count <= 0) return undefined
 
   const catConfig = config.siege.catapult
   const techMultiplier = 1 + average * (catConfig.techPct / 100)
-  let totalShots = Math.floor((count * techMultiplier) / Math.max(1, catConfig.shotDivisor))
-  totalShots = Math.max(catConfig.minShots, totalShots)
+  const effectiveCats = Math.floor(count * techMultiplier)
+  const totalShots = Math.max(0, Math.floor(effectiveCats / 3))
+  if (totalShots <= 0) return undefined
+
+  const successChance = count >= 9 ? 0.9 : count >= 6 ? 0.5 : 0.3
+  const rng = createBattleRng(battle?.luck?.seed)
 
   const distributions = distributeShots(totalShots, siegeContext.targets, siegeContext.allowDualTargets)
   const targetResults: CatapultTargetResolution[] = []
   for (const entry of distributions) {
-    let drop = Math.floor(entry.shots / Math.max(1, catConfig.levelDivisor))
-    drop = Math.max(drop, entry.shots > 0 ? 1 : 0)
+    let drop = 0
+    for (let i = 0; i < entry.shots; i += 1) {
+      if (rng() < successChance) {
+        drop += 1
+      }
+    }
     drop = Math.min(drop, entry.target.level)
     const after = Math.max(0, entry.target.level - drop)
-    const shotsUsed = drop * catConfig.levelDivisor
+    const shotsUsed = entry.shots
     targetResults.push({
       id: entry.target.id,
       before: entry.target.level,
@@ -339,13 +383,47 @@ function computeLoot(
 
   const lootableBefore = { ...lootable }
   const taken: UnitCosts = { wood: 0, clay: 0, iron: 0, crop: 0 }
-  let remainingCapacity = capacity
   const order = lootContext.lootOrder ?? config.missions.defaultLootOrder
+  const orderedResources = Array.from(new Set([...order, ...Object.keys(lootableBefore) as Array<keyof UnitCosts>]))
+  const totalLootable = orderedResources.reduce((sum, res) => sum + Math.max(lootable[res] ?? 0, 0), 0)
+  const plunderTarget = Math.min(capacity, totalLootable)
 
-  for (const resource of order) {
+  if (plunderTarget <= 0) {
+    return {
+      capacity,
+      taken,
+      remainingCapacity: capacity,
+      lootableBefore,
+      lootableAfter: lootable,
+      defenderResourcesAfter: defenderResources,
+    }
+  }
+
+  const fractionalShares: Partial<Record<keyof UnitCosts, number>> = {}
+  let allocated = 0
+  for (const resource of orderedResources) {
+    const available = Math.max(0, lootable[resource] ?? 0)
+    if (available <= 0) {
+      fractionalShares[resource] = 0
+      continue
+    }
+    const rawShare = totalLootable > 0 ? (available / totalLootable) * plunderTarget : 0
+    const pulled = Math.min(available, Math.floor(rawShare))
+    taken[resource] += pulled
+    lootable[resource] -= pulled
+    allocated += pulled
+    fractionalShares[resource] = rawShare - Math.floor(rawShare)
+  }
+
+  let remainingCapacity = plunderTarget - allocated
+  const remainderOrder = orderedResources
+    .slice()
+    .sort((a, b) => (fractionalShares[b] ?? 0) - (fractionalShares[a] ?? 0))
+
+  for (const resource of remainderOrder) {
     if (remainingCapacity <= 0) break
     const available = lootable[resource]
-    if (available <= 0) continue
+    if (!available || available <= 0) continue
     const pulled = Math.min(available, remainingCapacity)
     taken[resource] += pulled
     lootable[resource] -= pulled
@@ -402,7 +480,11 @@ function applyLoyalty(
 
   if (after <= 0) {
     if (loyaltyContext.captureAllowed && !loyaltyContext.blocked) {
-      after = config.administration.captureFloor
+      const floor = config.administration.captureFloor
+      const ceiling = Math.max(config.administration.captureCeiling ?? floor, floor)
+      const span = ceiling - floor + 1
+      const roll = floor + Math.floor(rng() * span)
+      after = Math.max(floor, Math.min(ceiling, roll))
       captured = true
     } else {
       after = config.administration.blockedFloor
@@ -481,14 +563,16 @@ export function resolveCombatMission(input: CombatMissionInput): CombatMissionRe
 
   const attackerSummary = summarizeOutcome(input.attacker, battle.attacker, config)
   const defenderSummary = summarizeOutcome(input.defender, battle.defender, config)
-  const ramResolution = applyRamDamage(attackerSummary, input.mission, wall, config)
-  const catapultResolution = applyCatapultDamage(attackerSummary, input.siege, config)
+  const ramResolution = applyRamDamage(attackerSummary, input.mission, wall, config, battle)
+  const catapultResolution = applyCatapultDamage(attackerSummary, input.siege, config, battle)
   const allowsLoot = input.mission === "attack" || input.mission === "raid" || input.mission === "siege" || input.mission === "admin_attack"
   const lootResolution =
     battle.attacker.totalSurvivors > 0 && allowsLoot
       ? computeLoot(attackerSummary, input.loot, config)
       : undefined
-  const loyaltyResolution = applyLoyalty(input.mission, attackerSummary, input.loyalty, config)
+  const loyaltyResolution = battle.attackerWon
+    ? applyLoyalty(input.mission, attackerSummary, input.loyalty, config)
+    : undefined
   const returnPlan =
     battle.attacker.totalSurvivors > 0
       ? planReturn(

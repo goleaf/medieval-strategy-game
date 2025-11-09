@@ -116,7 +116,7 @@ export class ShipmentService {
   static async processDueReturns(now = new Date()) {
     const shipments = await prisma.shipment.findMany({
       where: {
-        status: { in: ["RETURNING", "DELIVERED"] },
+        status: { in: ["RETURNING", "DELIVERED", "CANCELLED"] },
         returnAt: { lte: now },
       },
     })
@@ -124,6 +124,49 @@ export class ShipmentService {
     for (const shipment of shipments) {
       await this.markShipmentReturned(shipment, now)
     }
+  }
+
+  static async cancelShipment(shipmentId: string, actorPlayerId: string) {
+    const now = new Date()
+    return prisma.$transaction(async (tx) => {
+      const shipment = await tx.shipment.findUnique({
+        where: { id: shipmentId },
+        include: {
+          sourceVillage: {
+            select: {
+              playerId: true,
+            },
+          },
+        },
+      })
+
+      if (!shipment) {
+        throw new Error("Shipment not found")
+      }
+      if (shipment.sourceVillage.playerId !== actorPlayerId) {
+        throw new Error("You can only cancel your own shipments")
+      }
+      if (!["SCHEDULED", "EN_ROUTE"].includes(shipment.status)) {
+        throw new Error("Only active shipments can be cancelled")
+      }
+      if (shipment.arriveAt <= now) {
+        throw new Error("Shipment already arrived")
+      }
+
+      const travelDuration = Math.max(0, shipment.arriveAt.getTime() - shipment.departAt.getTime())
+      const elapsed = Math.max(0, now.getTime() - shipment.departAt.getTime())
+      const returnDuration = Math.min(travelDuration, elapsed)
+      const returnAt = new Date(now.getTime() + returnDuration)
+
+      return tx.shipment.update({
+        where: { id: shipment.id },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: now,
+          returnAt,
+        },
+      })
+    })
   }
 
   private static async markShipmentArrived(shipment: Shipment, timestamp: Date) {
@@ -173,6 +216,23 @@ export class ShipmentService {
 
   private static async markShipmentReturned(shipment: Shipment, timestamp: Date) {
     await prisma.$transaction(async (tx) => {
+      const returningWithCargo = !!shipment.cancelledAt && !shipment.deliveredAt
+      if (returningWithCargo) {
+        const bundle = this.extractBundle(shipment)
+        await StorageService.addResources(
+          shipment.sourceVillageId,
+          bundle,
+          StorageLedgerReason.TRADE_IN,
+          {
+            client: tx,
+            metadata: {
+              shipmentId: shipment.id,
+              intent: "trade_cancel_return",
+            },
+          },
+        )
+      }
+
       await MerchantService.releaseMerchants(shipment.sourceVillageId, shipment.merchantsUsed, tx)
       await tx.shipment.update({
         where: { id: shipment.id },

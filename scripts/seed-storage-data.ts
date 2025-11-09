@@ -7,8 +7,7 @@ const CAPACITY_CONFIG: Partial<Record<BuildingType, { base: number; growth: numb
 }
 
 const CRANNY_LEVELS = 20
-const CRANNY_BASE = 200
-const CRANNY_GROWTH = 1.35
+const CRANNY_STEP = 100
 
 function rounded(value: number, step = 100) {
   return Math.round(value / step) * step
@@ -25,7 +24,7 @@ function buildCapacitySeries(base: number, growth: number, levels: number) {
 function buildCrannySeries() {
   return Array.from({ length: CRANNY_LEVELS }, (_, idx) => {
     const level = idx + 1
-    const protectedPerResource = rounded(CRANNY_BASE * Math.pow(CRANNY_GROWTH, idx), 50)
+    const protectedPerResource = level * CRANNY_STEP
     return { level, protectedPerResource }
   })
 }

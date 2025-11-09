@@ -3,14 +3,43 @@ import { hash } from "bcryptjs"
 import { type NextRequest, NextResponse } from "next/server"
 import { VillageService } from "@/lib/game-services/village-service"
 import { CulturePointService } from "@/lib/game-services/culture-point-service"
+import { validatePassword, validateUsername } from "@/lib/security/password-policy"
+import { CaptchaService } from "@/lib/security/captcha-service"
+import { EmailVerificationService } from "@/lib/security/email-verification-service"
+import { SecurityQuestionService } from "@/lib/security/security-question-service"
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, username, password, displayName, gameWorldId, tribe } = await req.json()
+    const {
+      email,
+      username,
+      password,
+      displayName,
+      gameWorldId,
+      tribe,
+      securityQuestions = [],
+      captchaId,
+      captchaAnswer,
+    } = await req.json()
 
     // Validation
-    if (!email || !username || !password) {
+    if (!email || !username || !password || !captchaId || !captchaAnswer) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    const captchaValid = await CaptchaService.verifyChallenge(captchaId, captchaAnswer)
+    if (!captchaValid) {
+      return NextResponse.json({ error: "Captcha validation failed" }, { status: 400 })
+    }
+
+    const usernameValidation = validateUsername(username)
+    if (!usernameValidation.valid) {
+      return NextResponse.json({ error: usernameValidation.errors[0] }, { status: 400 })
+    }
+
+    const passwordValidation = validatePassword(password)
+    if (!passwordValidation.valid) {
+      return NextResponse.json({ error: passwordValidation.errors[0] }, { status: 400 })
     }
 
     // Validate game world and tribe selection
@@ -53,8 +82,8 @@ export async function POST(req: NextRequest) {
     // Create user
     const user = await prisma.user.create({
       data: {
-        email,
-        username,
+        email: email.toLowerCase().trim(),
+        username: username.trim(),
         password: hashedPassword,
         displayName: displayName || username,
       },
@@ -77,13 +106,22 @@ export async function POST(req: NextRequest) {
     const { ProtectionService } = await import("@/lib/game-services/protection-service")
     await ProtectionService.initializeProtection(player.id)
 
+    // Apply optional security questions
+    if (securityQuestions.length) {
+      await SecurityQuestionService.upsertQuestions(user.id, securityQuestions)
+    }
+
     // Create initial village with random name
     await VillageService.ensurePlayerHasVillage(player.id)
+
+    // Send verification email
+    await EmailVerificationService.sendVerificationEmail(user.id, user.email)
 
     return NextResponse.json(
       {
         user: { id: user.id, email: user.email, username: user.username },
         player: { id: player.id, playerName: player.playerName },
+        verificationRequired: true,
       },
       { status: 201 },
     )

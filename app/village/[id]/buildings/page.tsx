@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -8,8 +8,9 @@ import { ArrowLeft, Zap } from "lucide-react"
 import { BuildingQueue } from "@/components/game/building-queue"
 import { TextTable } from "@/components/game/text-table"
 import { CountdownTimer } from "@/components/game/countdown-timer"
-import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { Button } from "@/components/ui/button"
+import { CONSTRUCTION_CONFIG, type ConstructionEntityKey } from "@/lib/config/construction"
+import { getBlueprintKeyForType, getDisplayNameFromType, getTypeForBlueprint } from "@/lib/config/building-blueprint-map"
 
 type VillageWithBuildings = {
   id: string
@@ -39,6 +40,11 @@ type VillageWithBuildings = {
     startedAt: string | null
     finishesAt: string | null
   }>
+  player?: {
+    beginnerProtectionUntil?: string | null
+    hasGoldClubMembership?: boolean
+    goldClubExpiresAt?: string | null
+  }
 }
 
 function getBuildingImage(type: string): string {
@@ -88,6 +94,77 @@ const BUILDING_COSTS: Record<string, Record<string, number>> = {
   SNOB: { wood: 500, stone: 500, iron: 500, gold: 500, food: 500 },
 }
 
+type Requirement = { type: string; level: number }
+type RequirementStatus = Requirement & { label: string; met: boolean }
+type DependencyCard = { type: string; name: string; requirements: RequirementStatus[] }
+
+const ADDITIONAL_REQUIREMENTS: Record<string, Requirement[]> = {
+  SNOB: [{ type: "ACADEMY", level: 1 }],
+}
+
+const BLUEPRINTS = CONSTRUCTION_CONFIG.buildingBlueprints
+
+function formatBuildingName(type: string): string {
+  return getDisplayNameFromType(type) || type
+}
+
+function getRequirementsForType(type: string): Requirement[] {
+  const requirements: Requirement[] = []
+  const normalizedType = type.toUpperCase()
+  const blueprintKey = getBlueprintKeyForType(normalizedType)
+  if (blueprintKey) {
+    const blueprint = BLUEPRINTS[blueprintKey]
+    if (blueprint?.prerequisites) {
+      for (const [key, value] of Object.entries(blueprint.prerequisites)) {
+        const requirementLevel = typeof value === "number" ? value : Number(value)
+        if (!requirementLevel) continue
+        const normalizedType = (getTypeForBlueprint(key as ConstructionEntityKey) ?? key).toUpperCase()
+        requirements.push({ type: normalizedType, level: requirementLevel })
+      }
+    }
+  }
+  if (ADDITIONAL_REQUIREMENTS[normalizedType]) {
+    requirements.push(
+      ...ADDITIONAL_REQUIREMENTS[normalizedType].map((req) => ({
+        type: req.type.toUpperCase(),
+        level: req.level,
+      })),
+    )
+  }
+  return requirements
+}
+
+function buildRequirementStatuses(
+  type: string,
+  levelMap: Map<string, number>,
+): RequirementStatus[] {
+  return getRequirementsForType(type).map((requirement) => {
+    const normalizedType = requirement.type.toUpperCase()
+    const currentLevel = levelMap.get(normalizedType) ?? 0
+    const label = `${formatBuildingName(normalizedType)} level ${requirement.level}`
+    return {
+      ...requirement,
+      label,
+      met: currentLevel >= requirement.level,
+    }
+  })
+}
+
+function summarizeMissingRequirements(statuses: RequirementStatus[]): string[] {
+  return statuses.filter((status) => !status.met).map((status) => status.label)
+}
+
+function getMaxLevelForType(type: string): number {
+  const blueprintKey = getBlueprintKeyForType(type)
+  if (blueprintKey) {
+    const blueprint = BLUEPRINTS[blueprintKey]
+    if (blueprint?.maxLevel) {
+      return blueprint.maxLevel
+    }
+  }
+  return 30
+}
+
 export default function BuildingsPage() {
   const params = useParams()
   const villageId = params.id as string
@@ -95,6 +172,43 @@ export default function BuildingsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [completionMessage, setCompletionMessage] = useState<string | null>(null)
+  const previousActiveTasksRef = useRef<string[]>([])
+  const completionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { requirementStatusByType, dependencyCards } = useMemo(() => {
+    if (!village) {
+      return {
+        requirementStatusByType: new Map<string, RequirementStatus[]>(),
+        dependencyCards: [] as DependencyCard[],
+      }
+    }
+
+    const levelMap = new Map<string, number>()
+    village.buildings.forEach((building) => {
+      const type = building.type.toUpperCase()
+      const current = levelMap.get(type) ?? 0
+      levelMap.set(type, Math.max(current, building.level))
+    })
+
+    const seen = new Set<string>()
+    const statusMap = new Map<string, RequirementStatus[]>()
+    const cards: DependencyCard[] = []
+
+    village.buildings.forEach((building) => {
+      const type = building.type.toUpperCase()
+      if (seen.has(type)) return
+      seen.add(type)
+      const statuses = buildRequirementStatuses(type, levelMap)
+      statusMap.set(type, statuses)
+      if (statuses.length > 0) {
+        cards.push({ type, name: formatBuildingName(type), requirements: statuses })
+      }
+    })
+
+    cards.sort((a, b) => a.name.localeCompare(b.name))
+
+    return { requirementStatusByType: statusMap, dependencyCards: cards }
+  }, [village])
 
   const fetchVillage = useCallback(async () => {
     try {
@@ -136,6 +250,96 @@ export default function BuildingsPage() {
       setLoading(false)
     }
   }
+
+  const handleCancel = async (buildingId: string) => {
+    setError(null)
+    setSuccess(null)
+    setLoading(true)
+    try {
+      const res = await fetch("/api/buildings/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ buildingId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSuccess("Construction cancelled")
+        setTimeout(() => setSuccess(null), 5000)
+        await fetchVillage()
+      } else {
+        setError(data.error || "Failed to cancel construction")
+        setTimeout(() => setError(null), 5000)
+      }
+    } catch (err) {
+      console.error("Failed to cancel construction:", err)
+      setError("Failed to cancel construction. Please try again.")
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSpeedUp = async (buildingId: string) => {
+    setError(null)
+    setSuccess(null)
+    setLoading(true)
+    try {
+      const res = await fetch("/api/buildings/speed-up", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ buildingId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSuccess("Construction finished instantly")
+        setTimeout(() => setSuccess(null), 5000)
+        await fetchVillage()
+      } else {
+        setError(data.error || "Failed to speed up construction")
+        setTimeout(() => setError(null), 5000)
+      }
+    } catch (err) {
+      console.error("Failed to speed up construction:", err)
+      setError("Unable to speed up construction. Please try again.")
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleInstantComplete = async () => {
+    if (!village) return
+    setError(null)
+    setSuccess(null)
+    setLoading(true)
+    try {
+      const res = await fetch("/api/villages/instant-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ villageId: village.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSuccess("All constructions completed instantly")
+        setTimeout(() => setSuccess(null), 5000)
+        await fetchVillage()
+      } else {
+        setError(data.error || "Failed to complete instantly")
+        setTimeout(() => setError(null), 5000)
+      }
+    } catch (err) {
+      console.error("Failed to instant complete:", err)
+      setError("Instant completion failed. Please try again.")
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const hasPremiumAccess = Boolean(
+    village?.player?.hasGoldClubMembership &&
+      (!village.player?.goldClubExpiresAt || new Date(village.player.goldClubExpiresAt) > new Date())
+  )
 
   const checkInsufficientResources = (buildingType: string) => {
     if (!village) return null
@@ -222,6 +426,31 @@ export default function BuildingsPage() {
     }
   }, [fetchVillage])
 
+  useEffect(() => {
+    if (!village) return
+    const currentActive = village.buildQueueTasks
+      .filter((task) => task.status === "BUILDING")
+      .map((task) => task.id)
+    const previousActive = previousActiveTasksRef.current
+    const completed = previousActive.filter((taskId) => !currentActive.includes(taskId))
+    if (previousActive.length > 0 && completed.length > 0) {
+      setCompletionMessage("Construction completed!")
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current)
+      }
+      completionTimeoutRef.current = setTimeout(() => setCompletionMessage(null), 5000)
+    }
+    previousActiveTasksRef.current = currentActive
+  }, [village])
+
+  useEffect(() => {
+    return () => {
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current)
+      }
+    }
+  }, [])
+
   if (!village) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -264,11 +493,20 @@ export default function BuildingsPage() {
               <button onClick={() => setSuccess(null)} className="text-green-600 hover:text-green-600/80 text-sm">✕</button>
             </div>
           )}
+          {completionMessage && (
+            <div className="bg-blue-500/10 border border-blue-500 rounded p-3 flex items-center justify-between">
+              <span className="text-blue-600 text-sm">🔔 {completionMessage}</span>
+              <button onClick={() => setCompletionMessage(null)} className="text-blue-600 hover:text-blue-600/80 text-sm">✕</button>
+            </div>
+          )}
           {loading && <div className="text-center py-4">Processing...</div>}
           <BuildingQueue
             tasks={village.buildQueueTasks}
             activeResearchCount={village.buildings.filter((b) => (b as any).research?.isResearching).length}
             villageId={village.id}
+            onCancel={handleCancel}
+            onSpeedUp={handleSpeedUp}
+            canUsePremiumSpeed={hasPremiumAccess}
             onInstantComplete={fetchVillage}
           />
 
@@ -298,61 +536,119 @@ export default function BuildingsPage() {
 
           <section>
             <h2 className="text-lg font-bold mb-2">All Buildings</h2>
+            <p className="text-sm text-muted-foreground mb-3">Upgrade caps follow each blueprint (typically level 30); meet the requirements outlined below to unlock the next stage.</p>
             <TextTable
               headers={["Building", "Type", "Level", "Status", "Actions"]}
-              rows={village.buildings.map((building) => [
-                <div key={`image-${building.id}`} className="flex items-center justify-center">
-                  <Image
-                    src={getBuildingImage(building.type)}
-                    alt={building.type}
-                    width={48}
-                    height={48}
-                    className="object-contain"
-                  />
-                </div>,
-                building.type,
-                building.level.toString(),
-                building.isBuilding && building.completionAt ? (
+              rows={village.buildings.map((building) => {
+                const requirementStatuses = requirementStatusByType.get(building.type.toUpperCase()) ?? []
+                const missingRequirements = summarizeMissingRequirements(requirementStatuses)
+                const isUnlocked = missingRequirements.length === 0
+                const buttonDisabled = building.isBuilding || !isUnlocked
+                const buttonTitle = !isUnlocked
+                  ? `Requires ${missingRequirements.join(", ")}`
+                  : building.isBuilding
+                    ? "Building in progress"
+                    : undefined
+                const maxLevel = getMaxLevelForType(building.type)
+
+                const statusNode = building.isBuilding && building.completionAt ? (
                   <span key={`status-${building.id}`} className="text-sm">
                     Building: <CountdownTimer targetDate={building.completionAt} />
                   </span>
+                ) : isUnlocked ? (
+                  <span className="text-sm text-emerald-600">Ready (max {maxLevel})</span>
                 ) : (
-                  "Ready"
-                ),
-                <div key={`actions-${building.id}`} className="flex flex-col gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleUpgrade(building.id)}
-                    disabled={building.isBuilding}
-                  >
-                    <Zap className="w-4 h-4" />
-                    {building.isBuilding ? "Building..." : "Upgrade"}
-                  </Button>
+                  <span className="text-xs text-destructive">
+                    Locked: {missingRequirements.join(", ")}
+                  </span>
+                )
 
-                  {(() => {
-                    const insufficientResources = checkInsufficientResources(building.type)
-                    if (insufficientResources && !building.isBuilding) {
-                      const exchanges = calculateRequiredExchange(building.type, insufficientResources)
-                      return exchanges.length > 0 ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const exchange = exchanges[0]
-                            handleNpcMerchantExchange(exchange.from, exchange.to, exchange.amount)
-                          }}
-                          className="text-xs"
-                        >
-                          💰 Exchange ({exchanges[0].amount})
-                        </Button>
-                      ) : null
-                    }
-                    return null
-                  })()}
-                </div>,
-              ])}
+                return [
+                  <div key={`image-${building.id}`} className={`flex items-center justify-center ${isUnlocked ? "" : "opacity-60"}`}>
+                    <Image
+                      src={getBuildingImage(building.type)}
+                      alt={building.type}
+                      width={48}
+                      height={48}
+                      className="object-contain"
+                    />
+                  </div>,
+                  formatBuildingName(building.type),
+                  `${building.level}/${maxLevel}`,
+                  statusNode,
+                  <div key={`actions-${building.id}`} className="flex flex-col gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleUpgrade(building.id)}
+                      disabled={buttonDisabled}
+                      title={buttonTitle}
+                      className={isUnlocked ? "" : "border-dashed"}
+                    >
+                      <Zap className="w-4 h-4" />
+                      {building.isBuilding ? "Building..." : isUnlocked ? "Upgrade" : "Locked"}
+                    </Button>
+
+                    {requirementStatuses.length > 0 && (
+                      <ul className="text-[11px] leading-tight text-muted-foreground">
+                        {requirementStatuses.map((req) => (
+                          <li key={`${building.id}-${req.type}-${req.level}`} className={req.met ? "text-emerald-600" : "text-muted-foreground"}>
+                            {req.met ? "✓" : "○"} {req.label}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {(() => {
+                      const insufficientResources = checkInsufficientResources(building.type)
+                      if (insufficientResources && !building.isBuilding) {
+                        const exchanges = calculateRequiredExchange(building.type, insufficientResources)
+                        return exchanges.length > 0 ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const exchange = exchanges[0]
+                              handleNpcMerchantExchange(exchange.from, exchange.to, exchange.amount)
+                            }}
+                            className="text-xs"
+                          >
+                            💰 Exchange ({exchanges[0].amount})
+                          </Button>
+                        ) : null
+                      }
+                      return null
+                    })()}
+                  </div>,
+                ]
+              })}
             />
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold mb-2">Technology Tree</h2>
+            {dependencyCards.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No dependencies to show yet.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {dependencyCards.map((card) => (
+                  <div key={card.type} className="rounded-lg border border-border bg-secondary/40 p-3">
+                    <div className="text-sm font-semibold">{card.name}</div>
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {card.requirements.map((req) => (
+                        <li
+                          key={`${card.type}-${req.type}-${req.level}`}
+                          className={`flex items-center gap-2 ${req.met ? "text-emerald-600" : "text-destructive"}`}
+                        >
+                          <span>{req.met ? "✓" : "!"}</span>
+                          <span>{req.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
       </main>

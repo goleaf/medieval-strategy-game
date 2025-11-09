@@ -1,6 +1,6 @@
-import { prisma } from "@/lib/db"
 import { type NextRequest } from "next/server"
 import { successResponse, errorResponse, serverErrorResponse } from "@/lib/utils/api-response"
+import { NotificationService } from "@/lib/game-services/notification-service"
 
 export async function PATCH(
   req: NextRequest,
@@ -8,20 +8,18 @@ export async function PATCH(
 ) {
   try {
     const body = await req.json()
-    const { read } = body
+    const { playerId } = body
+    if (!playerId) {
+      return errorResponse("Player ID required", 400)
+    }
 
-    // Mark corresponding message as read
-    await prisma.message.update({
-      where: { id: params.id },
-      data: { readAt: read ? new Date() : null },
-    })
+    await NotificationService.markAsRead(params.id, playerId)
 
     return successResponse({ success: true })
   } catch (error) {
     return serverErrorResponse(error)
   }
 }
-
 
 
 

@@ -23,7 +23,7 @@ export type MapScale = "REGION" | "PROVINCE" | "WORLD"
 export const MAP_SCALE_DEFAULT_RADIUS: Record<MapScale, number> = {
   REGION: 7, // 15x15 viewport
   PROVINCE: 50, // 100x100 viewport
-  WORLD: 400, // full extent (−400..400 default)
+  WORLD: 150, // capped overview (full 1000×1000 handled by world summaries)
 }
 
 export enum FogState {

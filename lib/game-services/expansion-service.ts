@@ -311,22 +311,22 @@ export class ExpansionService {
   }: {
     targetVillage: VillageWithOwner
     attackerVillage: VillageWithOwner
-  }): Promise<"SUCCESS" | "CAPITAL_BLOCKED" | "NO_CP_SLOT" | "NO_EXPANSION_SLOT"> {
+  }): Promise<{ status: "SUCCESS" | "CAPITAL_BLOCKED" | "NO_CP_SLOT" | "NO_EXPANSION_SLOT"; previousOwnerId?: string }> {
     const config = LoyaltyService.getConfig()
 
     if (!config.capitalConquerable && targetVillage.isCapital) {
-      return "CAPITAL_BLOCKED"
+      return { status: "CAPITAL_BLOCKED" }
     }
 
     if (config.requireCpSlotAtConquest && attackerVillage.player.villagesUsed >= attackerVillage.player.villagesAllowed) {
-      return "NO_CP_SLOT"
+      return { status: "NO_CP_SLOT" }
     }
 
     if (config.consumeExpansionSlotOnConquest) {
       await this.syncExpansionSlotsForVillage(attackerVillage.id)
       const refreshed = await prisma.village.findUnique({ where: { id: attackerVillage.id } })
       if (!refreshed || refreshed.expansionSlotsUsed >= refreshed.expansionSlotsTotal) {
-        return "NO_EXPANSION_SLOT"
+        return { status: "NO_EXPANSION_SLOT" }
       }
     }
 
@@ -391,6 +391,6 @@ export class ExpansionService {
     await this.syncExpansionSlotsForVillage(targetVillage.id)
     await handleVillageConquest(targetVillage.id, attackerVillage.playerId)
 
-    return "SUCCESS"
+    return { status: "SUCCESS", previousOwnerId }
   }
 }

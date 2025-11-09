@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { VillageService } from "@/lib/game-services/village-service"
 import { ProtectionService } from "@/lib/game-services/protection-service"
+import { TrainingStatus } from "@prisma/client"
 import { type NextRequest } from "next/server"
 import { villageSchema } from "@/lib/utils/validation"
 import { successResponse, errorResponse, serverErrorResponse, notFoundResponse, handleValidationError } from "@/lib/utils/api-response"
@@ -37,13 +38,23 @@ export async function GET(req: NextRequest) {
             unitType: true,
           },
         },
+        trainingQueueItems: {
+          where: {
+            status: { in: [TrainingStatus.WAITING, TrainingStatus.TRAINING] },
+          },
+          include: { unitType: true },
+          orderBy: { startAt: "asc" },
+        },
         continent: true,
         player: {
           select: {
             beginnerProtectionUntil: true,
+            hasGoldClubMembership: true,
+            goldClubExpiresAt: true,
           },
         },
       },
+      resourceLedgers: true,
     })
 
     // Add protection status to each village

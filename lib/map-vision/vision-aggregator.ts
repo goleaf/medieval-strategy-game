@@ -53,6 +53,9 @@ interface VillageSummary {
   y: number
   playerId: string
   playerName: string
+  tribeId: string | null
+  tribeTag: string | null
+  tribeName: string | null
   allianceId: string | null
   allianceTag: string | null
   population: number
@@ -62,7 +65,22 @@ interface VillageSummary {
   wallBandId: string | null
   wallBandLabel: string | null
   isCapital: boolean
+  isBarbarian: boolean
   updatedAt: Date
+}
+
+type OwnerSnapshot = {
+  playerId?: string
+  playerName?: string
+  tribeId?: string | null
+  tribeTag?: string | null
+  tribeName?: string | null
+  allianceId?: string | null
+  allianceTag?: string | null
+  isCapital?: boolean
+  isBarbarian?: boolean
+  villageId?: string
+  villageName?: string
 }
 
 export class VisionAggregator {
@@ -331,17 +349,22 @@ export class VisionAggregator {
     }
 
     const ownerEntry = attributeFreshness.owner
+    const ownerValue = ownerEntry?.value as OwnerSnapshot | undefined
     const populationEntry = attributeFreshness.population
     const wallEntry = attributeFreshness.wall
 
     return {
       occupantType: occupant ? "VILLAGE" : "EMPTY",
-      villageId: occupant?.id ?? (ownerEntry?.value as Record<string, unknown> | undefined)?.villageId ?? null,
-      villageName: occupant?.name ?? (ownerEntry?.value as Record<string, unknown> | undefined)?.villageName ?? null,
-      ownerName: state === FogState.FRESH ? occupant?.playerName : (ownerEntry?.value as Record<string, unknown> | undefined)?.playerName ?? null,
+      villageId: occupant?.id ?? ownerValue?.villageId ?? null,
+      villageName: occupant?.name ?? ownerValue?.villageName ?? null,
+      ownerId: state === FogState.FRESH ? occupant?.playerId ?? null : ownerValue?.playerId ?? null,
+      ownerName: state === FogState.FRESH ? occupant?.playerName : ownerValue?.playerName ?? null,
       allianceTag:
-        state === FogState.FRESH ? occupant?.allianceTag : (ownerEntry?.value as Record<string, unknown> | undefined)?.allianceTag ?? null,
-      isCapital: state === FogState.FRESH ? occupant?.isCapital ?? false : Boolean((ownerEntry?.value as Record<string, unknown> | undefined)?.isCapital),
+        state === FogState.FRESH ? occupant?.allianceTag : ownerValue?.allianceTag ?? null,
+      tribeTag: state === FogState.FRESH ? occupant?.tribeTag ?? null : (ownerValue?.tribeTag as string | null | undefined) ?? null,
+      tribeName: state === FogState.FRESH ? occupant?.tribeName ?? null : (ownerValue?.tribeName as string | null | undefined) ?? null,
+      isCapital: state === FogState.FRESH ? occupant?.isCapital ?? false : Boolean(ownerValue?.isCapital),
+      isBarbarian: state === FogState.FRESH ? occupant?.isBarbarian ?? false : Boolean(ownerValue?.isBarbarian),
       population: state === FogState.FRESH ? occupant?.population ?? null : null,
       populationBand:
         state === FogState.FRESH
@@ -450,9 +473,13 @@ export class VisionAggregator {
       value: {
         playerId: occupant.playerId,
         playerName: occupant.playerName,
+        tribeId: occupant.tribeId,
+        tribeTag: occupant.tribeTag,
+        tribeName: occupant.tribeName,
         allianceId: occupant.allianceId,
         allianceTag: occupant.allianceTag,
         isCapital: occupant.isCapital,
+        isBarbarian: occupant.isBarbarian,
         villageId: occupant.id,
         villageName: occupant.name,
       },
@@ -556,6 +583,13 @@ export class VisionAggregator {
         player: {
           select: {
             playerName: true,
+            tribe: {
+              select: {
+                id: true,
+                tag: true,
+                name: true,
+              },
+            },
             allianceMemberships: {
               where: { state: AllianceMemberState.ACTIVE },
               select: {
@@ -569,6 +603,10 @@ export class VisionAggregator {
               take: 1,
             },
           },
+        },
+        barbarians: {
+          select: { id: true },
+          take: 1,
         },
         buildings: {
           where: {
@@ -586,6 +624,7 @@ export class VisionAggregator {
 
     return villages.map((village) => {
       const alliance = village.player.allianceMemberships?.[0]?.alliance
+      const tribe = village.player.tribe
       const wallLevel = village.buildings[0]?.level ?? null
       const populationBand = populationToBand(village.population)
       const wallBand = wallLevelToBand(wallLevel)
@@ -596,6 +635,9 @@ export class VisionAggregator {
         y: village.y,
         playerId: village.playerId,
         playerName: village.player.playerName,
+        tribeId: tribe?.id ?? null,
+        tribeTag: tribe?.tag ?? null,
+        tribeName: tribe?.name ?? null,
         allianceId: alliance?.id ?? null,
         allianceTag: alliance?.tag ?? null,
         population: village.population,
@@ -605,6 +647,7 @@ export class VisionAggregator {
         wallBandId: wallBand?.id ?? null,
         wallBandLabel: wallBand?.label ?? null,
         isCapital: village.isCapital,
+        isBarbarian: village.barbarians.length > 0,
         updatedAt: village.updatedAt,
       } satisfies VillageSummary
     })

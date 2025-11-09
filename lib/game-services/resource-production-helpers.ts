@@ -1,4 +1,8 @@
-import { getResourceLevelConfig, type ResourceType as ConfigResourceType } from "@/lib/config/resource-system"
+import {
+  getMaxDefinedLevel,
+  getResourceLevelConfig,
+  type ResourceType as ConfigResourceType,
+} from "@/lib/config/resource-system"
 import type {
   Hero,
   ResourceProductionModifier,
@@ -29,7 +33,8 @@ export function calculateFieldProduction(fields: VillageResourceField[]): Record
 
     const slug = RESOURCE_ENUM_TO_CONFIG[field.resourceType]
     try {
-      const config = getResourceLevelConfig(slug, Math.min(field.level, 20))
+      const cappedLevel = Math.min(field.level, getMaxDefinedLevel(slug))
+      const config = getResourceLevelConfig(slug, cappedLevel)
       acc[field.resourceType] += config.outputPerHour
     } catch {
       // Ignore undefined config levels

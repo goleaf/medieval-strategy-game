@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import type { ReinforcementStatus } from "@prisma/client"
+import { NotificationService } from "./notification-service"
 
 export class ReinforcementService {
   /**
@@ -68,6 +69,23 @@ export class ReinforcementService {
         content: `Reinforcements from ${reinforcement.fromVillage.player.playerName} have arrived at your village.`,
       },
     })
+
+    try {
+      await NotificationService.emit({
+        playerId: reinforcement.toVillage.playerId,
+        type: "TROOPS_RETURNING",
+        title: "Reinforcements arrived",
+        message: `${reinforcement.fromVillage.player.playerName}'s troops have arrived at ${reinforcement.toVillage.name}.`,
+        metadata: {
+          reinforcementId,
+          fromVillageId: reinforcement.fromVillageId,
+          toVillageId: reinforcement.toVillageId,
+        },
+        actionUrl: `/village/${reinforcement.toVillageId}/rally-point`,
+      })
+    } catch (error) {
+      console.error("Failed to send reinforcement notification:", error)
+    }
   }
 
   /**
@@ -138,4 +156,3 @@ export class ReinforcementService {
     }
   }
 }
-

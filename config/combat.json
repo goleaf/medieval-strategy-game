@@ -22,7 +22,7 @@
     }
   },
   "luck": {
-    "range": 0.05,
+    "range": 0.25,
     "distribution": "triangular_zero_sum"
   },
   "night": {
@@ -39,5 +39,14 @@
     "mode": "bankers",
     "loser_min_loss": 1.0,
     "winner_min_loss": 0.0
+  },
+  "rounds": {
+    "max_rounds": 12,
+    "base_loss_rate": 0.35,
+    "min_loss_rate": 0.02
+  },
+  "paladin": {
+    "attack_bonus": 0.1,
+    "defense_bonus": 0.1
   }
 }

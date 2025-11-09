@@ -50,7 +50,7 @@ export class CrannyService {
    */
   static calculateCrannyCapacity(level: number): number {
     if (level <= 0) return 0
-    return 200 + (level - 1) * 200
+    return level * 100
   }
 
   /**
@@ -200,7 +200,7 @@ export class CrannyService {
 
     for (const cranny of crannies) {
       const entry = this.curveCache?.get(cranny.level) ?? null
-      const baseCapacity = entry?.protectedPerResource ?? this.calculateCrannyCapacity(cranny.level)
+      const baseCapacity = this.calculateCrannyCapacity(cranny.level)
       baseTotal += baseCapacity
 
       let effective = baseCapacity

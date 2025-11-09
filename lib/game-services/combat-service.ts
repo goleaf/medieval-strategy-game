@@ -1,6 +1,7 @@
 import { computeCrannyLoot, computeWallLevelAfterAttack } from "@/lib/balance/subsystem-effects"
 import { resolveBattle, type ArmyInput, type BattleReport, type UnitRole } from "@/lib/combat"
 import { prisma } from "@/lib/db"
+import { EmailNotificationService } from "@/lib/notifications/email-notification-service"
 import { TroopService } from "./troop-service"
 import { ProtectionService } from "./protection-service"
 import { CrannyService } from "./cranny-service"
@@ -11,6 +12,7 @@ import { NightPolicyService, formatWorldTime } from "./night-policy-service"
 import type { NightState } from "./night-policy-service"
 import { ScoutingService } from "./scouting-service"
 import { resolveUnitRole } from "./unit-classification"
+import { NotificationService } from "./notification-service"
 import type {
   AttackStatus,
   AttackType,
@@ -21,6 +23,7 @@ import type {
   ResearchType,
   TroopType,
   Village,
+  EmailNotificationTopic,
 } from "@prisma/client"
 import type { AdministratorSummary } from "./loyalty-service"
 
@@ -34,6 +37,8 @@ const hasActiveGoldClubMembership = (
   if (!player.goldClubExpiresAt) return true
   return player.goldClubExpiresAt > new Date()
 }
+
+const LOYALTY_WARNING_THRESHOLD = 15
 
 interface CombatResult {
   attackerWon: boolean
@@ -90,6 +95,7 @@ function buildArmyInput(stacks: CombatTroopStack[], label: string): ArmyInput {
       .filter((stack) => stack.quantity > 0)
       .map((stack) => ({
         unitId: stack.id,
+        unitType: stack.type ? String(stack.type) : undefined,
         role: resolveUnitRole(stack.type),
         count: stack.quantity,
         attack: stack.attack,
@@ -666,6 +672,7 @@ export class CombatService {
       if (survivingAdmins.length > 0) {
         const totalLoyaltyReduction = LoyaltyService.rollAdministratorDamage(survivingAdmins, attack.toVillage.buildings)
         if (totalLoyaltyReduction > 0) {
+          const previousLoyalty = attack.toVillage.loyalty
           const updatedVillage = await prisma.village.update({
             where: { id: attack.toVillageId! },
             data: {
@@ -677,16 +684,112 @@ export class CombatService {
 
           attack.toVillage.loyalty = updatedVillage.loyalty
 
+          if (
+            attack.toVillage.playerId &&
+            updatedVillage.loyalty > 0 &&
+            updatedVillage.loyalty <= LOYALTY_WARNING_THRESHOLD
+          ) {
+            await EmailNotificationService.queueEvent({
+              playerId: attack.toVillage.playerId,
+              topic: EmailNotificationTopic.CONQUEST_WARNING,
+              payload: {
+                village: {
+                  id: attack.toVillageId,
+                  name: attack.toVillage.name,
+                  x: attack.toVillage.x,
+                  y: attack.toVillage.y,
+                },
+                loyalty: updatedVillage.loyalty,
+                attacker: attack.fromVillage.player.playerName,
+                waveArrivedAt: new Date().toISOString(),
+              },
+              linkTarget: `/village/${attack.toVillageId}?tab=loyalty`,
+              forceSend: true,
+            })
+          }
+
+          if (
+            attack.toVillage.playerId &&
+            previousLoyalty > 50 &&
+            updatedVillage.loyalty <= 50
+          ) {
+            NotificationService.emit({
+              playerId: attack.toVillage.playerId,
+              type: "LOYALTY_LOW",
+              title: `${attack.toVillage.name} loyalty critical`,
+              message: `${attack.toVillage.name} loyalty fell to ${updatedVillage.loyalty}. Secure the village before nobles land.`,
+              metadata: {
+                villageId: attack.toVillageId,
+                loyalty: updatedVillage.loyalty,
+                attackId,
+              },
+              actionUrl: `/village/${attack.toVillageId}`,
+            }).catch((error) => {
+              console.error("Failed to queue loyalty notification:", error)
+            })
+          }
+
           if (updatedVillage.loyalty <= 0) {
+            const defenderId = attack.toVillage.playerId
+            if (defenderId) {
+              NotificationService.emit({
+                playerId: defenderId,
+                type: "VILLAGE_CONQUEST",
+                title: `${attack.toVillage.name} is being conquered`,
+                message: `Loyalty reached zero after ${attack.fromVillage.name}'s attack.`,
+                metadata: {
+                  villageId: attack.toVillageId,
+                  attackId,
+                },
+                actionUrl: `/village/${attack.toVillageId}`,
+              }).catch((error) => {
+                console.error("Failed to queue defender conquest notification:", error)
+              })
+            }
+
+            NotificationService.emit({
+              playerId: attack.fromVillage.playerId,
+              type: "VILLAGE_CONQUEST",
+              title: `Conquest successful at ${attack.toVillage.name}`,
+              message: `Loyalty dropped to zero. Capture transfer is processing.`,
+              metadata: {
+                villageId: attack.toVillageId,
+                attackId,
+              },
+              actionUrl: `/village/${attack.toVillageId}`,
+            }).catch((error) => {
+              console.error("Failed to queue attacker conquest notification:", error)
+            })
+
             const conquestResult = await ExpansionService.attemptConquestTransfer({
               targetVillage: attack.toVillage as unknown as VillageWithOwner,
               attackerVillage: attack.fromVillage as unknown as VillageWithOwner,
             })
 
-            if (conquestResult !== "SUCCESS") {
+            if (conquestResult.status !== "SUCCESS") {
               await prisma.village.update({
                 where: { id: attack.toVillageId! },
                 data: { loyalty: LoyaltyService.getConfig().loyaltyFloorOnBlockedConquest },
+              })
+            } else if (conquestResult.previousOwnerId) {
+              await EmailNotificationService.queueEvent({
+                playerId: conquestResult.previousOwnerId,
+                topic: EmailNotificationTopic.CONQUEST_LOST,
+                payload: {
+                  village: {
+                    id: attack.toVillageId,
+                    name: attack.toVillage.name,
+                    x: attack.toVillage.x,
+                    y: attack.toVillage.y,
+                  },
+                  newOwner: {
+                    id: attack.fromVillage.playerId,
+                    name: attack.fromVillage.player.playerName,
+                  },
+                  claimedAt: new Date().toISOString(),
+                },
+                linkTarget: `/map?highlight=${attack.toVillage.x},${attack.toVillage.y}`,
+                forceSend: true,
               })
             }
           }
@@ -719,6 +822,99 @@ export class CombatService {
           data: { quantity: newQuantity },
         })
       }
+    }
+
+    const locationLabel = attack.toVillage?.name ?? "target"
+    const reportMetadata = {
+      attackId,
+      attackType: attack.type,
+      fromVillageId: attack.fromVillageId,
+      toVillageId: attack.toVillageId,
+    }
+
+    await Promise.all([
+      NotificationService.emit({
+        playerId: attack.fromVillage.playerId,
+        type: "ATTACK_REPORT_READY",
+        title: result.attackerWon ? `Victory at ${locationLabel}` : `Defeat at ${locationLabel}`,
+        message: `Battle resolved at ${locationLabel}. ${result.attackerWon ? "Your troops prevailed." : "Your troops were defeated."}`,
+        metadata: {
+          ...reportMetadata,
+          role: "ATTACKER",
+        },
+        actionUrl: "/reports",
+      }).catch((error) => {
+        console.error("Failed to queue attacker report notification:", error)
+      }),
+      attack.toVillage?.playerId
+        ? NotificationService.emit({
+            playerId: attack.toVillage.playerId,
+            type: "ATTACK_REPORT_READY",
+            title: result.attackerWon ? `Loss at ${locationLabel}` : `Defense successful at ${locationLabel}`,
+            message: result.attackerWon
+              ? `${locationLabel} was breached. Review the battle report for casualty details.`
+              : `${locationLabel} held against the attack. Review the battle report for reinforcement needs.`,
+            metadata: {
+              ...reportMetadata,
+              role: "DEFENDER",
+            },
+            actionUrl: "/reports",
+          }).catch((error) => {
+            console.error("Failed to queue defender report notification:", error)
+          })
+        : Promise.resolve(),
+    ])
+
+    const attackerCasualtyTotal = Object.values(result.attackerCasualties).reduce((sum, value) => sum + (value ?? 0), 0)
+    const defenderCasualtyTotal = Object.values(result.defenderCasualties).reduce((sum, value) => sum + (value ?? 0), 0)
+
+    const emailReportPayload = {
+      attackId,
+      attackType: attack.type,
+      attackerWon: result.attackerWon,
+      loot: {
+        wood: lootWood,
+        stone: lootStone,
+        iron: lootIron,
+        gold: lootGold,
+        food: lootFood,
+      },
+      attacker: {
+        id: attack.fromVillage.playerId,
+        name: attack.fromVillage.player.playerName,
+        village: attack.fromVillage.name,
+        coords: { x: attack.fromVillage.x, y: attack.fromVillage.y },
+      },
+      defender: attack.toVillage
+        ? {
+            id: attack.toVillage.playerId,
+            name: attack.toVillage.player?.playerName ?? "Unknown",
+            village: attack.toVillage.name,
+            coords: { x: attack.toVillage.x, y: attack.toVillage.y },
+          }
+        : null,
+      casualties: {
+        attackers: attackerCasualtyTotal,
+        defenders: defenderCasualtyTotal,
+      },
+      loyaltyAfter: attack.toVillage?.loyalty ?? null,
+      resolvedAt: new Date().toISOString(),
+    }
+
+    await EmailNotificationService.queueEvent({
+      playerId: attack.fromVillage.playerId,
+      topic: EmailNotificationTopic.ATTACK_REPORT,
+      payload: { ...emailReportPayload, perspective: "ATTACKER" },
+      linkTarget: "/reports",
+    })
+
+    if (attack.toVillage?.playerId) {
+      await EmailNotificationService.queueEvent({
+        playerId: attack.toVillage.playerId,
+        topic: EmailNotificationTopic.ATTACK_REPORT,
+        payload: { ...emailReportPayload, perspective: "DEFENDER" },
+        linkTarget: "/reports",
+      })
     }
   }
 
@@ -755,6 +951,20 @@ export class CombatService {
         content: JSON.stringify(report),
       },
     })
+    NotificationService.emit({
+      playerId: attack.fromVillage.playerId,
+      type: "ATTACK_REPORT_READY",
+      title: `Scouting results for ${attack.toVillage.name}`,
+      message: report.summary.success
+        ? `Scouts succeeded with ${report.summary.attackerLosses} losses.`
+        : `Scouts were detected and failed.`,
+      metadata: {
+        attackId,
+        mission: "SCOUT",
+        target: attack.toVillageId,
+      },
+      actionUrl: "/reports",
+    }).catch((error) => console.error("Failed to queue scout report notification:", error))
 
     await prisma.message.create({
       data: {
@@ -772,6 +982,18 @@ export class CombatService {
         }),
       },
     })
+    NotificationService.emit({
+      playerId: attack.toVillage.playerId,
+      type: "ATTACK_REPORT_READY",
+      title: `Counter-scout at ${attack.toVillage.name}`,
+      message: `Enemy scouts from ${attack.fromVillage.name} probed ${attack.toVillage.name}.`,
+      metadata: {
+        attackId,
+        mission: "SCOUT_DEFENSE",
+        target: attack.toVillageId,
+      },
+      actionUrl: "/reports",
+    }).catch((error) => console.error("Failed to queue scout alert notification:", error))
   }
 
   /**
@@ -821,8 +1043,8 @@ export class CombatService {
     }
 
     // Send notifications to all alliance members
-    const notificationPromises = Array.from(allianceMembers).map(memberId =>
-      prisma.message.create({
+    const notificationPromises = Array.from(allianceMembers).map(async memberId => {
+      await prisma.message.create({
         data: {
           senderId: attack.toVillage!.playerId, // From the attacked player
           villageId: attack.toVillageId!,
@@ -831,7 +1053,18 @@ export class CombatService {
           content: `Your alliance member ${attack.toVillage.player.playerName}'s village ${attack.toVillage.name} is under attack from ${attack.fromVillage.player.playerName}!`,
         },
       })
-    );
+      await NotificationService.emit({
+        playerId: memberId,
+        type: "TRIBE_SUPPORT_REQUEST",
+        title: `${attack.toVillage.name} needs support`,
+        message: `${attack.toVillage.player.playerName} is under attack from ${attack.fromVillage.player.playerName}.`,
+        metadata: {
+          attackId,
+          allyVillageId: attack.toVillageId,
+        },
+        actionUrl: attack.toVillageId ? `/village/${attack.toVillageId}/rally-point` : "/tribe",
+      })
+    });
 
     await Promise.all(notificationPromises);
   }

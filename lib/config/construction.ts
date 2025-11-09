@@ -49,7 +49,7 @@ export type ConstructionConfig = {
 }
 
 // Helper constants ensure every generated level set shares the same baseline length.
-const DEFAULT_LEVEL_COUNT = 10
+const DEFAULT_LEVEL_COUNT = 30
 
 type LevelEffectFactory = (level: number) => Record<string, number | string | boolean> | undefined
 
@@ -128,7 +128,7 @@ export const CONSTRUCTION_CONFIG: ConstructionConfig = {
   version: "2024-06-07",
   defaults: {
     serverSpeed: 1,
-    resourceDeductionPolicy: "on_queue",
+    resourceDeductionPolicy: "on_start",
     cancelRefundRates: {
       waiting: 1,
       building: 0.5,
@@ -139,7 +139,7 @@ export const CONSTRUCTION_CONFIG: ConstructionConfig = {
   },
   queuePresets: {
     free: {
-      maxWaiting: 1,
+      maxWaiting: 0,
       parallelFieldSlots: 0,
       parallelInnerSlots: 0,
     },
@@ -284,7 +284,7 @@ export const CONSTRUCTION_CONFIG: ConstructionConfig = {
       displayName: "Academy",
       category: "inner",
       maxLevel: 20,
-      prerequisites: { main_building: 15, smithy: 15, market: 10 },
+      prerequisites: { main_building: 20, smithy: 20, market: 10 },
       effects: { nobleTraining: true },
       levels: [
         { level: 1, cost: { wood: 360, clay: 330, iron: 280, crop: 120 }, buildTimeSeconds: 1980, cpPerHour: 3, effects: { nobleSlotsUnlocked: 1, loyaltyDropMin: 20, loyaltyDropMax: 35 } },
@@ -304,7 +304,7 @@ export const CONSTRUCTION_CONFIG: ConstructionConfig = {
       displayName: "Smithy",
       category: "inner",
       maxLevel: 20,
-      prerequisites: { main_building: 3, barracks: 3 },
+      prerequisites: { main_building: 3, barracks: 1 },
       effects: { researchModel: "military" },
       levels: createScaledLevels({
         baseCost: { wood: 180, clay: 250, iron: 130, crop: 100 },
@@ -344,7 +344,7 @@ export const CONSTRUCTION_CONFIG: ConstructionConfig = {
       displayName: "Workshop",
       category: "inner",
       maxLevel: 20,
-      prerequisites: { main_building: 5, smithy: 5, barracks: 5 },
+      prerequisites: { main_building: 5, smithy: 10, barracks: 5 },
       effects: { unlocks: ["siege"] },
       levels: createScaledLevels({
         baseCost: { wood: 460, clay: 510, iron: 600, crop: 320 },

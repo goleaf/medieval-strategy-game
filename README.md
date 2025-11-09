@@ -22,6 +22,7 @@ Key documentation areas:
 - **Marketplace** - Buy and sell resources with other players
 - **Tribes & Diplomacy** - Form alliances, declare wars, and collaborate with other players
 - **Pathfinding** - A* algorithm for realistic troop movement
+- **World Map** - Interactive 1000×1000 grid with continent labels, tribe-colored ownership, mini-map, and distance tooling (`/map`)
 - **Admin Dashboard** - Player management, moderation, and world configuration
 - **Real-time Updates** - WebSocket-powered live game state synchronization
 - **Leaderboard** - Global rankings based on points and conquest
@@ -171,8 +172,9 @@ Combat uses a power-based algorithm with randomness:
 - \`POST /api/market/orders\` - Create buy/sell order
 
 ### Tribes
-- \`POST /api/tribes\` - Create tribe
-- \`GET /api/tribes\` - List all tribes
+- \`GET /api/tribes\` - Tribe leaderboard + creation requirements (points vs premium bypass)
+- \`GET /api/tribes?tribeId=<id>&managerId=<playerId>\` - Full roster, pending invites, and applications with permission-aware data
+- \`POST /api/tribes\` - Multi-action endpoint for creation, invites, joins, applications, and role/permission updates
 
 ### Admin
 - \`POST /api/admin/auth/login\` - Admin authentication

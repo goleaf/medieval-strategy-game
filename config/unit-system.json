@@ -79,11 +79,12 @@
   },
   "administration": {
     "loyaltyHit": {
-      "min": 18,
-      "max": 30
+      "min": 20,
+      "max": 35
     },
     "blockedFloor": 1,
-    "captureFloor": 25
+    "captureFloor": 25,
+    "captureCeiling": 35
   },
   "loot": {
     "fallbackPriority": ["wood", "clay", "iron", "crop"],
@@ -173,7 +174,7 @@
       "cost": { "wood": 30750, "clay": 27200, "iron": 45000, "crop": 37500 },
       "buildingReq": { "residence": 20 },
       "researchReq": { "academy": 10 },
-      "loyaltyHit": { "min": 18, "max": 30 },
+      "loyaltyHit": { "min": 20, "max": 35 },
       "defAdminMult": 1
     }
   }

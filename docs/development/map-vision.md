@@ -10,6 +10,7 @@ This note tracks the foundation work landing for the Map & Fog-of-War Vision Sys
 - `lib/map-vision/vision-aggregator.ts` — unions passive + active sources, ensures `MapTile` rows exist, updates viewer/alliance `TileVisionState` entries, and emits spec-compliant `TileState` payloads with freshness metadata.
 - `lib/map-vision/types.ts` — shared contracts for coordinates, `TileState`, `VisionSource`, `ReconMission`, `ContactLogEntry`, and TTL tracking.
 - `app/api/map/vision/route.ts` — GET endpoint for tactical/provincial/world views. Accepts `gameWorldId`, `center`, optional `radius`, `scale`, `viewerPlayerId`, `viewerAllianceId`. Returns extent metadata + tile grid compatible with client overlays.
+- `app/api/map/world/route.ts` — world overview snapshot (all villages + tribe tags + barbarian flags) powering the `/map` world zoom and mini-map without issuing million-tile queries.
 
 ## Persistence
 - Migration `20251111130000_map_vision_foundations` adds:
@@ -30,8 +31,8 @@ curl "http://localhost:3000/api/map/vision?gameWorldId=<worldId>&center=0|0&scal
 
 The response includes:
 - `tiles`: ordered grid of `TileState` records.
-- `extent`: world bounds (default −400…400).
-- `block`: diplomatic block (e.g., `K0404`) derived from the center coordinate.
+- `extent`: world bounds (default `000…999` on each axis for a 1000×1000 grid).
+- `block`: diplomatic block (e.g., `K45`) derived from the center coordinate (column 4, row 5 of the 100×100 continents).
 
 ## Next Steps
 - Populate `MapTile` via world generation/seeding so non-village tiles (oases, specials) expose metadata + cosmetics once fog lifts.
