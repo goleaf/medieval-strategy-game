@@ -715,6 +715,11 @@ export default function BuildingsPage() {
                         Open Academy Tech Tree
                       </Link>
                     )}
+                    {building.type === "SMITHY" && (
+                      <Link href={`/village/${villageId}/smithy`} className="text-xs underline">
+                        Open Smithy Upgrades
+                      </Link>
+                    )}
 
                     {requirementStatuses.length > 0 && (
                       <ul className="text-[11px] leading-tight text-muted-foreground">

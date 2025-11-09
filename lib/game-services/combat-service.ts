@@ -532,24 +532,58 @@ export class CombatService {
 
     const survivingCatapults = countSurvivingByType(attackerStacksForCombat, result.attackerCasualties, "CATAPULT")
     if (result.attackerWon && attack.type !== "RAID" && survivingCatapults > 0) {
-      const defenderVillage = await prisma.village.findUnique({
-        where: { id: attack.toVillageId! },
-        include: { buildings: true },
-      })
+      // If a legacy attack included catapult target selections, apply targeted damage via the catapult engine.
+      try {
+        const movementPayload = (attack.movement?.payload ?? {}) as { catapultTargets?: string[] }
+        const selections = Array.isArray(movementPayload.catapultTargets) ? movementPayload.catapultTargets : []
+        // Use the attacker rally point level to determine targeting mode (one/two/random)
+        const { PrismaRallyPointRepository } = await import("@/lib/rally-point/prisma-repository")
+        const { calculateCatapultDamage } = await import("@/lib/combat/siege")
 
-      if (defenderVillage) {
-        const targetPopulationReduction = survivingCatapults * 10
-        const destructionResult = await VillageDestructionService.destroyBuildingsAndReducePopulation(
-          defenderVillage.id,
-          targetPopulationReduction,
-        )
+        const repo = new PrismaRallyPointRepository()
+        await repo.withTransaction(async (trx) => {
+          const rpState = await trx.getRallyPoint(attack.fromVillageId)
+          const rpLevel = rpState?.level ?? 1
+          const snapshot = await trx.getVillageSiegeSnapshot(attack.toVillageId!)
+          const damage = calculateCatapultDamage(survivingCatapults, rpLevel, selections, {
+            snapshot: snapshot ?? undefined,
+            seed: attack.id,
+          })
 
-        result.populationDamage = destructionResult.populationReduced
-        result.buildingsDestroyed = destructionResult.buildingsDestroyed.map((b) => ({
-          id: b.id,
-          type: b.type,
-          level: b.level,
-        }))
+          // Apply damage to targeted structures
+          for (const hit of damage.targets) {
+            if (!hit.structureId) continue
+            if (hit.targetKind === "resource_field") {
+              await trx.updateResourceFieldLevel(hit.structureId, hit.afterLevel)
+            } else {
+              await trx.updateBuildingLevel(hit.structureId, hit.afterLevel)
+            }
+          }
+
+          // Populate report metadata
+          result.buildingDamage = damage.targets
+            .filter((t) => t.structureId)
+            .map((t) => ({ buildingId: t.structureId!, damage: Math.max(0, (t.beforeLevel ?? 0) - (t.afterLevel ?? 0)) }))
+        })
+      } catch (err) {
+        console.warn("[combat] Catapult targeting failed; falling back to generic destruction:", err)
+        const defenderVillage = await prisma.village.findUnique({
+          where: { id: attack.toVillageId! },
+          include: { buildings: true },
+        })
+        if (defenderVillage) {
+          const targetPopulationReduction = survivingCatapults * 10
+          const destructionResult = await VillageDestructionService.destroyBuildingsAndReducePopulation(
+            defenderVillage.id,
+            targetPopulationReduction,
+          )
+          result.populationDamage = destructionResult.populationReduced
+          result.buildingsDestroyed = destructionResult.buildingsDestroyed.map((b) => ({
+            id: b.id,
+            type: b.type,
+            level: b.level,
+          }))
+        }
       }
     }
 
